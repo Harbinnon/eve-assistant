@@ -3,13 +3,15 @@
 import argparse
 import sys
 
-from eve_assistant import __version__, accounts, auth, sde, snapshots, store
+from eve_assistant import __version__, accounts, auth, goals, sde, skills, snapshots, store
 from eve_assistant.accounts import AccountError
 from eve_assistant.config import ConfigError, load_config
 from eve_assistant.esi.client import EsiClient, EsiError
 from eve_assistant.esi.sso import SSOError
+from eve_assistant.goals import GoalError
 from eve_assistant.sde import SdeError
 from eve_assistant.secrets_store import SecretStoreError, default_store
+from eve_assistant.skills import SkillsError
 
 
 def _cmd_login(_args) -> int:
@@ -102,7 +104,99 @@ def _cmd_snapshot(_args) -> int:
             )
             for problem in problems:
                 print(f"  {problem.kind}: {problem.detail}")
+        priced = goals.update_prices(db, esi)
+        print(f"Market prices: {priced:,} items.")
     return 1 if failed else 0
+
+
+def _print_requirement(req: skills.Requirement, is_alpha: bool) -> None:
+    if req.usable_now:
+        print("  Can use it now.")
+        return
+    if req.usable_with_omega_now:
+        print("  Skills are trained; Omega would unlock it straight away.")
+    for step in req.steps:
+        flag = "" if step.allowed_for_alpha else "  (Omega only)"
+        print(
+            f"  {step.skill_name} {step.level}: {step.skillpoints:,} SP, "
+            f"{skills.format_minutes(step.minutes_omega)} as Omega{flag}"
+        )
+    if req.steps:
+        print(f"  Total as Omega: {skills.format_minutes(req.minutes_as_omega)}")
+        if is_alpha:
+            if req.minutes_as_alpha is None:
+                print("  As Alpha: not possible.")
+            else:
+                print(
+                    f"  Total as Alpha: about {skills.format_minutes(req.minutes_as_alpha)} "
+                    "(Alpha speed assumed half; not yet verified)"
+                )
+    for reason in req.reasons:
+        print(f"  - {skills.describe(reason)}")
+
+
+def _cmd_skills(args) -> int:
+    with store.connect() as db:
+        character_id = goals.resolve_character(db, args.character)
+        character = skills.load_character_skills(db, character_id)
+        type_id = skills.find_type(db, args.item)
+        req = skills.plan(db, character, type_id)
+        print(f"{req.type_name} for character {character_id} [{character.clone_state}]:")
+        _print_requirement(req, character.is_alpha)
+    return 0
+
+
+def _cmd_goal_add(args) -> int:
+    with store.connect() as db:
+        character_id = goals.resolve_character(db, args.character) if args.character else None
+        if args.kind == "ship":
+            goal_id = goals.add_goal(
+                db, "fly_ship", character_id, type_id=skills.find_type(db, args.target)
+            )
+        elif args.kind == "skill":
+            goal_id = goals.add_goal(
+                db,
+                "skill",
+                character_id,
+                type_id=skills.find_type(db, args.target),
+                level=args.level,
+            )
+        else:
+            amount = float(args.target.replace(",", "").replace("_", ""))
+            goal_id = goals.add_goal(db, "isk", character_id, isk=amount)
+    print(f"Added goal {goal_id}. See it with: eve-assistant goals")
+    return 0
+
+
+def _cmd_goals(_args) -> int:
+    with store.connect() as db:
+        active = goals.active_goals(db)
+        if not active:
+            print("No goals yet. Example: eve-assistant goal add ship Retriever --character <name>")
+            return 0
+        for goal in active:
+            status = goals.evaluate(db, goal)
+            who = f" ({status.character_name})" if status.character_name else ""
+            print(f"[{goal.goal_id}] {goal.label}{who}")
+            if status.requirement is not None:
+                _print_requirement(status.requirement, is_alpha=bool(status.is_alpha))
+            if status.price is not None:
+                print(f"  Rough price: {status.price:,.0f} ISK (CCP average, not a hub quote)")
+            if status.isk_needed is not None:
+                print(f"  ISK still needed: {status.isk_needed:,.0f} (wallet {status.wallet:,.0f})")
+            for reason in status.reasons:
+                if reason.code == "no_price":
+                    print("  - No market price yet; run `eve-assistant snapshot`.")
+                elif reason.code == "clone_state_unknown":
+                    print("  - Account clone state unknown; assumed Alpha (`account state`).")
+    return 0
+
+
+def _cmd_goal_status(args) -> int:
+    with store.connect() as db:
+        goals.set_status(db, args.goal_id, args.status)
+    print(f"Goal {args.goal_id} marked {args.status}.")
+    return 0
 
 
 def _cmd_accounts(_args) -> int:
@@ -171,6 +265,28 @@ def build_parser() -> argparse.ArgumentParser:
     state.add_argument("label")
     state.add_argument("state", choices=accounts.CLONE_STATES)
     state.set_defaults(func=_cmd_account_state)
+
+    skills_cmd = commands.add_parser("skills", help="what a character needs to use an item")
+    skills_cmd.add_argument("character", help="character name or ID")
+    skills_cmd.add_argument("item", help='item name, e.g. "Retriever"')
+    skills_cmd.set_defaults(func=_cmd_skills)
+
+    commands.add_parser("goals", help="show goals and how far away they are").set_defaults(
+        func=_cmd_goals
+    )
+    goal = commands.add_parser("goal", help="add or close goals").add_subparsers(
+        dest="goal_command", required=True
+    )
+    add = goal.add_parser("add", help="add a goal")
+    add.add_argument("kind", choices=("ship", "skill", "isk"))
+    add.add_argument("target", help="ship or skill name, or an ISK amount")
+    add.add_argument("level", nargs="?", type=int, help="skill level (skill goals)")
+    add.add_argument("--character", help="character name or ID")
+    add.set_defaults(func=_cmd_goal_add)
+    for status in ("done", "dropped"):
+        close = goal.add_parser(status, help=f"mark a goal {status}")
+        close.add_argument("goal_id", type=int)
+        close.set_defaults(func=_cmd_goal_status, status=status)
     return parser
 
 
@@ -178,7 +294,16 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         return args.func(args)
-    except (ConfigError, SSOError, SecretStoreError, EsiError, SdeError, AccountError) as exc:
+    except (
+        ConfigError,
+        SSOError,
+        SecretStoreError,
+        EsiError,
+        SdeError,
+        AccountError,
+        SkillsError,
+        GoalError,
+    ) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 2
 
