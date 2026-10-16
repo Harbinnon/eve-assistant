@@ -37,6 +37,22 @@ backend that doesn't exist yet.)
    .venv\Scripts\python -m pytest
    ```
 
+## Commands so far
+
+```
+eve-assistant login                    log a character in (opens EVE's login page)
+eve-assistant characters [--check]     list logged-in characters, optionally test tokens
+eve-assistant logout <character id>    forget a character's token on this PC
+eve-assistant sde-update               download and load CCP's static data (~100 MB)
+eve-assistant snapshot                 record every character's current state
+eve-assistant accounts                 show characters grouped by account
+eve-assistant account assign <id> <name>         put a character on an account
+eve-assistant account state <name> alpha|omega   mark an account Alpha or Omega
+```
+
+Data lives in `var/` (the database and downloaded static data) and is
+gitignored. Tokens are stored encrypted outside the project.
+
 Contributing: see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Licence
