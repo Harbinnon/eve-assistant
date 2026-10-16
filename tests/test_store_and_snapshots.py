@@ -14,8 +14,9 @@ def db():
 
 def test_migrations_apply_once(db):
     assert store.migrate(db) == []
-    names = [r[0] for r in db.execute("SELECT name FROM schema_migrations")]
-    assert names == ["0001_initial.sql"]
+    names = [r[0] for r in db.execute("SELECT name FROM schema_migrations ORDER BY number")]
+    assert names[0] == "0001_initial.sql"
+    assert [int(n.split("_")[0]) for n in names] == list(range(1, len(names) + 1))
 
 
 def test_snapshots_are_written_only_on_change(db):

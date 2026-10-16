@@ -48,6 +48,12 @@ eve-assistant snapshot                 record every character's current state
 eve-assistant accounts                 show characters grouped by account
 eve-assistant account assign <id> <name>         put a character on an account
 eve-assistant account state <name> alpha|omega   mark an account Alpha or Omega
+eve-assistant skills <character> "<item>"        what it takes to use an item
+eve-assistant goal add ship "<ship>" --character <name>
+eve-assistant goal add skill "<skill>" <level> --character <name>
+eve-assistant goal add isk <amount> [--character <name>]
+eve-assistant goals                    progress on every active goal
+eve-assistant goal done|dropped <id>   close a goal
 ```
 
 Data lives in `var/` (the database and downloaded static data) and is
