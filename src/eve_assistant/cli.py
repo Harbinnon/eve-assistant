@@ -12,6 +12,8 @@ from eve_assistant import (
     market,
     mining,
     ore,
+    planner,
+    preferences,
     refresh,
     sde,
     skills,
@@ -372,6 +374,101 @@ def _cmd_couriers(args) -> int:
     return 0
 
 
+WHY_NOT = {
+    "worse": "less ISK after expected losses",
+    "too_long": "does not fit in the time",
+    "red_risk": "red on the risk matrix (use --risky to include)",
+    "muted": "muted",
+    "new_limit": "only one new activity per plan",
+}
+
+
+def _cmd_plan(args) -> int:
+    config = load_config()
+    secrets = default_store()
+    with store.connect() as db, auth.http_client(config) as client:
+        character_id = goals.resolve_character(db, args.character)
+        esi = EsiClient(client, db, token_for=auth.AccessTokens(config, secrets, client).get)
+        plan = planner.build_plan(
+            db,
+            esi,
+            character_id,
+            args.minutes,
+            allow_lowsec=args.allow_lowsec,
+            allow_risky=args.risky,
+            ore_names=args.ore,
+        )
+        plan = planner.record(
+            db, plan, {"allow_lowsec": args.allow_lowsec, "risky": args.risky, "ore": args.ore}
+        )
+        item_ids = [
+            r["item_id"]
+            for r in db.execute(
+                "SELECT item_id FROM plan_items WHERE plan_id = ? AND position IS NOT NULL "
+                "ORDER BY position",
+                (plan.plan_id,),
+            )
+        ]
+    print(f"Plan {plan.plan_id}: {args.minutes:.0f} minutes.")
+    print(f"  Net worth about {plan.net_worth:,.0f} ISK.")
+    if not plan.items:
+        print("  Nothing fits right now.")
+    for number, (item, item_id) in enumerate(zip(plan.items, item_ids, strict=True), 1):
+        new = "  [new to you]" if item.new_to_you else ""
+        print(f"  {number}. {item.title}{new}")
+        print(
+            f"     {item.isk:,.0f} ISK, {item.minutes:.0f} min, risk {item.risk.rating}"
+            f" (expected loss {item.risk.expected_loss:,.0f})   [item {item_id}]"
+        )
+    print(f"  Total: {plan.total_isk:,.0f} ISK in {plan.total_minutes:.0f} min.")
+    if plan.alternatives:
+        print("  Also considered:")
+        for alt in plan.alternatives[: args.alternatives]:
+            print(
+                f"    {alt.item.title}: {alt.item.isk:,.0f} ISK, {alt.item.minutes:.0f} min "
+                f"({WHY_NOT.get(alt.why_not, alt.why_not)})"
+            )
+    for note in plan.notes:
+        if note.code == "ores_assumed":
+            ores = ", ".join(note.detail["ores"])
+            print(f"  - No mining here on record; assumed common ores: {ores}.")
+        elif note.code == "ores_from_mining_ledger":
+            print("  - Ores chosen from what you mined in this system recently.")
+        elif note.code == "loss_chances_are_guesses":
+            print("  - Loss chances are starting guesses until kill data and history refine them.")
+        elif note.code == "no_couriers_fit":
+            print("  - No courier contracts fit your ships, wallet and time.")
+        elif note.code == "selling_at_nearby_station":
+            print("  - Not docked at an NPC station; selling prices are for the nearest one here.")
+    print("  Record what you did: eve-assistant respond <item> do|not_now|mute")
+    return 0
+
+
+def _cmd_respond(args) -> int:
+    with store.connect() as db:
+        planner.respond(db, args.item_id, args.response)
+    print("Recorded.")
+    if args.response == "mute":
+        print("The category is muted; undo with `eve-assistant unmute <category>`.")
+    return 0
+
+
+def _cmd_mutes(args) -> int:
+    with store.connect() as db:
+        if args.action == "list":
+            active = preferences.active_mutes(db)
+            print("Muted: " + (", ".join(sorted(active)) if active else "nothing"))
+            print("Categories: " + ", ".join(preferences.KNOWN))
+            return 0
+        if args.category is None:
+            raise preferences.PreferenceError("Name a category, e.g. kind:courier.")
+        changed = (preferences.mute if args.action == "mute" else preferences.unmute)(
+            db, args.category
+        )
+    print(f"{args.category}: {'done' if changed else 'no change'}.")
+    return 0
+
+
 def _cmd_accounts(_args) -> int:
     with store.connect() as db:
         views = accounts.overview(db)
@@ -475,6 +572,26 @@ def build_parser() -> argparse.ArgumentParser:
     couriers_cmd.add_argument("--ship", help='plan as if you had this ship, e.g. "Tayra"')
     couriers_cmd.set_defaults(func=_cmd_couriers)
 
+    plan_cmd = commands.add_parser("plan", help="plan what to do with the time you have")
+    plan_cmd.add_argument("character", help="character name or ID")
+    plan_cmd.add_argument("minutes", type=float, help="minutes you have to play")
+    plan_cmd.add_argument("--allow-lowsec", action="store_true", help="allow lowsec routes")
+    plan_cmd.add_argument("--risky", action="store_true", help="include red-rated options")
+    plan_cmd.add_argument("--ore", action="append", help="ore to consider mining (repeat)")
+    plan_cmd.add_argument("--alternatives", type=int, default=5, help="how many to list")
+    plan_cmd.set_defaults(func=_cmd_plan)
+
+    respond = commands.add_parser("respond", help="record what you did with a plan item")
+    respond.add_argument("item_id", type=int)
+    respond.add_argument("response", choices=("do", "not_now", "mute"))
+    respond.set_defaults(func=_cmd_respond)
+
+    for action in ("mute", "unmute", "list"):
+        name = "mutes" if action == "list" else action
+        mutes_cmd = commands.add_parser(name, help=f"{action} planner categories")
+        mutes_cmd.add_argument("category", nargs="?", help="e.g. kind:courier or route:lowsec")
+        mutes_cmd.set_defaults(func=_cmd_mutes, action=action)
+
     serve = commands.add_parser("serve", help="run the dashboard on this PC")
     serve.add_argument("--port", type=int, default=8700)
     serve.set_defaults(func=_cmd_serve)
@@ -514,6 +631,8 @@ def main(argv: list[str] | None = None) -> int:
         ore.OreError,
         mining.MiningError,
         couriers.CourierError,
+        planner.PlanError,
+        preferences.PreferenceError,
     ) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 2
