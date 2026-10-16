@@ -91,6 +91,29 @@ def access_token(
     config: Config, store: SecretStore, client: httpx.Client, character_id: int
 ) -> str:
     """A fresh access token for the character. Saves the rotated refresh token."""
+    return refresh_access(config, store, client, character_id).access_token
+
+
+class AccessTokens:
+    """Hands out access tokens, refreshing only when one is about to expire."""
+
+    MARGIN_SECONDS = 60
+
+    def __init__(self, config: Config, store: SecretStore, client: httpx.Client):
+        self._config, self._store, self._client = config, store, client
+        self._cache: dict[int, sso.TokenSet] = {}
+
+    def get(self, character_id: int) -> str:
+        cached = self._cache.get(character_id)
+        if cached is None or cached.expires_at - time.time() < self.MARGIN_SECONDS:
+            cached = refresh_access(self._config, self._store, self._client, character_id)
+            self._cache[character_id] = cached
+        return cached.access_token
+
+
+def refresh_access(
+    config: Config, store: SecretStore, client: httpx.Client, character_id: int
+) -> sso.TokenSet:
     data = store.load()
     entry = _characters(data).get(str(character_id))
     if entry is None:
@@ -104,7 +127,7 @@ def access_token(
     entry["refresh_token"] = tokens.refresh_token
     entry["scopes"] = list(identity.scopes)
     store.save(data)
-    return tokens.access_token
+    return tokens
 
 
 def logout(store: SecretStore, character_id: int) -> bool:
