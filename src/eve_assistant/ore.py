@@ -37,6 +37,8 @@ class Option:
     location: str
     jumps: int = 0
     reasons: tuple[Reason, ...] = field(default_factory=tuple)
+    hauled_m3: float = 0.0  # what has to be carried, if the option involves travel
+    hauled_is_ore: bool = True  # ore fits in an ore hold; minerals need cargo space
 
     @property
     def isk_per_minute(self) -> float:
@@ -173,6 +175,12 @@ def analyse(
     }
     if leftover:
         reasons.append(Reason("leftover_not_refined", {"units": leftover, "portion": portion}))
+    ore_m3 = quantity * (item["volume"] or 0)
+    mineral_m3 = leftover * (item["volume"] or 0) + sum(
+        amount
+        * (db.execute("SELECT volume FROM sde_types WHERE type_id = ?", (m,)).fetchone()[0] or 0)
+        for m, amount in minerals.items()
+    )
 
     books: dict[tuple[int, int], list[market.Order]] = {}
 
@@ -201,6 +209,7 @@ def analyse(
                 reasons=(Reason("not_enough_buyers", {"unsold": unsold_raw}),)
                 if unsold_raw
                 else (),
+                hauled_m3=ore_m3 if jumps else 0.0,
             )
         )
         refined, unsold = 0.0, 0
@@ -221,6 +230,8 @@ def analyse(
                 location=location,
                 jumps=jumps,
                 reasons=(Reason("not_enough_buyers", {"unsold": unsold}),) if unsold else (),
+                hauled_m3=mineral_m3 if jumps else 0.0,
+                hauled_is_ore=False,
             )
         )
 
@@ -251,6 +262,7 @@ def analyse(
                     instant=False,
                     location=hub.name,
                     jumps=jumps,
+                    hauled_m3=ore_m3,
                     reasons=(
                         Reason(
                             "waits_for_buyers",
@@ -273,7 +285,7 @@ def analyse(
         type_id=type_id,
         type_name=item["name"],
         quantity=quantity,
-        volume_m3=quantity * (item["volume"] or 0),
+        volume_m3=ore_m3,
         compressed_volume_m3=quantity * compressed["volume"] if compressed else None,
         refine_yield=yield_here,
         refine_tax=refine_tax,
