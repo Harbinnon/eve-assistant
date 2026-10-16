@@ -9,11 +9,13 @@
 <body>
   <header class="bar">
     <div class="wrap">
-      <a class="brand" href="/characters">EVE <span>Assistant</span></a>
+      <a class="brand" href="/today">EVE <span>Assistant</span></a>
       <nav aria-label="Pages">
+        <a href="/today" {% if page == 'today' %}aria-current="page"{% endif %}>Today</a>
         <a href="/characters" {% if page == 'characters' %}aria-current="page"{% endif %}>Characters</a>
         <a href="/goals" {% if page == 'goals' %}aria-current="page"{% endif %}>Goals</a>
         <a href="/skills" {% if page == 'skills' %}aria-current="page"{% endif %}>Skills</a>
+        <a href="/preferences" {% if page == 'preferences' %}aria-current="page"{% endif %}>Preferences</a>
       </nav>
     </div>
   </header>

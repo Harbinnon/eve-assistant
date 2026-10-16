@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}Today · EVE Assistant{% endblock %}
+{% macro why(item) %}
+  <details class="why">
+    <summary>Why?</summary>
+    <ul>
+      <li>{{ risk_summary(item.details.risk) }}</li>
+      {% if item.details.why_not %}<li>Not chosen: {{ why_not.get(item.details.why_not, item.details.why_not) }}</li>{% endif %}
+      {% for r in item.details.reasons %}<li>{{ explain(r.code, r) }}</li>{% endfor %}
+      {% if item.details.inputs.player_title %}
+      <li>Contract title, written by the issuer: <span class="player-text">“{{ item.details.inputs.player_title }}”</span></li>
+      {% endif %}
+    </ul>
+  </details>
+{% endmacro %}
+{% macro responses(item) %}
+  <div class="responses">
+    {% if item.response %}
+      <span class="responded">You said: {{ {"do": "doing it", "not_now": "not now", "mute": "not this kind"}[item.response] }}.</span>
+    {% endif %}
+    {% for value, label in [("do", "Do it"), ("not_now", "Not now"), ("mute", "Not this kind")] %}
+    <form class="inline" method="post" action="/plan-items/{{ item.item_id }}/respond">
+      <input type="hidden" name="token" value="{{ form_token }}">
+      <input type="hidden" name="response" value="{{ value }}">
+      <button class="small{% if value == 'do' %} primary{% endif %}" type="submit"
+        {% if value == 'mute' %}title="Stop suggesting {{ item.kind|replace('_', ' ') }}"{% endif %}>{{ label }}</button>
+    </form>
+    {% endfor %}
+  </div>
+{% endmacro %}
+
+{% block content %}
+<h1>Today</h1>
+<p class="lede">Say how long you have; get a plan for it. Quick jobs first, then the best use of the rest.</p>
+
+{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+
+<form class="stack card" method="post" action="/today/plan">
+  <input type="hidden" name="token" value="{{ form_token }}">
+  <label for="character">Character
+    <select id="character" name="character">
+      {% for n in character_names %}<option {% if plan and n == plan.character_name %}selected{% endif %}>{{ n }}</option>{% endfor %}
+    </select>
+  </label>
+  <label for="minutes">Minutes
+    <input id="minutes" name="minutes" type="number" min="5" max="600" step="5"
+      value="{{ (plan.minutes_available|int) if plan else 60 }}" style="width:7em" required>
+  </label>
+  <div class="checks">
+    <label for="allow_lowsec"><input id="allow_lowsec" name="allow_lowsec" type="checkbox" value="true"> Allow lowsec</label>
+    <label for="allow_risky"><input id="allow_risky" name="allow_risky" type="checkbox" value="true"> Include risky options</label>
+  </div>
+  <button class="primary" type="submit" {% if not can_plan or not character_names %}disabled{% endif %}>Plan my time</button>
+</form>
+{% if not character_names %}<p class="muted">No characters yet: log one in with <span class="mono">eve-assistant login</span>, then refresh on the Characters page.</p>{% endif %}
+<p class="muted" style="font-size:13px">Planning reads live market prices and contracts, so it takes a few seconds.</p>
+
+{% if plan %}
+<h2>Plan for {{ plan.character_name }} · {{ plan.minutes_available|int }} minutes
+  <span class="muted" style="font-weight:400;font-size:14px">· made {{ plan.created_at|when }}</span></h2>
+
+<article class="card">
+  {% if not plan.items %}
+    <p>Nothing fits right now. The alternatives below say why.</p>
+  {% else %}
+  <ol class="steps">
+    {% for item in plan.items %}
+    <li class="step">
+      <span class="num" aria-hidden="true">{{ loop.index }}</span>
+      <div class="body">
+        <div class="title">{{ item.title }}
+          {% if item.details.new_to_you %}<span class="pill new">new to you</span>{% endif %}</div>
+        <div class="figures">
+          <strong>{{ item.isk|isk }} ISK</strong> · {{ item.minutes|round|int }} min ·
+          <span class="pill {{ item.risk_rating }}">{{ item.risk_rating }}</span>
+          {% if item.expected_loss > 0 %} · expected loss {{ item.expected_loss|isk }}{% endif %}
+        </div>
+        {{ why(item) }}
+        {{ responses(item) }}
+      </div>
+    </li>
+    {% endfor %}
+  </ol>
+  <div class="totals">
+    <div><span class="muted">Total</span> <span class="big">{{ plan.total_isk|isk }} ISK</span></div>
+    <div><span class="muted">Time</span> <span class="big">{{ plan.total_minutes|round|int }} min</span></div>
+    {% if plan.net_worth %}<div><span class="muted">Net worth</span> {{ plan.net_worth|isk }} ISK</div>{% endif %}
+  </div>
+  {% endif %}
+  {% if plan.notes %}
+  <ul class="notes">{% for n in plan.notes %}<li>{{ explain(n.code, n) }}</li>{% endfor %}</ul>
+  {% endif %}
+</article>
+
+{% if plan.alternatives %}
+<h2>Also considered</h2>
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>Option</th><th class="num">ISK</th><th class="num">Minutes</th><th>Risk</th><th>Why not</th></tr></thead>
+    <tbody>
+    {% for alt in plan.alternatives[:12] %}
+      <tr>
+        <td>{{ alt.title }}{{ why(alt) }}</td>
+        <td class="num">{{ alt.isk|isk }}</td>
+        <td class="num">{{ alt.minutes|round|int }}</td>
+        <td><span class="pill {{ alt.risk_rating }}">{{ alt.risk_rating }}</span></td>
+        <td class="alt-why">{{ why_not.get(alt.details.why_not, alt.details.why_not) }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endif %}
+{% endblock %}

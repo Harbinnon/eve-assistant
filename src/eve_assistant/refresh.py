@@ -6,7 +6,7 @@ Shared by `eve-assistant snapshot` and the dashboard's Refresh button.
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from eve_assistant import auth, goals, snapshots, store
+from eve_assistant import auth, goals, planner, snapshots, store
 from eve_assistant.config import Config
 from eve_assistant.esi.client import EsiClient, EsiError, EsiRateLimited
 from eve_assistant.esi.sso import SSOError
@@ -59,3 +59,28 @@ def refresh_all(
     finally:
         db.close()
     return report
+
+
+def plan_now(
+    config: Config,
+    secrets: SecretStore,
+    character_id: int,
+    minutes: float,
+    allow_lowsec: bool = False,
+    allow_risky: bool = False,
+    db_path: Path | str = store.DEFAULT_DB_PATH,
+) -> int:
+    """Build and record a plan with live market data. Returns the plan ID."""
+    db = store.connect(db_path)
+    try:
+        with auth.http_client(config) as client:
+            esi = EsiClient(client, db, token_for=auth.AccessTokens(config, secrets, client).get)
+            plan = planner.build_plan(
+                db, esi, character_id, minutes, allow_lowsec=allow_lowsec, allow_risky=allow_risky
+            )
+            plan = planner.record(
+                db, plan, {"allow_lowsec": allow_lowsec, "risky": allow_risky, "source": "web"}
+            )
+        return plan.plan_id
+    finally:
+        db.close()

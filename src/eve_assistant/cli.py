@@ -121,9 +121,15 @@ def _cmd_serve(args) -> int:
     def do_refresh() -> list[str]:
         return refresh.refresh_all(config, secrets).problems
 
+    def do_plan(character_id: int, minutes: float, allow_lowsec: bool, allow_risky: bool) -> int:
+        return refresh.plan_now(config, secrets, character_id, minutes, allow_lowsec, allow_risky)
+
     print(f"Dashboard: http://127.0.0.1:{args.port}  (Ctrl+C to stop)")
     uvicorn.run(
-        create_app(refresh=do_refresh), host="127.0.0.1", port=args.port, log_level="warning"
+        create_app(refresh=do_refresh, make_plan=do_plan),
+        host="127.0.0.1",
+        port=args.port,
+        log_level="warning",
     )
     return 0
 

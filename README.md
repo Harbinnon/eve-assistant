@@ -5,9 +5,9 @@ and haul. Set a goal, say how long you can play, and it reads your
 characters through CCP's API (ESI) and suggests the best use of that time,
 then learns from what actually happened.
 
-**Status: phase 1 (foundations and dashboard) is built: login, character
-snapshots, skill plans, goals and a local dashboard. The planner (phase 2)
-is next.** The design is in
+**Status: phase 1 is built (login, snapshots, skill plans, goals, dashboard)
+and phase 2 is mostly built: the session planner with a Today page, risk
+ratings and decline buttons. Learning from results (phase 3) comes next.** The design is in
 [docs/design.md](docs/design.md).
 
 ## What it will do
