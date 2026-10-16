@@ -1,0 +1,17 @@
+# Copy this file to config/local.toml (gitignored) and fill it in.
+# Never put secrets here: refresh tokens and webhook URLs are entered through
+# the tool's own setup prompt and stored encrypted outside the project.
+
+[esi]
+# From your application at https://developers.eveonline.com/ (see docs/setup-esi.md).
+# Not a secret, but it belongs to your registration, so it stays out of git.
+client_id = "<your client id>"
+callback_url = "http://localhost:8765/callback"
+
+# CCP asks API clients to send a descriptive User-Agent with a way to reach
+# the operator. Use whatever contact you are happy for CCP to see.
+contact = "<your EVE character name or email>"
+
+[app]
+# "local" (default) or "hosted". Hosted mode is not built yet.
+mode = "local"

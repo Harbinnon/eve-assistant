@@ -1,0 +1,32 @@
+# Personal notes and local settings. Never committed.
+private/
+config/local.toml
+
+# Secrets, in case one is ever written inside the project by mistake.
+*.secret
+*.dpapi
+*.token
+.env
+.env.*
+
+# Runtime data: the database, downloaded static data, caches, logs.
+var/
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Editors and OS
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+.DS_Store

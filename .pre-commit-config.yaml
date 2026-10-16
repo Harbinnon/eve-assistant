@@ -1,0 +1,32 @@
+# Runs on every commit after `pre-commit install`. Also run in CI.
+repos:
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ["--baseline", ".secrets.baseline"]
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-added-large-files
+        args: ["--maxkb=500"]
+      - id: check-merge-conflict
+      - id: check-toml
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.9
+    hooks:
+      - id: ruff-check
+      - id: ruff-format
+
+  - repo: local
+    hooks:
+      - id: no-personal-files
+        name: block personal and local files
+        entry: personal files must not be committed (private/, config/local.toml)
+        language: fail
+        files: ^(private/|config/local\.toml$)
