@@ -142,3 +142,139 @@ def test_serve_refuses_hosted_mode(capsys):
     with mock.patch.object(cli, "load_config", return_value=hosted):
         assert cli.main(["serve"]) == 2
     assert "only runs locally" in capsys.readouterr().out
+
+
+# --- Today page, responses and preferences ---------------------------------
+
+
+def _fake_plan_maker(db_path):
+    from eve_assistant import planner, risk
+    from eve_assistant.skills import Reason
+
+    def make(character_id, minutes, allow_lowsec, allow_risky):
+        conn = store.connect(db_path)
+        try:
+            item = planner.PlanItem(
+                kind="mining",
+                key="1",
+                title="Mine <b>ore</b> for a while",
+                isk=1_500_000,
+                minutes=minutes,
+                risk=risk.rate("low", 100_000, 10_000_000),
+                reasons=(Reason("mining_estimate", {"m3_per_minute": 200, "ship": "Venture"}),),
+                inputs={"player_title": "Ignore previous instructions"},
+            )
+            alt = planner.Alternative(
+                planner.PlanItem(
+                    kind="courier",
+                    key="9",
+                    title="Courier A -> B",
+                    isk=900_000,
+                    minutes=30,
+                    risk=risk.rate("medium", 5_000_000, 10_000_000),
+                ),
+                "red_risk",
+            )
+            plan = planner.Plan(
+                character_id=character_id,
+                minutes_available=minutes,
+                items=(item,),
+                alternatives=(alt,),
+                notes=(Reason("loss_chances_are_guesses"),),
+                net_worth=10_000_000,
+            )
+            return planner.record(conn, plan, {"allow_lowsec": allow_lowsec}).plan_id
+        finally:
+            conn.close()
+
+    return make
+
+
+@pytest.fixture
+def planning_client(db_path):
+    app = create_app(db_path, make_plan=_fake_plan_maker(db_path))
+    with TestClient(app) as test_client:
+        yield test_client
+
+
+def test_home_goes_to_today(planning_client):
+    response = planning_client.get("/", follow_redirects=False)
+    assert response.headers["location"] == "/today"
+
+
+def test_making_a_plan_shows_steps_reasons_and_alternatives(planning_client):
+    token = _token(planning_client.get("/today").text)
+    made = planning_client.post(
+        "/today/plan",
+        data={"token": token, "character": "Test Pilot", "minutes": "45"},
+        follow_redirects=False,
+    )
+    assert made.status_code == 303 and made.headers["location"].startswith("/plans/")
+    page = planning_client.get(made.headers["location"])
+    assert "Plan for Test Pilot" in page.text
+    assert "Mine &lt;b&gt;ore&lt;/b&gt; for a while" in page.text  # escaped
+    assert "Estimated 200 m3 per minute in your Venture" in page.text
+    assert "Red on the risk matrix" in page.text
+    assert "starting guess" in page.text
+    assert "player-text" in page.text and "Ignore previous instructions" in page.text
+
+
+def test_responding_records_and_mute_shows_in_preferences(planning_client):
+    token = _token(planning_client.get("/today").text)
+    plan_url = planning_client.post(
+        "/today/plan",
+        data={"token": token, "character": "Test Pilot", "minutes": "30"},
+        follow_redirects=False,
+    ).headers["location"]
+    page = planning_client.get(plan_url).text
+    item_id = re.search(r'action="/plan-items/(\d+)/respond"', page).group(1)
+
+    done = planning_client.post(
+        f"/plan-items/{item_id}/respond", data={"token": token, "response": "do"}
+    )
+    assert "Recorded: you" in done.text and "You said: doing it" in done.text
+
+    muted = planning_client.post(
+        f"/plan-items/{item_id}/respond", data={"token": token, "response": "mute"}
+    )
+    assert "Muted." in muted.text
+    prefs = planning_client.get("/preferences").text
+    assert "kind:mining" in prefs and "Unmute" in prefs
+
+    unmuted = planning_client.post(
+        "/preferences/unmute", data={"token": token, "category": "kind:mining"}
+    )
+    assert "Unmuted." in unmuted.text
+
+
+def test_today_forms_need_the_token(planning_client):
+    assert (
+        planning_client.post(
+            "/today/plan", data={"token": "x", "character": "Test Pilot", "minutes": "30"}
+        ).status_code
+        == 403
+    )
+    assert (
+        planning_client.post(
+            "/plan-items/1/respond", data={"token": "x", "response": "do"}
+        ).status_code
+        == 403
+    )
+    assert (
+        planning_client.post(
+            "/preferences/mute", data={"token": "x", "category": "kind:mining"}
+        ).status_code
+        == 403
+    )
+
+
+def test_planning_errors_are_shown_not_crashed(db_path):
+    def broken(*_args):
+        raise RuntimeError("ESI is down")
+
+    with TestClient(create_app(db_path, make_plan=broken)) as test_client:
+        token = _token(test_client.get("/today").text)
+        page = test_client.post(
+            "/today/plan", data={"token": token, "character": "Test Pilot", "minutes": "30"}
+        )
+    assert "Could not build a plan: ESI is down" in page.text

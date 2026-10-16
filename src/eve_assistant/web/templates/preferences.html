@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Preferences · EVE Assistant{% endblock %}
+{% block content %}
+<h1>Preferences</h1>
+<p class="lede">What the planner should stop suggesting. Muting is never permanent: undo it here any time.</p>
+
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>Suggestions about</th><th>State</th><th></th></tr></thead>
+    <tbody>
+    {% for category, label in categories.items() %}
+      {% set muted = category in active %}
+      <tr>
+        <td>{{ label|capitalize }} <span class="mono muted">{{ category }}</span></td>
+        <td>{% if muted %}<span class="pill amber">muted</span>{% else %}<span class="pill green">suggested</span>{% endif %}</td>
+        <td>
+          <form class="inline" method="post" action="/preferences/{{ 'unmute' if muted else 'mute' }}">
+            <input type="hidden" name="token" value="{{ form_token }}">
+            <input type="hidden" name="category" value="{{ category }}">
+            <button class="small" type="submit">{{ "Unmute" if muted else "Mute" }}</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<h2>Risk matrix</h2>
+<p class="lede">Each suggestion is rated by how likely a loss is against how much of your net worth is at stake.
+Red options are left out unless you tick “include risky options”. The starting lines will move as the tool learns
+what you accept.</p>
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>Chance of loss</th><th>under 2%</th><th>2–10%</th><th>10–25%</th><th>over 25%</th></tr></thead>
+    <tbody>
+    {% for band, cells in risk_matrix.items() %}
+      <tr><td>{{ band_labels[band] }}</td>{% for cell in cells %}<td><span class="pill {{ cell }}">{{ cell }}</span></td>{% endfor %}</tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

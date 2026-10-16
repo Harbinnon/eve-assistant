@@ -471,7 +471,18 @@ def record(db: sqlite3.Connection, plan: Plan, inputs: dict) -> Plan:
         plan_id = db.execute(
             "INSERT INTO plans (character_id, created_at, minutes_available, inputs) "
             "VALUES (?, ?, ?, ?)",
-            (plan.character_id, utc_now(), plan.minutes_available, json.dumps(inputs)),
+            (
+                plan.character_id,
+                utc_now(),
+                plan.minutes_available,
+                json.dumps(
+                    {
+                        **inputs,
+                        "net_worth": plan.net_worth,
+                        "notes": [{"code": n.code, **n.detail} for n in plan.notes],
+                    }
+                ),
+            ),
         ).lastrowid
         rows = [(position, item, None) for position, item in enumerate(plan.items)]
         rows += [(None, alt.item, alt.why_not) for alt in plan.alternatives]
@@ -501,3 +512,96 @@ def respond(db: sqlite3.Connection, item_id: int, response: str) -> None:
         )
     if response == "mute":
         preferences.mute(db, f"kind:{row['kind']}")
+
+
+@dataclass(frozen=True)
+class StoredItem:
+    item_id: int
+    position: int | None
+    kind: str
+    title: str
+    isk: float
+    minutes: float
+    risk_rating: str
+    expected_loss: float
+    details: dict
+    response: str | None  # the latest response, if any
+
+
+@dataclass(frozen=True)
+class StoredPlan:
+    plan_id: int
+    character_id: int
+    character_name: str
+    created_at: str
+    minutes_available: float
+    net_worth: float | None
+    notes: list[dict]
+    items: list[StoredItem]
+    alternatives: list[StoredItem]
+
+    @property
+    def total_isk(self) -> float:
+        return sum(i.isk for i in self.items)
+
+    @property
+    def total_minutes(self) -> float:
+        return sum(i.minutes for i in self.items)
+
+
+def load_plan(db: sqlite3.Connection, plan_id: int) -> StoredPlan:
+    row = db.execute(
+        "SELECT p.*, c.name FROM plans p JOIN characters c USING (character_id) "
+        "WHERE p.plan_id = ?",
+        (plan_id,),
+    ).fetchone()
+    if row is None:
+        raise PlanError(f"No plan {plan_id}.")
+    inputs = json.loads(row["inputs"])
+    latest = {
+        r["item_id"]: r["response"]
+        for r in db.execute(
+            "SELECT item_id, response FROM plan_responses WHERE item_id IN "
+            "(SELECT item_id FROM plan_items WHERE plan_id = ?) ORDER BY response_id",
+            (plan_id,),
+        )
+    }
+    items, alternatives = [], []
+    for r in db.execute(
+        "SELECT * FROM plan_items WHERE plan_id = ? ORDER BY position IS NULL, position, isk DESC",
+        (plan_id,),
+    ):
+        stored = StoredItem(
+            item_id=r["item_id"],
+            position=r["position"],
+            kind=r["kind"],
+            title=r["title"],
+            isk=r["isk"],
+            minutes=r["minutes"],
+            risk_rating=r["risk_rating"],
+            expected_loss=r["expected_loss"],
+            details=json.loads(r["details"]),
+            response=latest.get(r["item_id"]),
+        )
+        (items if r["position"] is not None else alternatives).append(stored)
+    return StoredPlan(
+        plan_id=plan_id,
+        character_id=row["character_id"],
+        character_name=row["name"],
+        created_at=row["created_at"],
+        minutes_available=row["minutes_available"],
+        net_worth=inputs.get("net_worth"),
+        notes=inputs.get("notes", []),
+        items=items,
+        alternatives=alternatives,
+    )
+
+
+def latest_plan_id(db: sqlite3.Connection, character_id: int | None = None) -> int | None:
+    if character_id is None:
+        row = db.execute("SELECT MAX(plan_id) FROM plans").fetchone()
+    else:
+        row = db.execute(
+            "SELECT MAX(plan_id) FROM plans WHERE character_id = ?", (character_id,)
+        ).fetchone()
+    return row[0]

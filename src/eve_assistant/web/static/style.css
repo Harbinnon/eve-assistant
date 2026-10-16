@@ -162,6 +162,33 @@ button.small { padding: 3px 9px; font-size: 13px; }
 .reasons { margin: 10px 0 0; padding-left: 20px; color: var(--muted); font-size: 14px; }
 .big { font-size: 1.25rem; font-weight: 600; font-variant-numeric: tabular-nums; }
 
+/* Today: plan steps */
+.steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.step { display: grid; grid-template-columns: 2.2em 1fr; gap: 4px 12px; }
+.step .num {
+  font-weight: 700; font-variant-numeric: tabular-nums; color: var(--accent);
+  font-size: 1.2rem; line-height: 1.4;
+}
+.step .body { min-width: 0; }
+.step .title { font-weight: 600; overflow-wrap: anywhere; }
+.step .figures { color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; margin-top: 2px; }
+.step .figures strong { color: var(--fg); }
+.responses { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; align-items: center; }
+.responded { font-size: 13px; color: var(--muted); }
+details.why { margin-top: 8px; font-size: 14px; }
+details.why summary { cursor: pointer; color: var(--ink); width: fit-content; }
+details.why ul { margin: 6px 0 0; padding-left: 20px; color: var(--muted); }
+.pill.green { background: var(--ok-bg); color: var(--ok); }
+.pill.amber { background: var(--warn-bg); color: var(--warn); }
+.pill.red { background: var(--bad-bg); color: var(--bad); }
+.pill.new { background: var(--accent-soft); color: var(--accent); }
+.totals { display: flex; flex-wrap: wrap; gap: 8px 24px; margin: 16px 0 0; }
+.totals div { font-variant-numeric: tabular-nums; }
+.checks { display: flex; gap: 14px; flex-wrap: wrap; font-size: 14px; color: var(--muted); }
+form.stack .checks label { flex-direction: row; align-items: center; gap: 6px; }
+.alt-why { color: var(--muted); font-size: 13px; }
+.notes { margin: 16px 0 0; padding-left: 20px; color: var(--muted); font-size: 14px; }
+
 footer { color: var(--muted); font-size: 12px; border-top: 1px solid var(--line); padding-block: 16px 24px; }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }

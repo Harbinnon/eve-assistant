@@ -17,17 +17,33 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from eve_assistant import goals, overview, skills, store
+from eve_assistant import explain, goals, overview, planner, preferences, risk, skills, store
 from eve_assistant.goals import GoalError
 from eve_assistant.skills import SkillsError
 
+# make_plan(character_id, minutes, allow_lowsec, allow_risky) -> plan_id
+PlanMaker = Callable[[int, float, bool, bool], int]
+
 HERE = Path(__file__).parent
+
+BAND_LABELS = {
+    "none": "No player risk (Exordium)",
+    "very_low": "Very low",
+    "low": "Low (highsec)",
+    "medium": "Medium (lowsec)",
+    "high": "High (nullsec, unknown)",
+}
 
 MESSAGES = {
     "goal_added": "Goal added.",
     "goal_done": "Goal marked done.",
     "goal_dropped": "Goal dropped.",
     "refreshed": "Character data refreshed from EVE.",
+    "do": "Recorded: you're doing it.",
+    "not_now": "Recorded: not now.",
+    "mute": "Muted. You can undo that on the Preferences page.",
+    "muted": "Muted.",
+    "unmuted": "Unmuted.",
 }
 
 
@@ -61,8 +77,10 @@ def _security_class(value) -> str:
 def create_app(
     db_path: Path | str = store.DEFAULT_DB_PATH,
     refresh: Callable[[], list[str]] | None = None,
+    make_plan: PlanMaker | None = None,
 ) -> FastAPI:
-    """refresh: called by the Refresh button; returns problem lines, empty when all went well."""
+    """refresh: called by the Refresh button; returns problem lines, empty when all went well.
+    make_plan: builds and records a plan (needs ESI), returning its ID."""
     app = FastAPI(title="EVE Assistant", docs_url=None, redoc_url=None, openapi_url=None)
     app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
     templates = Jinja2Templates(directory=HERE / "templates")
@@ -71,6 +89,9 @@ def create_app(
     templates.env.filters["security_class"] = _security_class
     templates.env.filters["when"] = _when
     templates.env.globals["describe"] = skills.describe
+    templates.env.globals["explain"] = explain.describe
+    templates.env.globals["risk_summary"] = explain.risk_summary
+    templates.env.globals["why_not"] = explain.WHY_NOT
     form_token = secrets.token_urlsafe(32)
 
     def db() -> sqlite3.Connection:
@@ -102,7 +123,126 @@ def create_app(
 
     @app.get("/")
     def home():
-        return back("/characters")
+        return back("/today")
+
+    def _names(conn) -> list[str]:
+        return [r["name"] for r in conn.execute("SELECT name FROM characters ORDER BY name")]
+
+    @app.get("/today", response_class=HTMLResponse)
+    def today_page(request: Request, error: str | None = None):
+        conn = db()
+        try:
+            names = _names(conn)
+            latest = planner.latest_plan_id(conn)
+            recent = planner.load_plan(conn, latest) if latest else None
+        finally:
+            conn.close()
+        return render(
+            request,
+            "today.html",
+            character_names=names,
+            plan=recent,
+            error=error,
+            can_plan=make_plan is not None,
+        )
+
+    @app.post("/today/plan")
+    def new_plan(
+        request: Request,
+        token: str = Form(...),
+        character: str = Form(...),
+        minutes: float = Form(...),
+        allow_lowsec: bool = Form(False),
+        allow_risky: bool = Form(False),
+    ):
+        check_form(request, token)
+        if make_plan is None:
+            return today_page(request, error="Planning is not available here.")
+        conn = db()
+        try:
+            character_id = goals.resolve_character(conn, character)
+        except GoalError as exc:
+            return today_page(request, error=str(exc))
+        finally:
+            conn.close()
+        try:
+            plan_id = make_plan(character_id, minutes, allow_lowsec, allow_risky)
+        except Exception as exc:  # noqa: BLE001 - shown to the person, never swallowed silently
+            return today_page(request, error=f"Could not build a plan: {exc}")
+        return back(f"/plans/{plan_id}")
+
+    @app.get("/plans/{plan_id}", response_class=HTMLResponse)
+    def plan_page(request: Request, plan_id: int):
+        conn = db()
+        try:
+            try:
+                stored = planner.load_plan(conn, plan_id)
+            except planner.PlanError as exc:
+                raise HTTPException(404, str(exc)) from None
+            names = _names(conn)
+        finally:
+            conn.close()
+        return render(
+            request,
+            "today.html",
+            character_names=names,
+            plan=stored,
+            error=None,
+            can_plan=make_plan is not None,
+        )
+
+    @app.post("/plan-items/{item_id}/respond")
+    def respond(request: Request, item_id: int, token: str = Form(...), response: str = Form(...)):
+        check_form(request, token)
+        conn = db()
+        try:
+            row = conn.execute(
+                "SELECT plan_id FROM plan_items WHERE item_id = ?", (item_id,)
+            ).fetchone()
+            if row is None:
+                raise HTTPException(404, "No such suggestion.")
+            try:
+                planner.respond(conn, item_id, response)
+            except planner.PlanError as exc:
+                raise HTTPException(400, str(exc)) from None
+        finally:
+            conn.close()
+        return back(f"/plans/{row['plan_id']}", msg=response)
+
+    @app.get("/preferences", response_class=HTMLResponse)
+    def preferences_page(request: Request):
+        conn = db()
+        try:
+            active = preferences.active_mutes(conn)
+        finally:
+            conn.close()
+        return render(
+            request,
+            "preferences.html",
+            active=active,
+            categories=preferences.KNOWN,
+            risk_matrix=risk.MATRIX,
+            band_labels=BAND_LABELS,
+        )
+
+    @app.post("/preferences/{action}")
+    def change_preference(
+        request: Request, action: str, token: str = Form(...), category: str = Form(...)
+    ):
+        check_form(request, token)
+        if action not in ("mute", "unmute"):
+            raise HTTPException(404, "Unknown action.")
+        conn = db()
+        try:
+            if action == "mute":
+                preferences.mute(conn, category)
+            else:
+                preferences.unmute(conn, category)
+        except preferences.PreferenceError as exc:
+            raise HTTPException(400, str(exc)) from None
+        finally:
+            conn.close()
+        return back("/preferences", msg=f"{action}d")
 
     @app.get("/characters", response_class=HTMLResponse)
     def characters_page(request: Request):
