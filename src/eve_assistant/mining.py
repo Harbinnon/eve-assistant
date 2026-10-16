@@ -116,8 +116,10 @@ def estimate(
 
     for name in MINING_SKILLS:
         level = _skill_level(db, character, name)
-        skill_id = skills.find_type(db, name)
-        bonus = _attributes(db, skill_id).get("miningAmountBonus", 0.0)
+        row = db.execute(
+            "SELECT type_id FROM sde_types WHERE name = ? AND published = 1", (name,)
+        ).fetchone()
+        bonus = _attributes(db, row["type_id"]).get("miningAmountBonus", 0.0) if row else 0.0
         factor = 1 + bonus / 100 * level
         multipliers[f"{name} {level}"] = factor
         yield_factor *= factor

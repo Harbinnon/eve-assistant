@@ -222,8 +222,8 @@ Each option is rated on two axes.
 
 **How likely is a loss?** Route security; recent kills in those systems,
 especially of haulers and miners (zKillboard, last 24 hours and 7 days);
-time of day; whether the cargo is worth ganking in highsec. Exordium is
-always "very low". **Lawless highsec systems cannot be detected** (section
+time of day; whether the cargo is worth ganking in highsec. Exordium has
+PvP switched off, so it is rated "no player risk" and always green. **Lawless highsec systems cannot be detected** (section
 10), which is stated on any route that leaves Exordium.
 
 **How much is exposed, compared with what the character owns?** Ship and
@@ -233,7 +233,8 @@ registers for an established one.
 
 | Chance of loss \ Exposed share of net worth | under 2% | 2–10% | 10–25% | over 25% |
 |---|---|---|---|---|
-| **Very low** (Exordium, quiet highsec) | green | green | amber | red |
+| **No player risk** (Exordium) | green | green | green | green |
+| **Very low** (quiet highsec) | green | green | amber | red |
 | **Low** (busy highsec, quiet lowsec) | green | amber | amber | red |
 | **Medium** (active lowsec, gank hotspots) | amber | amber | red | red |
 | **High** (camped systems, recent hauler kills, most nullsec without local knowledge) | amber | red | red | red |
