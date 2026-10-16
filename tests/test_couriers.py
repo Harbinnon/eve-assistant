@@ -134,3 +134,21 @@ def test_ships_need_skills_and_must_be_here(db):
     )
     assert [s.name for s in couriers.available_ships(db, 7, STATION_A)] == ["Shuttle"]
     assert [s.name for s in couriers.available_ships(db, 7, STATION_B)] == ["Shuttle"]
+
+
+@respx.mock
+def test_given_ships_pick_the_cheapest_that_fits_and_add_switch_time(db):
+    respx.get(f"{BASE}/contracts/public/{REGION}").mock(
+        return_value=httpx.Response(200, json=[_contract(1, STATION_A, STATION_B, 1_000_000)])
+    )
+    ships = [
+        couriers.Ship(HAULER, "Pricey", 6000, switch_minutes=2.0, value=5e6),
+        couriers.Ship(HAULER, "Cheap", 6000, switch_minutes=2.0, value=1e6),
+        couriers.Ship(SHUTTLE, "Tiny", 10, switch_minutes=0.0, value=1e5),
+    ]
+    with httpx.Client() as http:
+        result = couriers.find(db, EsiClient(http, db, base_url=BASE), 7, ships=ships)
+    (option,) = result.options
+    assert option.ship.name == "Cheap"
+    expected = 2.0 + 2 * couriers.MINUTES_PER_DOCKING + couriers.MINUTES_PER_JUMP
+    assert option.minutes == pytest.approx(expected)

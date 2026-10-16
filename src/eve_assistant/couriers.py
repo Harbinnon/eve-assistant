@@ -30,6 +30,8 @@ class Ship:
     type_id: int
     name: str
     capacity_m3: float
+    switch_minutes: float = 0.0  # time to get into it before starting
+    value: float = 0.0  # hull plus contents, for the risk rating
 
 
 @dataclass(frozen=True)
@@ -107,8 +109,10 @@ def find(
     max_minutes: float | None = None,
     limit: int = 10,
     what_if_ship_id: int | None = None,
+    ships: list[Ship] | None = None,
 ) -> CourierSearch:
-    """what_if_ship_id: plan as if the character had this ship (not owned, skills ignored)."""
+    """what_if_ship_id: plan as if the character had this ship (not owned, skills ignored).
+    ships: the ships to choose from (default: active ship and ships in this hangar)."""
     location = snapshots.latest(db, character_id, "location") or {}
     here_system = location.get("solar_system_id")
     if here_system is None:
@@ -128,7 +132,7 @@ def find(
             raise CourierError("That ship has no cargo hold.")
         ships = [Ship(what_if_ship_id, row["name"], row["capacity"])]
     else:
-        ships = available_ships(db, character_id, station_id)
+        ships = ships if ships is not None else available_ships(db, character_id, station_id)
     now = datetime.now(UTC)
 
     excluded: Counter[str] = Counter()
@@ -147,7 +151,12 @@ def find(
                 excluded["player_structure"] += 1
                 continue
             volume = float(contract.get("volume", 0))
-            ship = next((s for s in ships if s.capacity_m3 >= volume), None)
+            # the cheapest ship that fits puts the least at stake
+            ship = min(
+                (s for s in ships if s.capacity_m3 >= volume),
+                key=lambda s: (s.value, s.capacity_m3),
+                default=None,
+            )
             if ship is None:
                 excluded["too_big_for_your_ships"] += 1
                 continue
@@ -161,7 +170,11 @@ def find(
                 excluded["no_route" if not highsec_only else "needs_lowsec"] += 1
                 continue
             pickup_jumps, delivery_jumps = len(pickup) - 1, len(delivery) - 1
-            minutes = 2 * MINUTES_PER_DOCKING + (pickup_jumps + delivery_jumps) * MINUTES_PER_JUMP
+            minutes = (
+                ship.switch_minutes
+                + 2 * MINUTES_PER_DOCKING
+                + (pickup_jumps + delivery_jumps) * MINUTES_PER_JUMP
+            )
             if max_minutes is not None and minutes > max_minutes:
                 excluded["takes_too_long"] += 1
                 continue
