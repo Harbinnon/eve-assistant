@@ -1,6 +1,6 @@
 # 0001: Libraries
 
-Status: **proposed, waiting for the repository owner's approval.**
+Status: **approved by the repository owner, 2026-10-15.**
 Date: 2026-10-15.
 
 The rule from the design: Python 3.13, a **small set of well-known

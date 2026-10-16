@@ -10,9 +10,17 @@ readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.13"
-# Runtime libraries are added once the library proposal
-# (docs/decisions/0001-libraries.md) is approved. Pin exactly.
-dependencies = []
+# Approved in docs/decisions/0001-libraries.md. Pin exactly; transitive
+# dependencies are pinned in constraints.txt.
+dependencies = [
+    "fastapi==0.142.2",
+    "uvicorn==0.54.0",
+    "jinja2==3.1.6",
+    "python-multipart==0.0.32",
+    "httpx==0.28.1",
+    "pyjwt==2.15.1",
+    "cryptography==50.0.2",
+]
 
 [project.optional-dependencies]
 dev = [
@@ -20,7 +28,11 @@ dev = [
     "ruff==0.16.9",
     "pre-commit==4.6.2",
     "detect-secrets==1.5.0",
+    "respx==0.23.1",
 ]
+
+[project.scripts]
+eve-assistant = "eve_assistant.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -37,5 +49,5 @@ target-version = "py313"
 select = ["E", "F", "W", "I", "B", "UP", "SIM", "S"]
 
 [tool.ruff.lint.per-file-ignores]
-# assert is how pytest works.
-"tests/**" = ["S101"]
+# assert is how pytest works; tests use fake tokens.
+"tests/**" = ["S101", "S105", "S106"]

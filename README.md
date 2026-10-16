@@ -32,7 +32,7 @@ backend that doesn't exist yet.)
 
    ```
    py -3.13 -m venv .venv
-   .venv\Scripts\python -m pip install -e .[dev]
+   .venv\Scripts\python -m pip install -c constraints.txt -e .[dev]
    .venv\Scripts\pre-commit install
    .venv\Scripts\python -m pytest
    ```
