@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Skills · EVE Assistant{% endblock %}
+{% block content %}
+<h1>Skills</h1>
+<p class="lede">What a character needs to use a ship or module, in training order, with Alpha limits.</p>
+
+<form class="stack card" method="get" action="/skills">
+  <label for="character">Character
+    <select id="character" name="character">
+      {% for n in character_names %}<option {% if n == character %}selected{% endif %}>{{ n }}</option>{% endfor %}
+    </select>
+  </label>
+  <label for="item">Ship or module
+    <input id="item" name="item" value="{{ item }}" required placeholder="Retriever">
+  </label>
+  <button class="primary" type="submit">Check</button>
+</form>
+
+{% if error %}<p class="error" role="alert" style="margin-top:18px">{{ error }}</p>{% endif %}
+
+{% if requirement %}
+<h2>{{ requirement.type_name }} <span class="muted">for {{ character }}</span>
+  <span class="pill {{ clone_state }}">{{ clone_state|capitalize }}</span></h2>
+{% with req = requirement, is_alpha = clone_state != "omega" %}{% include "_requirement.html" %}{% endwith %}
+{% endif %}
+{% endblock %}
