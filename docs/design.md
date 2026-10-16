@@ -3,7 +3,7 @@
 *Working name. Shareable version: contains no personal account,
 character or infrastructure details.*
 
-Status: **design agreed. Phase 1 (section 7) built; phase 2 next.**
+Status: **design agreed. Phases 1 and 2 (section 7) built; phase 3 (learning) next.**
 
 
 ---
@@ -506,7 +506,7 @@ login (§4.1–4.2), whatever the code licence says.
 
 In order; each box is ticked in this document when done.
 
-- [ ] Phase 2 finished (hangar sales elsewhere, multi-session projects).
+- [x] Phase 2 finished (hangar sales elsewhere, multi-session projects).
 - [ ] Security hardening above merged.
 - [ ] The **whole Git history** scanned for secrets and personal data, not
       just the current files.

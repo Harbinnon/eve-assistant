@@ -5,9 +5,10 @@ and haul. Set a goal, say how long you can play, and it reads your
 characters through CCP's API (ESI) and suggests the best use of that time,
 then learns from what actually happened.
 
-**Status: phase 1 is built (login, snapshots, skill plans, goals, dashboard)
-and phase 2 is mostly built: the session planner with a Today page, risk
-ratings and decline buttons. Learning from results (phase 3) comes next.** The design is in
+**Status: phases 1 and 2 are built: login, snapshots, skill plans, goals,
+the dashboard, and the session planner (mining, ore, couriers, your whole
+fleet, multi-session projects, risk ratings, decline buttons). Learning from
+results (phase 3) comes next.** The design is in
 [docs/design.md](docs/design.md).
 
 ## What it will do
@@ -62,6 +63,9 @@ eve-assistant couriers <character> [--region "The Forge"] [--minutes 60] [--ship
 eve-assistant plan <character> <minutes> [--allow-lowsec] [--risky] [--ore "Veldspar"]
 eve-assistant respond <item> do|not_now|mute   record what you did with a suggestion
 eve-assistant mute|unmute <category>  / eve-assistant mutes
+eve-assistant projects                 list open multi-session projects
+eve-assistant project done|dropped <id>
+eve-assistant play-time <hours>        your usual play time per week (default 6)
 eve-assistant serve [--port 8700]      run the dashboard at http://127.0.0.1:8700
 ```
 

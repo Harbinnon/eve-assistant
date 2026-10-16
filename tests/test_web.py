@@ -295,3 +295,22 @@ def test_structure_names_are_escaped_and_marked_as_player_text(db_path):
     assert "<img src=x>" not in page
     assert "&lt;img src=x&gt;Keepstar" in page
     assert "Name chosen by the structure" in page
+
+
+def test_open_projects_show_on_today_and_can_be_closed(planning_client, db_path):
+    from eve_assistant import projects
+
+    conn = store.connect(db_path)
+    project_id = projects.start(conn, 7, "haul", "1:2:x", "Haul <ore>", 120, 5e6, {})
+    conn.close()
+    page = planning_client.get("/today").text
+    assert "Open projects" in page and "Haul &lt;ore&gt;" in page
+    token = _token(page)
+    done = planning_client.post(f"/projects/{project_id}/done", data={"token": token})
+    assert "Project marked done." in done.text and "Open projects" not in done.text
+
+
+def test_play_time_is_set_on_preferences(planning_client):
+    token = _token(planning_client.get("/preferences").text)
+    saved = planning_client.post("/preferences-play-time", data={"token": token, "hours": "9.5"})
+    assert "Play time saved." in saved.text and 'value="9.5"' in saved.text

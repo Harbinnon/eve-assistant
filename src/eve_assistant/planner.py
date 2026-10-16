@@ -25,6 +25,7 @@ from eve_assistant import (
     mining,
     ore,
     preferences,
+    projects,
     risk,
     routes,
     skills,
@@ -37,11 +38,9 @@ from eve_assistant.store import utc_now
 
 MINUTES_PER_HOLD_TRIP = 3.0  # dock, unload, undock between full holds
 MINUTES_TO_QUEUE_SKILLS = 1.0
-MIN_MINING_MINUTES = 10.0
-ACTIVITY_KINDS = (
-    "mining",
-    "courier",
-)  # what can be "new to you"; reminders never are  # shorter than this is not worth undocking for
+MIN_MINING_MINUTES = 10.0  # shorter than this is not worth undocking for
+# What can be "new to you"; reminders never are.
+ACTIVITY_KINDS = ("mining", "courier", "project_start")
 
 # Used only when the mining ledger shows nothing mined in this system yet.
 # Common in highsec belts; an assumption, reported as such.
@@ -214,6 +213,7 @@ def hangar_candidates(
                 db, esi, character_id, type_id, quantity, station_id, highsec_only
             )
             fitting = []
+            multi_trip = []
             for option in analysis.options:
                 if not option.instant:
                     continue
@@ -221,11 +221,16 @@ def hangar_candidates(
                 if option.jumps and option.hauled_m3 > 0:
                     picked = _pick_hauler(ships, station_id, here_location, option)
                     if picked is None:
+                        trips = _multi_trip_haul(ships, station_id, here_location, option)
+                        if trips is not None:
+                            multi_trip.append((option, *trips))
                         continue
                     hauler, switch = picked
                 total = travel_minutes + switch + option.active_minutes
                 if total <= minutes:
                     fitting.append((option, hauler, switch, total))
+                elif hauler is not None:
+                    multi_trip.append((option, hauler, switch, 1))  # too long: a project
             for option, hauler, _switch, total in fitting[:2]:  # best, and the next best
                 if travel_jumps == 0 and option.jumps == 0:
                     rating = risk.rate("very_low", 0.0, net_worth)  # docked: nothing exposed
@@ -283,6 +288,154 @@ def hangar_candidates(
                         },
                     )
                 )
+            for option, hauler, switch, trips in multi_trip[:1]:
+                per_trip = 2 * option.jumps * ore.MINUTES_PER_JUMP + 4.0
+                total = (
+                    travel_minutes
+                    + switch
+                    + ore.MINUTES_TO_SELL
+                    + trips * per_trip
+                    - option.jumps * ore.MINUTES_PER_JUMP  # no trip back after the last load
+                )
+                band = risk.band_for_security(routes.lowest_security(db, travel_path))
+                stake = hauler.value + option.isk / trips
+                title = (
+                    f"Haul {analysis.type_name} x{quantity:,} from {station['name']} to "
+                    f"{option.location} in your {hauler.name}"
+                    + (f" ({trips} trips)" if trips > 1 else "")
+                    + " and sell it there"
+                )
+                items.append(
+                    _project_item(
+                        kind="haul",
+                        key=f"{station_id}:{type_id}:{option.key}",
+                        title=title,
+                        total_minutes=total,
+                        isk=option.isk,
+                        minutes=minutes,
+                        rating=risk.rate(band, stake, net_worth),
+                        reasons=(
+                            Reason(
+                                "multi_trip_haul",
+                                {"trips": trips, "ship": hauler.name, "load_m3": option.hauled_m3},
+                            ),  # fmt: skip
+                            *option.reasons,
+                        ),
+                        inputs={
+                            "type_id": type_id,
+                            "quantity": quantity,
+                            "station_id": station_id,
+                            "trips": trips,
+                            "ship_item_id": hauler.item_id,
+                        },  # fmt: skip
+                    )
+                )
+    return items
+
+
+def _multi_trip_haul(
+    ships: list[fleet.FleetShip], station_id: int, here_location: int | None, option: ore.Option
+) -> tuple[fleet.FleetShip, float, int] | None:
+    """The reachable flyable ship needing the fewest trips for a load too big for one."""
+    best = None
+    for ship in ships:
+        capacity = ship.capacity_for(option.hauled_is_ore)
+        if not ship.usable or capacity <= 0:
+            continue
+        if ship.is_active:
+            switch = 0.0
+        elif ship.location_id in (station_id, here_location):
+            switch = fleet.MINUTES_TO_SWITCH_SHIP
+        else:
+            continue
+        trips = math.ceil(option.hauled_m3 / capacity)
+        if best is None or (trips, ship.value) < (best[2], best[0].value):
+            best = (ship, switch, trips)
+    return best
+
+
+def _project_item(
+    *, kind, key, title, total_minutes, isk, minutes, rating, reasons, inputs, deadline_days=None
+) -> PlanItem:
+    """A plan item that either fits in this session or starts a multi-session project.
+    A project's value is its share for this session, discounted for not finishing."""
+    if total_minutes <= minutes:
+        return PlanItem(
+            kind="sell_hangar" if kind == "haul" else kind,
+            key=key,
+            title=title,
+            isk=isk,
+            minutes=total_minutes,
+            risk=rating,
+            reasons=reasons,
+            inputs={**inputs, "jumps": 1, "travel_jumps": 1},
+        )
+    share = minutes / total_minutes
+    return PlanItem(
+        kind="project_start",
+        key=f"{kind}:{key}",
+        title=f"Start a project: {title}",
+        isk=isk * share * (1 - projects.NOT_FINISHING_CHANCE),
+        minutes=minutes,
+        risk=rating,
+        reasons=(
+            Reason(
+                "project_value",
+                {
+                    "total_minutes": total_minutes,
+                    "total_isk": isk,
+                    "share": share,
+                    "not_finishing": projects.NOT_FINISHING_CHANCE,
+                },
+            ),  # fmt: skip
+            *reasons,
+        ),
+        inputs={
+            **inputs,
+            "project": {
+                "kind": kind,
+                "key": key,
+                "title": title,
+                "total_minutes": total_minutes,
+                "isk": isk,
+                "deadline_days": deadline_days,
+                "risk": {"band": rating.band, "exposure": rating.exposure},
+            },
+        },
+    )
+
+
+def project_candidates(db, character_id, minutes, net_worth, notes) -> list[PlanItem]:
+    """Open projects, to continue."""
+    items = []
+    for project in projects.open_projects(db, character_id):
+        if project.minutes_left <= 0:
+            notes.append(Reason("project_time_used", {"title": project.title}))
+            continue
+        session = min(minutes, project.minutes_left)
+        stored = project.details.get("risk", {})
+        rating = risk.rate(stored.get("band", "low"), stored.get("exposure", 0.0), net_worth)
+        reasons = [
+            Reason(
+                "project_progress", {"done": project.minutes_done, "total": project.total_minutes}
+            ),  # fmt: skip
+        ]
+        if project.deadline:
+            reasons.append(Reason("project_deadline", {"deadline": project.deadline}))
+        items.append(
+            PlanItem(
+                kind="project_continue",
+                key=str(project.project_id),
+                title=f"Continue project: {project.title}",
+                isk=project.isk
+                * (session / project.total_minutes)
+                * (1 - projects.NOT_FINISHING_CHANCE),
+                minutes=session,
+                risk=rating,
+                reasons=tuple(reasons),
+                inputs={"project_id": project.project_id},
+            )
+        )
     return items
 
 
@@ -445,8 +598,8 @@ def courier_candidates(db, esi, character_id, ships, minutes, net_worth, highsec
             esi,
             character_id,
             highsec_only=highsec_only,
-            max_minutes=minutes,
-            limit=5,
+            max_minutes=None,
+            limit=10,
             ships=choices,
         )
     except couriers.CourierError as exc:
@@ -455,9 +608,39 @@ def courier_candidates(db, esi, character_id, ships, minutes, net_worth, highsec
     if not found.options and found.excluded:
         notes.append(Reason("no_couriers_fit", dict(found.excluded)))
     items = []
+    weekly = projects.weekly_minutes(db)
     for option in found.options:
         band = risk.band_for_security(option.lowest_security)
         in_ship = f" in your {option.ship.name}" if option.ship.switch_minutes else ""
+        if option.minutes > minutes:
+            if not projects.finishes_in_time(option.minutes, option.days_to_complete, weekly):
+                continue
+            items.append(
+                _project_item(
+                    kind="courier",
+                    key=str(option.contract_id),
+                    title=f"Courier {option.start_system} -> {option.end_system} "
+                    f"({option.pickup_jumps}+{option.delivery_jumps} jumps){in_ship}",
+                    total_minutes=option.minutes,
+                    isk=option.reward,
+                    minutes=minutes,
+                    rating=risk.rate(band, option.collateral + option.ship.value, net_worth),
+                    reasons=(
+                        Reason(
+                            "deadline_fits_your_pace",
+                            {"days": option.days_to_complete, "weekly_minutes": weekly},
+                        ),  # fmt: skip
+                        *option.reasons,
+                    ),
+                    inputs={
+                        "contract_id": option.contract_id,
+                        "collateral": option.collateral,
+                        "player_title": option.player_title,
+                    },  # fmt: skip
+                    deadline_days=option.days_to_complete,
+                )
+            )
+            continue
         items.append(
             PlanItem(
                 kind="courier",
@@ -540,6 +723,7 @@ def build_plan(
 
     candidates: list[PlanItem] = []
     candidates += skill_candidates(db, character_id)
+    candidates += project_candidates(db, character_id, minutes, worth, notes)
     candidates += hangar_candidates(
         db, esi, character_id, ships, worth, highsec_only, minutes, notes
     )
@@ -595,6 +779,11 @@ def build_plan(
         return (item.inputs.get("station_id"), item.inputs["type_id"])
 
     sold_stacks: set[tuple] = set()
+    # stacks already promised to an open haul project are not sold again
+    for project in projects.open_projects(db, character_id):
+        if project.kind == "haul":
+            station_text, type_text = project.key.split(":")[:2]
+            sold_stacks.add((int(station_text), int(type_text)))
     for item in sells:
         if stack(item) in sold_stacks:
             continue
@@ -602,11 +791,26 @@ def build_plan(
             take(item)
             sold_stacks.add(stack(item))
 
-    # 2. one main activity for the remaining time
+    # 2. open projects come before anything new
+    for item in sorted(
+        (i for i in usable if i.kind == "project_continue"), key=lambda i: -i.adjusted_isk
+    ):
+        if time_left >= MIN_MINING_MINUTES:
+            session = min(item.minutes, time_left)
+            share = session / item.minutes if item.minutes else 0
+            take(PlanItem(**{**item.__dict__, "minutes": session, "isk": item.isk * share}))
+
+    # 3. one main activity for the remaining time
+    open_count = len(projects.open_projects(db, character_id))
     main_pool = [
         i
         for i in usable
         if i.kind in ("mining", "courier")
+        or (
+            i.kind == "project_start"
+            and open_count < projects.MAX_OPEN
+            and not (i.inputs.get("station_id") and stack(i) in sold_stacks)
+        )
         or (
             i.kind == "sell_hangar"
             and (i.inputs.get("jumps", 0) > 0 or i.inputs.get("travel_jumps", 0) > 0)
@@ -616,13 +820,18 @@ def build_plan(
     main_pool.sort(key=lambda i: -i.adjusted_isk)
     picked_main = None
     for item in main_pool:
-        if item.kind != "mining" and item.minutes > time_left + 1e-9:
+        if item.kind not in ("mining", "project_start") and item.minutes > time_left + 1e-9:
             continue
         if item.kind == "mining" and time_left < MIN_MINING_MINUTES:
             continue
         if item.new_to_you and new_used:
             continue
-        if item.kind == "mining":
+        if item.kind == "project_start":
+            if time_left < MIN_MINING_MINUTES:
+                continue
+            share = time_left / item.minutes if item.minutes else 0
+            item = PlanItem(**{**item.__dict__, "isk": item.isk * share, "minutes": time_left})
+        elif item.kind == "mining":
             # the mining estimate was sized for the whole session; rescale to what is left
             share = time_left / item.minutes if item.minutes else 0
             item = PlanItem(**{**item.__dict__, "isk": item.isk * share, "minutes": time_left,
@@ -635,7 +844,11 @@ def build_plan(
         if item in chosen or (picked_main and item.key == picked_main.key
                               and item.kind == picked_main.kind):  # fmt: skip
             continue
-        if item.kind == "sell_hangar" and stack(item) in sold_stacks:
+        if item.kind == "project_continue":
+            why = "too_long"
+        elif item.kind == "project_start" and open_count >= projects.MAX_OPEN:
+            why = "too_many_projects"
+        elif item.kind == "sell_hangar" and stack(item) in sold_stacks:
             why = "worse"
         elif item.minutes > minutes:
             why = "too_long"
@@ -695,7 +908,11 @@ def record(db: sqlite3.Connection, plan: Plan, inputs: dict) -> Plan:
 def respond(db: sqlite3.Connection, item_id: int, response: str) -> None:
     if response not in ("do", "not_now", "mute"):
         raise PlanError("Response must be do, not_now or mute.")
-    row = db.execute("SELECT kind FROM plan_items WHERE item_id = ?", (item_id,)).fetchone()
+    row = db.execute(
+        "SELECT p.character_id, i.kind, i.minutes, i.details FROM plan_items i "
+        "JOIN plans p USING (plan_id) WHERE i.item_id = ?",
+        (item_id,),
+    ).fetchone()
     if row is None:
         raise PlanError(f"No plan item {item_id}.")
     with db:
@@ -704,7 +921,33 @@ def respond(db: sqlite3.Connection, item_id: int, response: str) -> None:
             (item_id, response, utc_now()),
         )
     if response == "mute":
-        preferences.mute(db, f"kind:{row['kind']}")
+        category = "kind:courier" if row["kind"] == "project_start" else f"kind:{row['kind']}"
+        if category in preferences.KNOWN:
+            preferences.mute(db, category)
+        return
+    if response != "do":
+        return
+    inputs = json.loads(row["details"]).get("inputs", {})
+    try:
+        if row["kind"] == "project_start":
+            spec = inputs["project"]
+            project_id = projects.start(
+                db,
+                row["character_id"],
+                spec["kind"],
+                spec["key"],
+                spec["title"],
+                spec["total_minutes"],
+                spec["isk"],
+                {"risk": spec.get("risk", {}), "inputs": inputs},
+                days_to_deadline=spec.get("deadline_days"),
+                origin_item_id=item_id,
+            )
+            projects.record_progress(db, project_id, row["minutes"], item_id)
+        elif row["kind"] == "project_continue":
+            projects.record_progress(db, inputs["project_id"], row["minutes"], item_id)
+    except projects.ProjectError as exc:
+        raise PlanError(str(exc)) from None
 
 
 @dataclass(frozen=True)
