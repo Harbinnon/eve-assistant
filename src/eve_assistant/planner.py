@@ -419,19 +419,26 @@ def mining_candidates(
 
 
 def courier_candidates(db, esi, character_id, ships, minutes, net_worth, highsec_only, notes):
-    location = snapshots.latest(db, character_id, "location") or {}
-    here_location = location.get("station_id") or location.get("structure_id")
-    choices = [
-        couriers.Ship(
-            s.type_id,
-            s.name,
-            s.cargo_m3,
-            switch_minutes=0.0 if s.is_active else fleet.MINUTES_TO_SWITCH_SHIP,
-            value=s.value,
+    choices = []
+    for ship in ships:
+        if not ship.usable or not ship.cargo_m3:
+            continue
+        board = fleet.boarding(db, character_id, ship, highsec_only)
+        if board is None:
+            continue
+        choices.append(
+            couriers.Ship(
+                ship.type_id,
+                ship.name,
+                ship.cargo_m3,
+                switch_minutes=board.minutes,
+                value=ship.value,
+                origin_system_id=ship.system_id if board.jumps else None,
+                boarding_lowest_security=(
+                    routes.lowest_security(db, board.path) if board.jumps else None
+                ),
+            )
         )
-        for s in ships
-        if s.usable and s.cargo_m3 and (s.is_active or s.location_id == here_location)
-    ]
     try:
         found = couriers.find(
             db,

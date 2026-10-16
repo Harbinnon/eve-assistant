@@ -6,7 +6,7 @@ Shared by `eve-assistant snapshot` and the dashboard's Refresh button.
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from eve_assistant import auth, goals, planner, snapshots, store
+from eve_assistant import auth, goals, planner, snapshots, store, structures
 from eve_assistant.config import Config
 from eve_assistant.esi.client import EsiClient, EsiError, EsiRateLimited
 from eve_assistant.esi.sso import SSOError
@@ -37,6 +37,7 @@ def refresh_all(
                 snapshots.ensure_character(db, character.character_id, character.name)
                 try:
                     results = snapshots.collect(db, esi, character.character_id)
+                    structures.refresh(db, esi, character.character_id)
                 except EsiRateLimited as exc:
                     report.problems.append(
                         f"{exc} Try again in about {int(exc.retry_after)} seconds."

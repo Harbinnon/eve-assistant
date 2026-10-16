@@ -152,3 +152,31 @@ def test_given_ships_pick_the_cheapest_that_fits_and_add_switch_time(db):
     assert option.ship.name == "Cheap"
     expected = 2.0 + 2 * couriers.MINUTES_PER_DOCKING + couriers.MINUTES_PER_JUMP
     assert option.minutes == pytest.approx(expected)
+
+
+@respx.mock
+def test_a_ship_parked_elsewhere_starts_the_pickup_from_its_own_system(db):
+    # Contract from C to B. The character is in A; a hauler waits in C.
+    respx.get(f"{BASE}/contracts/public/{REGION}").mock(
+        return_value=httpx.Response(
+            200, json=[_contract(1, STATION_C, STATION_B, 1_000_000, volume=1000)]
+        )
+    )
+    parked = couriers.Ship(
+        HAULER,
+        "Parked Hauler",
+        6000,
+        switch_minutes=7.0,  # trip to C plus boarding, worked out by the fleet
+        value=1e6,
+        origin_system_id=C,
+        boarding_lowest_security=0.8,
+    )
+    with httpx.Client() as http:
+        result = couriers.find(db, EsiClient(http, db, base_url=BASE), 7, ships=[parked])
+    (option,) = result.options
+    assert option.pickup_jumps == 0  # already at the pickup once boarded
+    assert option.delivery_jumps == 1
+    assert option.minutes == pytest.approx(
+        7.0 + 2 * couriers.MINUTES_PER_DOCKING + couriers.MINUTES_PER_JUMP
+    )
+    assert option.lowest_security == pytest.approx(0.7)  # Gamma on the delivery route
