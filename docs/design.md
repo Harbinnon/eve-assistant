@@ -462,6 +462,75 @@ login (§4.1–4.2), whatever the code licence says.
 - Nothing personal in the repository: client IDs, tokens, webhook URLs and
   personal notes stay in gitignored local files.
 
+### Security: what is in place
+
+- **Login:** PKCE (no client secret exists); access tokens verified against
+  EVE's published keys (signature, issuer, audience, expiry); the local
+  callback rejects a mismatched `state`; read-only scopes only.
+- **Secrets:** refresh tokens encrypted with Windows DPAPI outside the
+  project, never printed, logged or put in error messages; secret scanner
+  before each commit and in CI.
+- **Dashboard:** listens on `127.0.0.1` only and refuses hosted mode until
+  a login exists; every form carries a per-process token and cross-site
+  posts are rejected; templates escape all output; no third-party scripts.
+- **Data:** parameterised SQL; plans, plan items, responses and snapshots
+  are append-only, enforced by database triggers.
+- **Supply chain:** every dependency pinned exactly (direct and indirect,
+  `constraints.txt`), versions at least two weeks old; GitHub Actions
+  pinned to commit SHAs; CI runs with read-only permissions.
+- **Code checks:** ruff with its security rule set (Bandit's) on every
+  commit; tests cover forged and expired tokens, cross-site posts and
+  escaping of player text.
+- **AI assistants:** player-written text is labelled as such wherever it is
+  stored or passed on (for the future MCP server).
+
+### Security hardening before going public
+
+1. **Host check (DNS rebinding):** answer only requests addressed to
+   `127.0.0.1` or `localhost`, so a malicious website cannot read the
+   dashboard through the browser.
+2. **Security headers:** a strict Content-Security-Policy (the dashboard's
+   own files only), no framing by other sites, no referrer, no MIME
+   sniffing.
+3. **Dependency vulnerability checks:** `pip-audit` in CI (a new
+   development library, needs the owner's approval) and Dependabot.
+4. **`SECURITY.md`:** how to report a vulnerability privately.
+5. **Threat model written down here:** what the tool protects against and
+   what it does not (DPAPI stops a copied token file from working, not
+   malware running as the user; the database holds character data, not
+   secrets, unencrypted in `var/`).
+6. **A full security review** of the codebase, every finding fixed or
+   recorded.
+
+### Going public checklist
+
+In order; each box is ticked in this document when done.
+
+- [ ] Phase 2 finished (hangar sales elsewhere, multi-session projects).
+- [ ] Security hardening above merged.
+- [ ] The **whole Git history** scanned for secrets and personal data, not
+      just the current files.
+- [ ] Every pull request title and description on GitHub read through for
+      personal details (they become public too).
+- [ ] Repository switched to public.
+- [ ] `main` protected: changes only through pull requests approved by the
+      code owner; CI checks required to pass.
+- [ ] GitHub secret scanning with **push protection** switched on.
+- [ ] **Dependabot** alerts and security updates switched on.
+- [ ] **CodeQL** code scanning added (deep security analysis).
+- [ ] **SonarQube Cloud** added: code quality, security hotspots,
+      duplication and test coverage, with a pass/fail quality gate on every
+      pull request. Needs:
+  - a SonarQube token stored by the owner as a GitHub repository secret
+    (never in chat or the code);
+  - `pytest-cov` as a development library (owner's approval) so coverage
+    can be reported;
+  - its GitHub Action pinned to a commit SHA like the others;
+  - a first pass to fix real findings and mark the rest as reviewed.
+
+  Run CodeQL and SonarQube side by side for a few weeks, then drop or tune
+  whichever is noisy.
+
 ---
 
 ## 9. Technical design
