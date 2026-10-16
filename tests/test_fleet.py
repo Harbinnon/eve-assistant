@@ -124,3 +124,29 @@ def test_hauler_choice_prefers_the_cheapest_ship_that_fits(db):
     big_ore = planner._pick_hauler(ships, AWAY_STATION, STATION, option(30000))
     assert big_ore[0].name == "Ore Hauler"  # waiting at the ore's station
     assert planner._pick_hauler(ships, STATION, STATION, option(99999)) is None
+
+
+def test_ships_in_known_structures_get_a_system(db):
+    from eve_assistant import structures
+
+    db.execute(
+        "INSERT INTO structures VALUES (1000000000001, 1, 'Somebody''s Citadel', ?, 35832, 1, "
+        "'2026-10-16T00:00:00+00:00', 7)",
+        (AWAY,),
+    )
+    db.execute(
+        "INSERT INTO structures VALUES (1000000000002, 0, NULL, NULL, NULL, NULL, "
+        "'2026-10-16T00:00:00+00:00', 7)"
+    )
+    assert structures.system_of(db, 1000000000001) == AWAY
+    assert structures.system_of(db, 1000000000002) is None  # no docking access
+    assert structures.system_of(db, AWAY_STATION) == AWAY
+    assets = snapshots.latest(db, 7, "assets")
+    assets.append(
+        {"item_id": 9, "type_id": HAULER, "location_id": 1000000000001, "location_type": "item",
+         "location_flag": "Hangar", "is_singleton": True, "quantity": 1}
+    )  # fmt: skip
+    snapshots.record(db, 7, "assets", assets)
+    in_citadel = [s for s in fleet.owned_ships(db, 7) if s.item_id == 9][0]
+    assert in_citadel.system_id == AWAY
+    assert fleet.boarding(db, 7, in_citadel).jumps == 1

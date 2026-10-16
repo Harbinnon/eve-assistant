@@ -32,6 +32,8 @@ class Ship:
     capacity_m3: float
     switch_minutes: float = 0.0  # time to get into it before starting
     value: float = 0.0  # hull plus contents, for the risk rating
+    origin_system_id: int | None = None  # where it starts from; None = where the character is
+    boarding_lowest_security: float | None = None  # lowest security on the way to it
 
 
 @dataclass(frozen=True)
@@ -136,6 +138,7 @@ def find(
     now = datetime.now(UTC)
 
     excluded: Counter[str] = Counter()
+    pickups: dict[int, dict[int, list[int] | None]] = {}
     options: list[CourierOption] = []
     for region_id in region_ids:
         for contract in esi.get(f"/contracts/public/{region_id}").data:
@@ -151,30 +154,40 @@ def find(
                 excluded["player_structure"] += 1
                 continue
             volume = float(contract.get("volume", 0))
-            # the cheapest ship that fits puts the least at stake
-            ship = min(
-                (s for s in ships if s.capacity_m3 >= volume),
-                key=lambda s: (s.value, s.capacity_m3),
-                default=None,
-            )
-            if ship is None:
+            fitting = [s for s in ships if s.capacity_m3 >= volume]
+            if not fitting:
                 excluded["too_big_for_your_ships"] += 1
                 continue
             collateral = float(contract.get("collateral", 0))
             if collateral > wallet:
                 excluded["collateral_above_wallet"] += 1
                 continue
-            pickup = routes.jumps_between(db, here_system, start["system_id"], highsec_only)
             delivery = routes.jumps_between(db, start["system_id"], end["system_id"], highsec_only)
-            if pickup is None or delivery is None:
+            best = None
+            for candidate in fitting:
+                origin = candidate.origin_system_id or here_system
+                if origin not in pickups:
+                    pickups[origin] = {}
+                if start["system_id"] not in pickups[origin]:
+                    pickups[origin][start["system_id"]] = routes.jumps_between(
+                        db, origin, start["system_id"], highsec_only
+                    )
+                route = pickups[origin][start["system_id"]]
+                if route is None or delivery is None:
+                    continue
+                total = (
+                    candidate.switch_minutes
+                    + 2 * MINUTES_PER_DOCKING
+                    + (len(route) - 1 + len(delivery) - 1) * MINUTES_PER_JUMP
+                )
+                # quickest first, then the cheapest ship (least at stake)
+                if best is None or (total, candidate.value) < (best[0], best[1].value):
+                    best = (total, candidate, route)
+            if best is None:
                 excluded["no_route" if not highsec_only else "needs_lowsec"] += 1
                 continue
+            minutes, ship, pickup = best
             pickup_jumps, delivery_jumps = len(pickup) - 1, len(delivery) - 1
-            minutes = (
-                ship.switch_minutes
-                + 2 * MINUTES_PER_DOCKING
-                + (pickup_jumps + delivery_jumps) * MINUTES_PER_JUMP
-            )
             if max_minutes is not None and minutes > max_minutes:
                 excluded["takes_too_long"] += 1
                 continue
@@ -193,7 +206,16 @@ def find(
                     pickup_jumps=pickup_jumps,
                     delivery_jumps=delivery_jumps,
                     minutes=minutes,
-                    lowest_security=routes.lowest_security(db, path),
+                    lowest_security=min(
+                        v
+                        for v in (
+                            routes.lowest_security(db, path),
+                            ship.boarding_lowest_security,
+                        )
+                        if v is not None
+                    )
+                    if path
+                    else ship.boarding_lowest_security,
                     ship=ship,
                     days_to_complete=int(contract.get("days_to_complete", 0)),
                     expires=expires,

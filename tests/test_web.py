@@ -278,3 +278,20 @@ def test_planning_errors_are_shown_not_crashed(db_path):
             "/today/plan", data={"token": token, "character": "Test Pilot", "minutes": "30"}
         )
     assert "Could not build a plan: ESI is down" in page.text
+
+
+def test_structure_names_are_escaped_and_marked_as_player_text(db_path):
+    conn = store.connect(db_path)
+    conn.execute(
+        "INSERT INTO structures VALUES (1050000000001, 1, '<img src=x>Keepstar', 30000142, "
+        "35834, 1, '2026-10-16T00:00:00+00:00', 7)"
+    )
+    snapshots.record(
+        conn, 7, "location", {"solar_system_id": 30000142, "structure_id": 1050000000001}
+    )
+    conn.close()
+    with TestClient(create_app(db_path)) as test_client:
+        page = test_client.get("/characters").text
+    assert "<img src=x>" not in page
+    assert "&lt;img src=x&gt;Keepstar" in page
+    assert "Name chosen by the structure" in page

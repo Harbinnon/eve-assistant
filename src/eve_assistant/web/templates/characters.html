@@ -35,6 +35,7 @@
       <dd>{% if c.system_name %}{{ c.system_name }}
         <span class="{{ c.security|security_class }}">{{ "%.1f"|format(c.security) }}</span>
         <span class="muted">· {{ c.region_name }} · {{ "docked" if c.docked else "in space" }}</span>
+        {% if c.structure_name %}<span class="muted player-text" title="Name chosen by the structure's owner">at “{{ c.structure_name }}”</span>{% endif %}
         {% else %}<span class="muted">unknown</span>{% endif %}</dd>
       <dt>Ship</dt>
       <dd>{{ c.ship_type or "unknown" }}{% if c.ship_name %}

@@ -9,7 +9,7 @@ pick the best ship for a job and to add the cost of getting into it.
 import sqlite3
 from dataclasses import dataclass, field
 
-from eve_assistant import mining, ore, risk, routes, skills, snapshots
+from eve_assistant import mining, ore, risk, routes, skills, snapshots, structures
 
 MINUTES_TO_SWITCH_SHIP = 2.0  # dock or board a ship in the same station
 SLOT_PREFIXES = ("HiSlot", "MedSlot", "LoSlot", "RigSlot")
@@ -75,10 +75,7 @@ def _system_of(db: sqlite3.Connection, location_id: int | None, character_locati
         character_location.get("structure_id"),
     ):
         return character_location.get("solar_system_id")
-    row = db.execute(
-        "SELECT system_id FROM sde_npc_stations WHERE station_id = ?", (location_id,)
-    ).fetchone()
-    return row["system_id"] if row else None
+    return structures.system_of(db, location_id)
 
 
 def owned_ships(db: sqlite3.Connection, character_id: int) -> list[FleetShip]:

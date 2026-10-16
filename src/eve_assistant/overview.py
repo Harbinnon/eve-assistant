@@ -3,7 +3,7 @@
 import sqlite3
 from dataclasses import dataclass
 
-from eve_assistant import skills, snapshots
+from eve_assistant import skills, snapshots, structures
 
 
 @dataclass(frozen=True)
@@ -20,6 +20,7 @@ class CharacterSummary:
     security: float | None
     region_name: str | None
     docked: bool
+    structure_name: str | None  # player-written; only for structures we can see
     ship_type: str | None
     ship_name: str | None  # player-written
     online: bool | None
@@ -37,6 +38,11 @@ def _system(db: sqlite3.Connection, system_id: int | None):
         (system_id,),
     ).fetchone()
     return (row["name"], row["security_status"], row["region"]) if row else (None, None, None)
+
+
+def _structure_name(db: sqlite3.Connection, structure_id: int | None) -> str | None:
+    known = structures.get(db, structure_id) if structure_id else None
+    return known.player_name if known and known.accessible else None
 
 
 def summarize(db: sqlite3.Connection, character_id: int) -> CharacterSummary:
@@ -80,6 +86,7 @@ def summarize(db: sqlite3.Connection, character_id: int) -> CharacterSummary:
         security=security,
         region_name=region,
         docked=bool(location.get("station_id") or location.get("structure_id")),
+        structure_name=_structure_name(db, location.get("structure_id")),
         ship_type=skills.type_name(db, ship["ship_type_id"]) if ship.get("ship_type_id") else None,
         ship_name=ship.get("ship_name"),
         online=online.get("online"),
