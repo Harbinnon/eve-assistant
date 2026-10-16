@@ -14,6 +14,7 @@ from eve_assistant import (
     ore,
     planner,
     preferences,
+    projects,
     refresh,
     sde,
     skills,
@@ -475,6 +476,37 @@ def _cmd_mutes(args) -> int:
     return 0
 
 
+def _cmd_projects(_args) -> int:
+    with store.connect() as db:
+        names = dict(db.execute("SELECT character_id, name FROM characters").fetchall())
+        open_projects = projects.open_projects(db)
+        weekly = projects.weekly_minutes(db)
+    print(f"Play time: {weekly / 60:g} hours a week (change with: eve-assistant play-time <hours>)")
+    if not open_projects:
+        print("No open projects.")
+    for p in open_projects:
+        deadline = f", due {p.deadline[:16].replace('T', ' ')} UTC" if p.deadline else ""
+        print(
+            f"[{p.project_id}] {p.title} ({names.get(p.character_id, '?')}): "
+            f"{p.minutes_done:.0f}/{p.total_minutes:.0f} min, {p.isk:,.0f} ISK at the end{deadline}"
+        )
+    return 0
+
+
+def _cmd_project_close(args) -> int:
+    with store.connect() as db:
+        projects.close(db, args.project_id, args.status)
+    print(f"Project {args.project_id} marked {args.status}.")
+    return 0
+
+
+def _cmd_play_time(args) -> int:
+    with store.connect() as db:
+        projects.set_weekly_minutes(db, args.hours * 60)
+    print(f"Play time set to {args.hours:g} hours a week.")
+    return 0
+
+
 def _cmd_accounts(_args) -> int:
     with store.connect() as db:
         views = accounts.overview(db)
@@ -598,6 +630,18 @@ def build_parser() -> argparse.ArgumentParser:
         mutes_cmd.add_argument("category", nargs="?", help="e.g. kind:courier or route:lowsec")
         mutes_cmd.set_defaults(func=_cmd_mutes, action=action)
 
+    commands.add_parser("projects", help="list open projects").set_defaults(func=_cmd_projects)
+    project_cmd = commands.add_parser("project", help="close a project").add_subparsers(
+        dest="project_command", required=True
+    )
+    for status in ("done", "dropped"):
+        close_cmd = project_cmd.add_parser(status, help=f"mark a project {status}")
+        close_cmd.add_argument("project_id", type=int)
+        close_cmd.set_defaults(func=_cmd_project_close, status=status)
+    play_time = commands.add_parser("play-time", help="set your usual play time per week")
+    play_time.add_argument("hours", type=float)
+    play_time.set_defaults(func=_cmd_play_time)
+
     serve = commands.add_parser("serve", help="run the dashboard on this PC")
     serve.add_argument("--port", type=int, default=8700)
     serve.set_defaults(func=_cmd_serve)
@@ -639,6 +683,7 @@ def main(argv: list[str] | None = None) -> int:
         couriers.CourierError,
         planner.PlanError,
         preferences.PreferenceError,
+        projects.ProjectError,
     ) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 2

@@ -150,3 +150,16 @@ def test_ships_in_known_structures_get_a_system(db):
     in_citadel = [s for s in fleet.owned_ships(db, 7) if s.item_id == 9][0]
     assert in_citadel.system_id == AWAY
     assert fleet.boarding(db, 7, in_citadel).jumps == 1
+
+
+def test_loads_too_big_for_one_trip_pick_the_fewest_trips(db):
+    ships = fleet.owned_ships(db, 7)
+    load = ore.Option(
+        key="k", title="t", isk=1.0, active_minutes=1.0, instant=True, location="x",
+        jumps=5, hauled_m3=12_000, hauled_is_ore=True,
+    )  # fmt: skip
+    ship, switch, trips = planner._multi_trip_haul(ships, STATION, STATION, load)
+    # the Hauler's 6,000 m3 cargo takes ore too: 2 trips beats the Venture's 3
+    assert ship.name == "Hauler" and trips == 2 and switch == fleet.MINUTES_TO_SWITCH_SHIP
+    ship, _switch, trips = planner._multi_trip_haul(ships, AWAY_STATION, STATION, load)
+    assert ship.name == "Ore Hauler" and trips == 1

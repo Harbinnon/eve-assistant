@@ -17,7 +17,17 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from eve_assistant import explain, goals, overview, planner, preferences, risk, skills, store
+from eve_assistant import (
+    explain,
+    goals,
+    overview,
+    planner,
+    preferences,
+    projects,
+    risk,
+    skills,
+    store,
+)
 from eve_assistant.goals import GoalError
 from eve_assistant.skills import SkillsError
 
@@ -44,6 +54,9 @@ MESSAGES = {
     "mute": "Muted. You can undo that on the Preferences page.",
     "muted": "Muted.",
     "unmuted": "Unmuted.",
+    "project_done": "Project marked done.",
+    "project_dropped": "Project dropped.",
+    "play_time": "Play time saved.",
 }
 
 
@@ -135,6 +148,7 @@ def create_app(
             names = _names(conn)
             latest = planner.latest_plan_id(conn)
             recent = planner.load_plan(conn, latest) if latest else None
+            open_projects = _open_projects(conn)
         finally:
             conn.close()
         return render(
@@ -144,7 +158,26 @@ def create_app(
             plan=recent,
             error=error,
             can_plan=make_plan is not None,
+            open_projects=open_projects,
         )
+
+    def _open_projects(conn) -> list[tuple[str, projects.Project]]:
+        names = dict(conn.execute("SELECT character_id, name FROM characters").fetchall())
+        return [(names.get(p.character_id, "?"), p) for p in projects.open_projects(conn)]
+
+    @app.post("/projects/{project_id}/{status}")
+    def close_project(request: Request, project_id: int, status: str, token: str = Form(...)):
+        check_form(request, token)
+        if status not in ("done", "dropped"):
+            raise HTTPException(404, "Unknown status.")
+        conn = db()
+        try:
+            projects.close(conn, project_id, status)
+        except projects.ProjectError as exc:
+            raise HTTPException(404, str(exc)) from None
+        finally:
+            conn.close()
+        return back("/today", msg=f"project_{status}")
 
     @app.post("/today/plan")
     def new_plan(
@@ -180,6 +213,7 @@ def create_app(
             except planner.PlanError as exc:
                 raise HTTPException(404, str(exc)) from None
             names = _names(conn)
+            open_projects = _open_projects(conn)
         finally:
             conn.close()
         return render(
@@ -189,6 +223,7 @@ def create_app(
             plan=stored,
             error=None,
             can_plan=make_plan is not None,
+            open_projects=open_projects,
         )
 
     @app.post("/plan-items/{item_id}/respond")
@@ -214,6 +249,7 @@ def create_app(
         conn = db()
         try:
             active = preferences.active_mutes(conn)
+            weekly = projects.weekly_minutes(conn)
         finally:
             conn.close()
         return render(
@@ -223,7 +259,20 @@ def create_app(
             categories=preferences.KNOWN,
             risk_matrix=risk.MATRIX,
             band_labels=BAND_LABELS,
+            weekly_hours=weekly / 60,
         )
+
+    @app.post("/preferences-play-time")
+    def change_play_time(request: Request, token: str = Form(...), hours: float = Form(...)):
+        check_form(request, token)
+        conn = db()
+        try:
+            projects.set_weekly_minutes(conn, hours * 60)
+        except projects.ProjectError as exc:
+            raise HTTPException(400, str(exc)) from None
+        finally:
+            conn.close()
+        return back("/preferences", msg="play_time")
 
     @app.post("/preferences/{action}")
     def change_preference(

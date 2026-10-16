@@ -55,6 +55,34 @@
 {% if not character_names %}<p class="muted">No characters yet: log one in with <span class="mono">eve-assistant login</span>, then refresh on the Characters page.</p>{% endif %}
 <p class="muted" style="font-size:13px">Planning reads live market prices and contracts, so it takes a few seconds.</p>
 
+{% if open_projects %}
+<h2>Open projects</h2>
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>Project</th><th>Character</th><th class="num">Done</th><th class="num">ISK at the end</th><th>Deadline</th><th></th></tr></thead>
+    <tbody>
+    {% for who, p in open_projects %}
+      <tr>
+        <td>{{ p.title }}</td>
+        <td>{{ who }}</td>
+        <td class="num">{{ p.minutes_done|round|int }} / {{ p.total_minutes|round|int }} min</td>
+        <td class="num">{{ p.isk|isk }}</td>
+        <td>{{ p.deadline|when if p.deadline else "none" }}</td>
+        <td>
+          {% for status, label in [("done", "Done"), ("dropped", "Drop")] %}
+          <form class="inline" method="post" action="/projects/{{ p.project_id }}/{{ status }}">
+            <input type="hidden" name="token" value="{{ form_token }}">
+            <button class="small" type="submit">{{ label }}</button>
+          </form>
+          {% endfor %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
 {% if plan %}
 <h2>Plan for {{ plan.character_name }} · {{ plan.minutes_available|int }} minutes
   <span class="muted" style="font-weight:400;font-size:14px">· made {{ plan.created_at|when }}</span></h2>

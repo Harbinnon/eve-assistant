@@ -14,6 +14,7 @@ WHY_NOT = {
     "red_risk": "Red on the risk matrix. Tick 'include risky options' to allow it.",
     "muted": "You muted this kind of suggestion.",
     "new_limit": "Only one new activity per plan.",
+    "too_many_projects": "You already have the most open projects; finish or drop one first.",
 }
 
 
@@ -97,6 +98,29 @@ def describe(code: str, detail: dict | None = None) -> str:
         ),
         "ore_in_structure_skipped": lambda: (
             "Ore stored in player structures is not considered yet."
+        ),
+        "multi_trip_haul": lambda: (
+            f"{d.get('load_m3', 0):,.0f} m3 is more than your {d.get('ship')} holds, so it takes "
+            f"{d.get('trips')} trips."
+        ),
+        "project_value": lambda: (
+            f"Takes about {d.get('total_minutes', 0):,.0f} minutes in all for "
+            f"{d.get('total_isk', 0):,.0f} ISK, paid at the end. This session counts as "
+            f"{d.get('share', 0):.0%} of it, less {d.get('not_finishing', 0):.0%} for the chance "
+            "of not finishing (a starting guess)."
+        ),
+        "project_progress": lambda: (
+            f"Done so far: about {d.get('done', 0):,.0f} of {d.get('total', 0):,.0f} minutes."
+        ),
+        "project_deadline": lambda: (
+            f"Deadline: {str(d.get('deadline', ''))[:16].replace('T', ' ')} UTC."
+        ),
+        "project_time_used": lambda: (
+            f"The project “{d.get('title')}” has used its estimated time; mark it done or drop it."
+        ),
+        "deadline_fits_your_pace": lambda: (
+            f"{d.get('days')} days to deliver; at about {d.get('weekly_minutes', 0) / 60:g} hours "
+            "a week you should finish in time."
         ),
         "hauler_chosen": lambda: (
             f"Carried in your {d.get('ship')}: {d.get('load_m3', 0):,.0f} m3 of the "
