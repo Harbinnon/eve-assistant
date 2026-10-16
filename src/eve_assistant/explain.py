@@ -90,6 +90,14 @@ def describe(code: str, detail: dict | None = None) -> str:
         "mining_unavailable": lambda: f"Mining not considered: {d.get('why', '')}",
         "couriers_unavailable": lambda: f"Couriers not considered: {d.get('why', '')}",
         "nothing_fits": lambda: "Nothing fits in this amount of time.",
+        "ore_stored_elsewhere": lambda: (
+            f"This ore is stored in {d.get('system')}, {d.get('jumps', 0)} jumps away."
+            if d.get("jumps")
+            else f"This ore is stored at another station in {d.get('system')}."
+        ),
+        "ore_in_structure_skipped": lambda: (
+            "Ore stored in player structures is not considered yet."
+        ),
     }
     maker = texts.get(code)
     return maker() if maker else code

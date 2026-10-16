@@ -211,3 +211,67 @@ def test_bad_inputs(db):
         planner.respond(db, 999, "do")
     with pytest.raises(preferences.PreferenceError):
         preferences.mute(db, "kind:piracy")
+
+
+def test_ship_capacity_decides_what_can_be_hauled():
+    from eve_assistant import ore
+
+    def option(m3, is_ore=True, jumps=3):
+        return ore.Option(
+            key="k", title="t", isk=1.0, active_minutes=1.0, instant=True, location="x",
+            jumps=jumps, hauled_m3=m3, hauled_is_ore=is_ore,
+        )  # fmt: skip
+
+    holds = (50.0, 5000.0)  # cargo, ore hold
+    assert planner._fits_in_ship(option(4000), holds)  # ore goes in the ore hold
+    assert not planner._fits_in_ship(option(6000), holds)
+    assert not planner._fits_in_ship(option(100, is_ore=False), holds)  # minerals: cargo only
+    assert planner._fits_in_ship(option(10**9, jumps=0), holds)  # selling where it is
+
+
+@respx.mock
+def test_ore_stored_in_another_station_is_offered_with_travel(db):
+    other_system, other_station = 31000003, 61000003
+    db.execute(
+        "INSERT INTO sde_solar_systems VALUES (?, 'Next Door', ?, 1, 0.8, 'B')",
+        (other_system, REGION),
+    )
+    db.executemany(
+        "INSERT INTO sde_jumps VALUES (?, ?)", [(HOME, other_system), (other_system, HOME)]
+    )
+    db.execute(
+        "INSERT INTO sde_npc_stations VALUES (?, ?, 1000001, 1, 0.5, 0.05)",
+        (other_station, other_system),
+    )
+    snapshots.record(
+        db,
+        7,
+        "assets",
+        [
+            {"type_id": LASER, "location_id": 9001, "location_flag": "HiSlot0", "quantity": 1},
+            {"type_id": ORE, "location_id": other_station, "location_flag": "Hangar",
+             "quantity": 2000},
+        ],
+    )  # fmt: skip
+
+    def books(request):
+        price = {ORE: 10.0, MINERAL: 2.0}.get(int(request.url.params["type_id"]))
+        data = [] if price is None else [
+            {"price": price, "volume_remain": 10_000_000, "is_buy_order": True,
+             "location_id": other_station, "system_id": other_system, "range": "station"}
+        ]  # fmt: skip
+        return httpx.Response(200, json=data)
+
+    respx.get(url__regex=rf"{BASE}/markets/\d+/orders").mock(side_effect=books)
+    respx.get(f"{BASE}/contracts/public/{REGION}").mock(return_value=httpx.Response(200, json=[]))
+    with httpx.Client() as http:
+        plan = planner.build_plan(db, EsiClient(http, db, base_url=BASE), 7, 60)
+
+    sells = [i for i in [*plan.items, *(a.item for a in plan.alternatives)]
+             if i.kind == "sell_hangar"]  # fmt: skip
+    assert sells, "ore in the other station should be considered"
+    best = max(sells, key=lambda i: i.isk)
+    assert best.title.startswith("Go to Next Door (1 jumps), then: Veldspar x2,000")
+    assert best.inputs["travel_jumps"] == 1
+    assert best.minutes > 2  # travel time is included
+    assert "ore_stored_elsewhere" in {r.code for r in best.reasons}
