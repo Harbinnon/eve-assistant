@@ -19,7 +19,17 @@ import math
 import sqlite3
 from dataclasses import dataclass, field
 
-from eve_assistant import couriers, mining, ore, preferences, risk, routes, skills, snapshots
+from eve_assistant import (
+    couriers,
+    fleet,
+    mining,
+    ore,
+    preferences,
+    risk,
+    routes,
+    skills,
+    snapshots,
+)
 from eve_assistant.esi.client import EsiClient
 from eve_assistant.risk import RiskRating
 from eve_assistant.skills import Reason
@@ -133,24 +143,6 @@ def _is_ore(db: sqlite3.Connection, type_id: int) -> bool:
     )
 
 
-def _ship_holds(db: sqlite3.Connection, character_id: int) -> tuple[float, float]:
-    """(cargo m3, ore hold m3) of the active ship, from the static data."""
-    ship = snapshots.latest(db, character_id, "ship") or {}
-    if not ship.get("ship_type_id"):
-        return 0.0, 0.0
-    row = db.execute(
-        "SELECT capacity FROM sde_types WHERE type_id = ?", (ship["ship_type_id"],)
-    ).fetchone()
-    cargo = (row["capacity"] or 0.0) if row else 0.0
-    holds = db.execute(
-        "SELECT a.value FROM sde_type_attributes a "
-        "JOIN sde_dogma_attributes d USING (attribute_id) "
-        "WHERE a.type_id = ? AND d.name IN (?, ?)",
-        (ship["ship_type_id"], *mining.HOLD_ATTRIBUTES),
-    ).fetchall()
-    return cargo, max((h["value"] for h in holds), default=0.0)
-
-
 def _fits_in_ship(option: ore.Option, holds: tuple[float, float]) -> bool:
     if option.jumps == 0 or option.hauled_m3 <= 0:
         return True
@@ -159,22 +151,44 @@ def _fits_in_ship(option: ore.Option, holds: tuple[float, float]) -> bool:
     return option.hauled_m3 <= capacity
 
 
+def _pick_hauler(
+    ships: list[fleet.FleetShip], station_id: int, here_location: int | None, option: ore.Option
+) -> tuple[fleet.FleetShip, float] | None:
+    """The cheapest flyable ship that can carry this option's load, and the minutes to
+    switch into it: the active ship, one waiting at the ore's station, or one where the
+    character is now."""
+    best = None
+    for ship in ships:
+        if not ship.usable or ship.capacity_for(option.hauled_is_ore) < option.hauled_m3:
+            continue
+        if ship.is_active:
+            switch = 0.0
+        elif ship.location_id in (station_id, here_location):
+            switch = fleet.MINUTES_TO_SWITCH_SHIP
+        else:
+            continue
+        if best is None or (ship.value, switch) < (best[0].value, best[1]):
+            best = (ship, switch)
+    return best
+
+
 def hangar_candidates(
-    db, esi, character_id, net_worth, highsec_only, minutes, notes
+    db, esi, character_id, ships, net_worth, highsec_only, minutes, notes
 ) -> list[PlanItem]:
     """Ore in station hangars: where the character is docked (quick jobs) and in
-    other NPC stations it can reach (travel there, then sell)."""
+    other NPC stations it can reach (travel there, then sell). Hauls use whichever
+    owned ship can carry the load."""
     location = snapshots.latest(db, character_id, "location") or {}
     here_system = location.get("solar_system_id")
     docked_at = location.get("station_id")
+    here_location = docked_at or location.get("structure_id")
+    active_value = next((s.value for s in ships if s.is_active), 0.0)
     assets = snapshots.latest(db, character_id, "assets") or []
     stacks: dict[int, dict[int, int]] = {}
     for item in assets:
         if item.get("location_flag") == "Hangar" and _is_ore(db, item["type_id"]):
             by_type = stacks.setdefault(item["location_id"], {})
             by_type[item["type_id"]] = by_type.get(item["type_id"], 0) + item.get("quantity", 1)
-    ship_value = risk.ship_exposure(db, character_id)
-    holds = _ship_holds(db, character_id)
     items = []
     for station_id, by_type in stacks.items():
         station = db.execute(
@@ -201,17 +215,23 @@ def hangar_candidates(
             )
             fitting = []
             for option in analysis.options:
-                if not option.instant or travel_minutes + option.active_minutes > minutes:
+                if not option.instant:
                     continue
-                if not _fits_in_ship(option, holds):
-                    continue
-                fitting.append(option)
-            for option in fitting[:2]:  # best, and the best alternative
+                hauler, switch = None, 0.0
+                if option.jumps and option.hauled_m3 > 0:
+                    picked = _pick_hauler(ships, station_id, here_location, option)
+                    if picked is None:
+                        continue
+                    hauler, switch = picked
+                total = travel_minutes + switch + option.active_minutes
+                if total <= minutes:
+                    fitting.append((option, hauler, switch, total))
+            for option, hauler, _switch, total in fitting[:2]:  # best, and the next best
                 if travel_jumps == 0 and option.jumps == 0:
                     rating = risk.rate("very_low", 0.0, net_worth)  # docked: nothing exposed
                 else:
                     band = risk.band_for_security(routes.lowest_security(db, travel_path))
-                    stake = ship_value + (option.isk if option.jumps else 0.0)
+                    stake = hauler.value + option.isk if hauler is not None else active_value
                     rating = risk.rate(band, stake, net_worth)
                 if station_id == docked_at:
                     where = ""
@@ -219,17 +239,37 @@ def hangar_candidates(
                     where = f"Dock at the station in {station['name']} where it is stored, then: "
                 else:
                     where = f"Go to {station['name']} ({travel_jumps} jumps), then: "
+                ship_note = f" (in your {hauler.name})" if hauler is not None else ""
                 reasons = option.reasons
                 if station_id != docked_at:
-                    reasons = (Reason("ore_stored_elsewhere", {"system": station["name"],
-                               "jumps": travel_jumps}), *reasons)  # fmt: skip
+                    reasons = (
+                        Reason(
+                            "ore_stored_elsewhere",
+                            {"system": station["name"], "jumps": travel_jumps},
+                        ),
+                        *reasons,
+                    )
+                if hauler is not None:
+                    reasons = (
+                        Reason(
+                            "hauler_chosen",
+                            {
+                                "ship": hauler.name,
+                                "load_m3": option.hauled_m3,
+                                "capacity_m3": hauler.capacity_for(option.hauled_is_ore),
+                            },
+                        ),
+                        *reasons,
+                    )
                 items.append(
                     PlanItem(
                         kind="sell_hangar",
                         key=f"{station_id}:{type_id}:{option.key}",
-                        title=f"{where}{analysis.type_name} x{quantity:,}: {option.title}",
+                        title=(
+                            f"{where}{analysis.type_name} x{quantity:,}: {option.title}{ship_note}"
+                        ),
                         isk=option.isk,
-                        minutes=travel_minutes + option.active_minutes,
+                        minutes=total,
                         risk=rating,
                         reasons=reasons,
                         inputs={
@@ -239,6 +279,7 @@ def hangar_candidates(
                             "travel_jumps": travel_jumps,
                             "jumps": option.jumps,
                             "option": option.key,
+                            "ship_item_id": hauler.item_id if hauler else None,
                         },
                     )
                 )
@@ -266,101 +307,167 @@ def _ore_choices(db, character_id, system_id, named: list[str] | None, notes) ->
     return found
 
 
+def _first_station(db: sqlite3.Connection, system_id: int | None) -> int | None:
+    row = db.execute(
+        "SELECT station_id FROM sde_npc_stations WHERE system_id = ? ORDER BY station_id LIMIT 1",
+        (system_id,),
+    ).fetchone()
+    return row["station_id"] if row else None
+
+
 def mining_candidates(
-    db, esi, character_id, station_id, minutes, net_worth, ore_names, notes
+    db, esi, character_id, ships, minutes, net_worth, ore_names, notes
 ) -> list[PlanItem]:
+    """A mining session in each owned, flyable ship that has mining modules fitted,
+    after the time it takes to get into that ship."""
     try:
-        estimate = mining.estimate_current(db, character_id)
-    except mining.MiningError as exc:
+        character = skills.load_character_skills(db, character_id)
+    except skills.SkillsError as exc:
         notes.append(Reason("mining_unavailable", {"why": str(exc)}))
         return []
-    if estimate.m3_per_minute <= 0 or station_id is None:
-        notes.append(Reason("no_mining_ship" if station_id else "no_station_to_sell"))
-        return []
+    implants = snapshots.latest(db, character_id, "implants") or []
     location = snapshots.latest(db, character_id, "location") or {}
-    here = _system_info(db, location.get("solar_system_id"))
-    mining_minutes = max(0.0, minutes - ore.MINUTES_TO_SELL)
-    hold_minutes = estimate.minutes_to_fill_hold
-    if hold_minutes:
-        trips = math.ceil(mining_minutes / (hold_minutes + MINUTES_PER_HOLD_TRIP))
-        mining_minutes = max(0.0, mining_minutes - trips * MINUTES_PER_HOLD_TRIP)
-    volume = estimate.m3_per_minute * mining_minutes
-    ship_value = risk.ship_exposure(db, character_id)
-    band = risk.band_for_security(
-        here["security_status"] if here else None, here["region"] if here else None
-    )
     items = []
-    for type_id in _ore_choices(db, character_id, location.get("solar_system_id"), ore_names,
-                                notes):  # fmt: skip
-        unit = db.execute("SELECT volume FROM sde_types WHERE type_id = ?", (type_id,)).fetchone()
-        if not unit or not unit["volume"]:
+    any_miner = False
+    for ship in ships:
+        board = fleet.boarding(db, character_id, ship)
+        if board is None:
             continue
-        quantity = int(volume / unit["volume"])
-        if quantity <= 0:
+        try:
+            estimate = mining.estimate(db, character, ship.type_id, list(ship.fitted), implants)
+        except mining.MiningError as exc:
+            notes.append(Reason("mining_unavailable", {"why": str(exc)}))
+            return []
+        if estimate.m3_per_minute <= 0:
             continue
-        analysis = ore.analyse(db, esi, character_id, type_id, quantity, station_id)
-        here_options = [o for o in analysis.options if o.instant and o.jumps == 0]
-        if not here_options:
+        any_miner = True
+        system_id = location.get("solar_system_id") if board.jumps == 0 else ship.system_id
+        if ship.is_active and location.get("station_id") and board.jumps == 0:
+            station_id = location["station_id"]
+        else:
+            station_id = _first_station(db, system_id)
+        if station_id is None:
+            notes.append(Reason("no_station_to_sell"))
             continue
-        best = here_options[0]
-        hold_value = (best.isk / volume) * (estimate.hold_m3 or volume) if volume else 0.0
-        items.append(
-            PlanItem(
-                kind="mining",
-                key=f"{type_id}",
-                title=f"Mine {analysis.type_name} for {mining_minutes:.0f} min, then "
-                f"{best.title[0].lower()}{best.title[1:]}",
-                isk=best.isk,
-                minutes=minutes,
-                risk=risk.rate(band, ship_value + hold_value, net_worth),
-                reasons=(
-                    Reason(
-                        "mining_estimate",
-                        {"m3_per_minute": estimate.m3_per_minute, "ship": estimate.ship_name},
-                    ),  # fmt: skip
-                    *estimate.reasons,
-                ),
-                inputs={
-                    "type_id": type_id,
-                    "quantity": quantity,
-                    "mining_minutes": mining_minutes,
-                    "sell_option": best.key,
-                },  # fmt: skip
-            )
+        here = _system_info(db, system_id)
+        time_left = minutes - board.minutes
+        mining_minutes = max(0.0, time_left - ore.MINUTES_TO_SELL)
+        hold_minutes = estimate.minutes_to_fill_hold
+        if hold_minutes:
+            trips = math.ceil(mining_minutes / (hold_minutes + MINUTES_PER_HOLD_TRIP))
+            mining_minutes = max(0.0, mining_minutes - trips * MINUTES_PER_HOLD_TRIP)
+        if mining_minutes < MIN_MINING_MINUTES:
+            continue
+        volume = estimate.m3_per_minute * mining_minutes
+        securities = [here["security_status"]] if here else []
+        if board.jumps:
+            route_low = routes.lowest_security(db, board.path)
+            if route_low is not None:
+                securities.append(route_low)
+        band = risk.band_for_security(
+            min(securities) if securities else None, here["region"] if here else None
         )
+        prefix = (
+            f"Board your {ship.name} ({board.minutes:.0f} min), then mine"
+            if board.needs_switch
+            else "Mine"
+        )
+        for type_id in _ore_choices(db, character_id, system_id, ore_names, notes):
+            unit = db.execute(
+                "SELECT volume FROM sde_types WHERE type_id = ?", (type_id,)
+            ).fetchone()
+            if not unit or not unit["volume"]:
+                continue
+            quantity = int(volume / unit["volume"])
+            if quantity <= 0:
+                continue
+            analysis = ore.analyse(db, esi, character_id, type_id, quantity, station_id)
+            here_options = [o for o in analysis.options if o.instant and o.jumps == 0]
+            if not here_options:
+                continue
+            best = here_options[0]
+            hold_value = (best.isk / volume) * (estimate.hold_m3 or volume) if volume else 0.0
+            items.append(
+                PlanItem(
+                    kind="mining",
+                    key=f"{ship.item_id}:{type_id}",
+                    title=f"{prefix} {analysis.type_name} for {mining_minutes:.0f} min, then "
+                    f"{best.title[0].lower()}{best.title[1:]}",
+                    isk=best.isk,
+                    minutes=minutes,
+                    risk=risk.rate(band, ship.value + hold_value, net_worth),
+                    reasons=(
+                        Reason(
+                            "mining_estimate",
+                            {"m3_per_minute": estimate.m3_per_minute, "ship": estimate.ship_name},
+                        ),
+                        *estimate.reasons,
+                    ),
+                    inputs={
+                        "type_id": type_id,
+                        "quantity": quantity,
+                        "mining_minutes": mining_minutes,
+                        "sell_option": best.key,
+                        "ship_item_id": ship.item_id,
+                        "board_minutes": board.minutes,
+                    },
+                )
+            )
+    if not any_miner:
+        notes.append(Reason("no_mining_ship"))
     return items
 
 
-def courier_candidates(db, esi, character_id, minutes, net_worth, highsec_only, notes):
+def courier_candidates(db, esi, character_id, ships, minutes, net_worth, highsec_only, notes):
+    location = snapshots.latest(db, character_id, "location") or {}
+    here_location = location.get("station_id") or location.get("structure_id")
+    choices = [
+        couriers.Ship(
+            s.type_id,
+            s.name,
+            s.cargo_m3,
+            switch_minutes=0.0 if s.is_active else fleet.MINUTES_TO_SWITCH_SHIP,
+            value=s.value,
+        )
+        for s in ships
+        if s.usable and s.cargo_m3 and (s.is_active or s.location_id == here_location)
+    ]
     try:
         found = couriers.find(
-            db, esi, character_id, highsec_only=highsec_only, max_minutes=minutes, limit=5
+            db,
+            esi,
+            character_id,
+            highsec_only=highsec_only,
+            max_minutes=minutes,
+            limit=5,
+            ships=choices,
         )
     except couriers.CourierError as exc:
         notes.append(Reason("couriers_unavailable", {"why": str(exc)}))
         return []
     if not found.options and found.excluded:
         notes.append(Reason("no_couriers_fit", dict(found.excluded)))
-    ship_value = risk.ship_exposure(db, character_id)
     items = []
     for option in found.options:
         band = risk.band_for_security(option.lowest_security)
+        in_ship = f" in your {option.ship.name}" if option.ship.switch_minutes else ""
         items.append(
             PlanItem(
                 kind="courier",
                 key=str(option.contract_id),
                 title=f"Courier {option.start_system} -> {option.end_system} "
                 f"({option.pickup_jumps}+{option.delivery_jumps} jumps, "
-                f"{option.volume_m3:,.0f} m3)",
+                f"{option.volume_m3:,.0f} m3){in_ship}",
                 isk=option.reward,
                 minutes=option.minutes,
-                risk=risk.rate(band, option.collateral + ship_value, net_worth),
+                risk=risk.rate(band, option.collateral + option.ship.value, net_worth),
                 reasons=option.reasons,
                 inputs={
                     "contract_id": option.contract_id,
                     "collateral": option.collateral,
                     "player_title": option.player_title,
-                },  # fmt: skip
+                    "ship": option.ship.name,
+                },
             )
         )
     return items
@@ -417,14 +524,22 @@ def build_plan(
     mutes = preferences.active_mutes(db)
     highsec_only = not allow_lowsec or "route:lowsec" in mutes
     worth = risk.net_worth(db, character_id)
-    station = _selling_station(db, character_id, notes)
+    _selling_station(db, character_id, notes)  # notes where selling happens
+    try:
+        ships = fleet.owned_ships(db, character_id)
+    except skills.SkillsError as exc:
+        notes.append(Reason("mining_unavailable", {"why": str(exc)}))
+        ships = []
 
     candidates: list[PlanItem] = []
     candidates += skill_candidates(db, character_id)
-    candidates += hangar_candidates(db, esi, character_id, worth, highsec_only, minutes, notes)
-    candidates += mining_candidates(db, esi, character_id, station, minutes, worth, ore_names,
-                                    notes)  # fmt: skip
-    candidates += courier_candidates(db, esi, character_id, minutes, worth, highsec_only, notes)
+    candidates += hangar_candidates(
+        db, esi, character_id, ships, worth, highsec_only, minutes, notes
+    )
+    candidates += mining_candidates(db, esi, character_id, ships, minutes, worth, ore_names, notes)
+    candidates += courier_candidates(
+        db, esi, character_id, ships, minutes, worth, highsec_only, notes
+    )
     candidates = [
         PlanItem(
             **{
@@ -531,7 +646,7 @@ def build_plan(
         minutes_available=minutes,
         items=tuple(chosen),
         alternatives=tuple(sorted(alternatives, key=lambda a: -a.item.adjusted_isk)),
-        notes=tuple(notes),
+        notes=tuple({n.code: n for n in notes}.values()),
         net_worth=worth,
     )
 

@@ -98,6 +98,10 @@ def describe(code: str, detail: dict | None = None) -> str:
         "ore_in_structure_skipped": lambda: (
             "Ore stored in player structures is not considered yet."
         ),
+        "hauler_chosen": lambda: (
+            f"Carried in your {d.get('ship')}: {d.get('load_m3', 0):,.0f} m3 of the "
+            f"{d.get('capacity_m3', 0):,.0f} m3 it can hold."
+        ),
     }
     maker = texts.get(code)
     return maker() if maker else code
