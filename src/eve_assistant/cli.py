@@ -9,6 +9,7 @@ from eve_assistant import (
     auth,
     goals,
     market,
+    mining,
     ore,
     refresh,
     sde,
@@ -263,6 +264,63 @@ def _cmd_ore(args) -> int:
     return 0
 
 
+def _cmd_mining(args) -> int:
+    with store.connect() as db:
+        character_id = goals.resolve_character(db, args.character)
+        if args.ship:
+            character = skills.load_character_skills(db, character_id)
+            ship_id = skills.find_type(db, args.ship)
+            modules = [skills.find_type(db, m) for m in args.module or []]
+            estimate = mining.estimate(db, character, ship_id, modules)
+        else:
+            estimate = mining.estimate_current(db, character_id)
+
+        print(f"{estimate.ship_name}: about {estimate.m3_per_minute:,.0f} m3 of ore per minute")
+        for module in estimate.modules:
+            print(
+                f"  {module.name}: {module.m3_per_cycle:,.1f} m3 every "
+                f"{module.cycle_seconds:.1f} s ({module.m3_per_minute:,.0f} m3/min)"
+            )
+        scaled = ", ".join(f"{k} x{v:.2f}" for k, v in estimate.multipliers.items())
+        print(f"  Scaled by: {scaled}")
+        if estimate.minutes_to_fill_hold:
+            print(
+                f"  Ore hold {estimate.hold_m3:,.0f} m3: full after about "
+                f"{estimate.minutes_to_fill_hold:,.0f} minutes"
+            )
+        for reason in estimate.reasons:
+            if reason.code == "no_mining_modules":
+                print("  - No mining modules fitted. Try --ship and --module to compare fits.")
+            elif reason.code == "crystals_not_modelled":
+                print("  - Mining crystals are not counted yet.")
+            elif reason.code == "not_modelled":
+                print(f"  - Not counted: {', '.join(reason.detail['items'])}.")
+            elif reason.code == "modules_not_usable":
+                names = ", ".join(reason.detail["modules"])
+                print(f"  - Left out, skills missing or Alpha-locked: {names}.")
+            elif reason.code == "ship_not_usable":
+                print(f"  - This character cannot fly a {reason.detail['ship']} yet.")
+
+        if args.ore and estimate.m3_per_minute:
+            config = load_config()
+            ore_id = skills.find_type(db, args.ore)
+            volume = db.execute(
+                "SELECT volume FROM sde_types WHERE type_id = ?", (ore_id,)
+            ).fetchone()[0]
+            per_hour = int(estimate.m3_per_minute * 60 / volume)
+            station_id = _resolve_station(db, character_id, args.station)
+            with auth.http_client(config) as client:
+                esi = EsiClient(client, db)
+                result = ore.analyse(db, esi, character_id, ore_id, per_hour, station_id)
+            print(f"One hour of mining {result.type_name}: about {per_hour:,} units. Best uses:")
+            for option in [o for o in result.options if o.instant][:3]:
+                print(
+                    f"  {option.isk:>12,.0f} ISK  +{option.active_minutes:.0f} min  {option.title}"
+                )
+    print("This is an estimate from the static data; it improves once real sessions are recorded.")
+    return 0
+
+
 def _cmd_accounts(_args) -> int:
     with store.connect() as db:
         views = accounts.overview(db)
@@ -343,6 +401,18 @@ def build_parser() -> argparse.ArgumentParser:
     ore_cmd.add_argument("--allow-lowsec", action="store_true", help="allow lowsec routes")
     ore_cmd.set_defaults(func=_cmd_ore)
 
+    mining_cmd = commands.add_parser("mining", help="estimate ore mining yield")
+    mining_cmd.add_argument("character", help="character name or ID")
+    mining_cmd.add_argument(
+        "--ship", help='compare a ship instead of the current one, e.g. "Venture"'
+    )
+    mining_cmd.add_argument(
+        "--module", action="append", help='a fitted module (repeat), e.g. --module "Miner I"'
+    )
+    mining_cmd.add_argument("--ore", help="also value an hour of mining this ore")
+    mining_cmd.add_argument("--station", help="where the ore would be sold (default: docked)")
+    mining_cmd.set_defaults(func=_cmd_mining)
+
     serve = commands.add_parser("serve", help="run the dashboard on this PC")
     serve.add_argument("--port", type=int, default=8700)
     serve.set_defaults(func=_cmd_serve)
@@ -380,6 +450,7 @@ def main(argv: list[str] | None = None) -> int:
         SkillsError,
         GoalError,
         ore.OreError,
+        mining.MiningError,
     ) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 2

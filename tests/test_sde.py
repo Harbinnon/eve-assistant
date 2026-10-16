@@ -48,6 +48,7 @@ def sample_zip(tmp_path):
                     {"attributeID": 182, "value": 17940.0},
                     {"attributeID": 277, "value": 1.0},
                     {"attributeID": 9, "value": 4000.0},
+                    {"attributeID": 3181, "value": 3.0},
                 ],
             },
         ],
@@ -84,6 +85,12 @@ def sample_zip(tmp_path):
             {"_key": 2, "solarSystemID": 30000144, "destination": {"solarSystemID": 30000142}},
         ],
         "npcCorporations.jsonl": [{"_key": 1000035, "factionID": 500001}],
+        "dogmaAttributes.jsonl": [
+            {"_key": 9, "name": "hp"},
+            {"_key": 182, "name": "requiredSkill1"},
+            {"_key": 277, "name": "requiredSkill1Level"},
+            {"_key": 3181, "name": "miningBargeBonusOreMiningYield"},
+        ],
     }
     with zipfile.ZipFile(path, "w") as archive:
         for name, rows in files.items():
@@ -106,7 +113,9 @@ def test_load_fills_tables_with_english_names(db, sample_zip):
     )
     assert db.execute("SELECT name FROM sde_categories").fetchone()[0] == "Ship"
     attrs = dict(db.execute("SELECT attribute_id, value FROM sde_type_attributes").fetchall())
-    assert attrs == {182: 17940.0, 277: 1.0}  # attribute 9 is not kept
+    # attribute 9 is not kept; 3181 is kept because of its name
+    assert attrs == {182: 17940.0, 277: 1.0, 3181: 3.0}
+    assert db.execute("SELECT COUNT(*) FROM sde_dogma_attributes").fetchone()[0] == 4
     assert db.execute("SELECT max_level FROM sde_clone_grade_skills").fetchone()[0] == 4
     assert sde.loaded_build(db).build_number == 42
     assert db.execute("SELECT quantity FROM sde_type_materials").fetchone()[0] == 400

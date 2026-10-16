@@ -57,6 +57,7 @@ eve-assistant goal add isk <amount> [--character <name>]
 eve-assistant goals                    progress on every active goal
 eve-assistant goal done|dropped <id>   close a goal
 eve-assistant ore <character> "<ore>" <qty> [--station Jita] [--allow-lowsec]
+eve-assistant mining <character> [--ship "Venture" --module "Miner I" ...] [--ore Veldspar]
 eve-assistant serve [--port 8700]      run the dashboard at http://127.0.0.1:8700
 ```
 

@@ -36,9 +36,33 @@ ATTRIBUTE_IDS = frozenset(
     | {SKILL_RANK, PRIMARY_ATTRIBUTE, SECONDARY_ATTRIBUTE, REPROCESSING_SKILL}
 )
 
+# Attributes kept by name (resolved against dogmaAttributes at load time).
+ATTRIBUTE_NAMES = frozenset(
+    {
+        "duration",
+        "miningAmount",
+        "miningAmountMultiplier",
+        "miningAmountBonus",
+        "miningCritChance",
+        "miningCritBonusYield",
+        "generalMiningHoldCapacity",
+        "specialOreHoldCapacity",
+    }
+)
+ATTRIBUTE_NAME_SUFFIXES = ("OreMiningYield", "OreMiningDuration")
+
 # Bump when load() starts filling new tables or attributes; a database loaded
 # by an older loader is then reported as needing a reload.
-LOADER_VERSION = 2
+LOADER_VERSION = 3
+
+
+def _kept_attribute_ids(names: dict[int, str]) -> frozenset[int]:
+    by_name = {
+        attribute_id
+        for attribute_id, name in names.items()
+        if name in ATTRIBUTE_NAMES or name.endswith(ATTRIBUTE_NAME_SUFFIXES)
+    }
+    return ATTRIBUTE_IDS | by_name
 
 
 class SdeError(Exception):
@@ -129,6 +153,7 @@ def load(db: sqlite3.Connection, zip_path: Path) -> SdeBuild:
                 "sde_type_materials",
                 "sde_jumps",
                 "sde_npc_corporations",
+                "sde_dogma_attributes",
             ):
                 db.execute(f"DELETE FROM {table}")  # noqa: S608 - fixed table names
 
@@ -171,13 +196,16 @@ def load(db: sqlite3.Connection, zip_path: Path) -> SdeBuild:
                     for r in _rows(archive, "types.jsonl")
                 ),
             )
+            names = {r["_key"]: r.get("name", "") for r in _rows(archive, "dogmaAttributes.jsonl")}
+            db.executemany("INSERT INTO sde_dogma_attributes VALUES (?, ?)", names.items())
+            keep = _kept_attribute_ids(names)
             db.executemany(
                 "INSERT INTO sde_type_attributes VALUES (?, ?, ?)",
                 (
                     (r["_key"], a["attributeID"], a["value"])
                     for r in _rows(archive, "typeDogma.jsonl")
                     for a in r.get("dogmaAttributes", [])
-                    if a["attributeID"] in ATTRIBUTE_IDS
+                    if a["attributeID"] in keep
                 ),
             )
             db.executemany(

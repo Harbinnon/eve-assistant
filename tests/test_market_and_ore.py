@@ -4,7 +4,7 @@ import httpx
 import pytest
 import respx
 
-from eve_assistant import fees, market, ore, routes, snapshots, store
+from eve_assistant import fees, market, ore, routes, sde, snapshots, store
 from eve_assistant.esi.client import EsiClient
 
 # A tiny map: Home (station 1) - Mid - Hub (Jita's real IDs), plus a lowsec
@@ -87,7 +87,7 @@ def db():
     )
     conn.execute("INSERT INTO sde_type_materials VALUES (?, ?, 400)", (ORE, MINERAL))
     conn.execute("INSERT INTO sde_type_attributes VALUES (?, 790, ?)", (ORE, ORE_SKILL))
-    conn.execute("INSERT INTO sde_meta VALUES (1, 'x', 'y', 2)")
+    conn.execute("INSERT INTO sde_meta VALUES (1, 'x', 'y', ?)", (sde.LOADER_VERSION,))
     snapshots.ensure_character(conn, 7, "Pilot")
     snapshots.record(conn, 7, "public", {"race_id": 1})
     names = ("charisma", "intelligence", "memory", "perception", "willpower")
