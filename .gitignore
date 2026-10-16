@@ -30,3 +30,6 @@ htmlcov/
 *.swp
 Thumbs.db
 .DS_Store
+
+# Local AI-tool settings
+.claude/

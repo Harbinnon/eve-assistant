@@ -3,10 +3,10 @@
 import argparse
 import sys
 
-from eve_assistant import __version__, accounts, auth, goals, sde, skills, snapshots, store
+from eve_assistant import __version__, accounts, auth, goals, refresh, sde, skills, store
 from eve_assistant.accounts import AccountError
 from eve_assistant.config import ConfigError, load_config
-from eve_assistant.esi.client import EsiClient, EsiError
+from eve_assistant.esi.client import EsiError
 from eve_assistant.esi.sso import SSOError
 from eve_assistant.goals import GoalError
 from eve_assistant.sde import SdeError
@@ -16,11 +16,11 @@ from eve_assistant.skills import SkillsError
 
 def _cmd_login(_args) -> int:
     config = load_config()
-    store = default_store()
+    secrets = default_store()
     print("Opening EVE's login page in your browser. Pick the character to add.")
     print("Waiting up to 5 minutes...")
     with auth.http_client(config) as client:
-        character = auth.login_character(config, store, client)
+        character = auth.login_character(config, secrets, client)
     print(f"Logged in: {character.name} ({character.character_id}).")
     if character.missing_scopes:
         print("Warning: these permissions were not granted, so some features won't work:")
@@ -33,8 +33,8 @@ def _cmd_login(_args) -> int:
 
 
 def _cmd_characters(args) -> int:
-    store = default_store()
-    characters = auth.list_characters(store)
+    secrets = default_store()
+    characters = auth.list_characters(secrets)
     if not characters:
         print("No characters logged in. Run: eve-assistant login")
         return 0
@@ -45,7 +45,7 @@ def _cmd_characters(args) -> int:
         if config is not None:
             try:
                 with auth.http_client(config) as client:
-                    auth.access_token(config, store, client, character.character_id)
+                    auth.access_token(config, secrets, client, character.character_id)
                 line += "  token OK"
             except SSOError as exc:
                 failures += 1
@@ -57,8 +57,8 @@ def _cmd_characters(args) -> int:
 
 
 def _cmd_logout(args) -> int:
-    store = default_store()
-    if auth.logout(store, args.character_id):
+    secrets = default_store()
+    if auth.logout(secrets, args.character_id):
         print(f"Removed the stored token for {args.character_id} from this PC.")
         print(f"To revoke the app's access entirely, also visit {auth.REVOKE_PAGE}")
         return 0
@@ -81,32 +81,35 @@ def _cmd_sde_update(args) -> int:
 
 
 def _cmd_snapshot(_args) -> int:
+    report = refresh.refresh_all(load_config(), default_store())
+    for line in report.lines:
+        print(line)
+    if report.priced:
+        print(f"Market prices: {report.priced:,} items.")
+    for problem in report.problems:
+        print(f"  {problem}")
+    return 1 if report.problems else 0
+
+
+def _cmd_serve(args) -> int:
+    import uvicorn
+
+    from eve_assistant.web import create_app
+
     config = load_config()
+    if config.mode != "local":
+        print("Hosted mode is not built yet: the dashboard has no login, so it only runs locally.")
+        return 2
     secrets = default_store()
-    characters = auth.list_characters(secrets)
-    if not characters:
-        print("No characters logged in. Run: eve-assistant login")
-        return 0
-    failed = 0
-    with store.connect() as db, auth.http_client(config) as client:
-        tokens = auth.AccessTokens(config, secrets, client)
-        esi = EsiClient(client, db, token_for=tokens.get)
-        for character in characters:
-            snapshots.ensure_character(db, character.character_id, character.name)
-            results = snapshots.collect(db, esi, character.character_id)
-            changed = [r.kind for r in results if r.outcome == "changed"]
-            problems = [r for r in results if r.outcome == "failed"]
-            failed += len(problems)
-            print(
-                f"{character.name}: {len(changed)} changed, "
-                f"{len(results) - len(changed) - len(problems)} unchanged, "
-                f"{len(problems)} failed"
-            )
-            for problem in problems:
-                print(f"  {problem.kind}: {problem.detail}")
-        priced = goals.update_prices(db, esi)
-        print(f"Market prices: {priced:,} items.")
-    return 1 if failed else 0
+
+    def do_refresh() -> list[str]:
+        return refresh.refresh_all(config, secrets).problems
+
+    print(f"Dashboard: http://127.0.0.1:{args.port}  (Ctrl+C to stop)")
+    uvicorn.run(
+        create_app(refresh=do_refresh), host="127.0.0.1", port=args.port, log_level="warning"
+    )
+    return 0
 
 
 def _print_requirement(req: skills.Requirement, is_alpha: bool) -> None:
@@ -270,6 +273,10 @@ def build_parser() -> argparse.ArgumentParser:
     skills_cmd.add_argument("character", help="character name or ID")
     skills_cmd.add_argument("item", help='item name, e.g. "Retriever"')
     skills_cmd.set_defaults(func=_cmd_skills)
+
+    serve = commands.add_parser("serve", help="run the dashboard on this PC")
+    serve.add_argument("--port", type=int, default=8700)
+    serve.set_defaults(func=_cmd_serve)
 
     commands.add_parser("goals", help="show goals and how far away they are").set_defaults(
         func=_cmd_goals

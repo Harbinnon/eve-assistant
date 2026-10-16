@@ -5,7 +5,9 @@ and haul. Set a goal, say how long you can play, and it reads your
 characters through CCP's API (ESI) and suggests the best use of that time,
 then learns from what actually happened.
 
-**Status: phase 1 in progress. Nothing usable yet.** The design is in
+**Status: phase 1 (foundations and dashboard) is built: login, character
+snapshots, skill plans, goals and a local dashboard. The planner (phase 2)
+is next.** The design is in
 [docs/design.md](docs/design.md).
 
 ## What it will do
@@ -54,6 +56,7 @@ eve-assistant goal add skill "<skill>" <level> --character <name>
 eve-assistant goal add isk <amount> [--character <name>]
 eve-assistant goals                    progress on every active goal
 eve-assistant goal done|dropped <id>   close a goal
+eve-assistant serve [--port 8700]      run the dashboard at http://127.0.0.1:8700
 ```
 
 Data lives in `var/` (the database and downloaded static data) and is

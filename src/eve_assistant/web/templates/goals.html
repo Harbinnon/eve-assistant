@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Goals · EVE Assistant{% endblock %}
+{% block content %}
+<h1>Goals</h1>
+<p class="lede">What each goal would take in skills and ISK. Arrival dates come once the planner knows how you earn.</p>
+
+{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+{% if problems %}
+<div class="problems" role="alert"><ul>{% for p in problems %}<li>{{ p }}</li>{% endfor %}</ul></div>
+{% endif %}
+
+{% for s in statuses %}
+<article class="card goal">
+  <h3>{{ s.goal.label }}{% if s.character_name %} <span class="muted">· {{ s.character_name }}</span>{% endif %}</h3>
+  {% if s.requirement %}
+    {% with req = s.requirement, is_alpha = s.is_alpha %}{% include "_requirement.html" %}{% endwith %}
+  {% endif %}
+  {% if s.price is not none or s.isk_needed is not none %}
+  <dl class="facts" style="margin-top:12px">
+    {% if s.price is not none %}<dt>Rough price</dt><dd>{{ s.price|isk }} ISK <span class="muted">(CCP average, not a hub quote)</span></dd>{% endif %}
+    {% if s.goal.isk %}<dt>Target</dt><dd>{{ s.goal.isk|isk }} ISK</dd>{% endif %}
+    {% if s.wallet is not none %}<dt>Wallet</dt><dd>{{ s.wallet|isk }} ISK{% if not s.character_name %} <span class="muted">(all characters)</span>{% endif %}</dd>{% endif %}
+    {% if s.isk_needed is not none %}<dt>Still needed</dt><dd>{% if s.isk_needed == 0 %}<span class="pill good">covered</span>{% else %}{{ s.isk_needed|isk }} ISK{% endif %}</dd>{% endif %}
+  </dl>
+  {% endif %}
+  {% for r in s.reasons %}
+    {% if r.code == "no_price" %}<p class="muted">No market price yet: press Refresh on the Characters page.</p>
+    {% elif r.code == "clone_state_unknown" %}<p class="muted">Account clone state not set; assumed Alpha.</p>{% endif %}
+  {% endfor %}
+  <div class="actions">
+    {% for status, label in [("done", "Mark done"), ("dropped", "Drop")] %}
+    <form class="inline" method="post" action="/goals/{{ s.goal.goal_id }}/status">
+      <input type="hidden" name="token" value="{{ form_token }}">
+      <input type="hidden" name="status" value="{{ status }}">
+      <button class="small" type="submit">{{ label }}</button>
+    </form>
+    {% endfor %}
+  </div>
+</article>
+{% else %}
+<p class="muted">No goals yet. Add one below.</p>
+{% endfor %}
+
+<h2>Add a goal</h2>
+<form class="stack card" method="post" action="/goals">
+  <input type="hidden" name="token" value="{{ form_token }}">
+  <label for="kind">Type
+    <select id="kind" name="kind">
+      <option value="ship">Fly a ship</option>
+      <option value="skill">Train a skill</option>
+      <option value="isk">Have an amount of ISK</option>
+    </select>
+  </label>
+  <label for="target">Ship, skill or ISK amount
+    <input id="target" name="target" required placeholder="Retriever">
+  </label>
+  <label for="level">Level (skills)
+    <input id="level" name="level" type="number" min="1" max="5" style="width:6em">
+  </label>
+  <label for="character">Character
+    <select id="character" name="character">
+      <option value="">All characters (ISK only)</option>
+      {% for n in character_names %}<option>{{ n }}</option>{% endfor %}
+    </select>
+  </label>
+  <button class="primary" type="submit">Add goal</button>
+</form>
+{% endblock %}

@@ -1,0 +1,36 @@
+{# Shared: one skill Requirement. Needs `req` and `is_alpha`. #}
+{% if req.usable_now %}
+  <p><span class="pill good">Ready</span> The skills are in place.</p>
+{% else %}
+  {% if req.usable_with_omega_now %}
+  <p><span class="pill omega">Omega unlocks it</span> The skills are already trained; Alpha is the only thing in the way.</p>
+  {% endif %}
+  {% if req.steps %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Skill</th><th>Level</th><th class="num">Skill points</th><th class="num">Time as Omega</th><th>Alpha</th></tr></thead>
+      <tbody>
+      {% for s in req.steps %}
+        <tr>
+          <td>{{ s.skill_name }}</td>
+          <td>{{ s.level }}</td>
+          <td class="num">{{ "{:,}".format(s.skillpoints) }}</td>
+          <td class="num">{{ s.minutes_omega|duration }}</td>
+          <td>{% if s.allowed_for_alpha %}<span class="muted">allowed</span>{% else %}<span class="pill alpha">Omega only</span>{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p style="margin-top:10px">
+    <span class="big">{{ req.minutes_as_omega|duration }}</span> <span class="muted">as Omega</span>
+    {% if is_alpha %}
+      · {% if req.minutes_as_alpha is none %}<span class="pill bad">not possible as Alpha</span>
+        {% else %}about {{ req.minutes_as_alpha|duration }} as Alpha <span class="muted">(Alpha speed assumed half; not yet confirmed)</span>{% endif %}
+    {% endif %}
+  </p>
+  {% endif %}
+{% endif %}
+{% if req.reasons %}
+<ul class="reasons">{% for r in req.reasons %}<li>{{ describe(r) }}</li>{% endfor %}</ul>
+{% endif %}

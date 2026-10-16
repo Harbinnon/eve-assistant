@@ -3,7 +3,7 @@
 *Working name. Shareable version: contains no personal account,
 character or infrastructure details.*
 
-Status: **design agreed. Phase 1 (section 7) in progress.**
+Status: **design agreed. Phase 1 (section 7) built; phase 2 next.**
 
 
 ---
