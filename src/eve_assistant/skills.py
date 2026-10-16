@@ -189,9 +189,15 @@ def sp_per_minute(db: sqlite3.Connection, character: CharacterSkills, skill_id: 
             (skill_id, sde.PRIMARY_ATTRIBUTE, sde.SECONDARY_ATTRIBUTE),
         ).fetchall()
     )
-    primary = character.attributes[ATTRIBUTE_NAMES[int(attrs[sde.PRIMARY_ATTRIBUTE])]]
-    secondary = character.attributes[ATTRIBUTE_NAMES[int(attrs[sde.SECONDARY_ATTRIBUTE])]]
-    return primary + secondary / 2
+    # A skill without attribute data (should not happen with a full SDE) falls
+    # back to the character's average attribute rather than failing.
+    average = sum(character.attributes.values()) / len(character.attributes)
+
+    def value(attribute_id: int) -> float:
+        name = ATTRIBUTE_NAMES.get(int(attrs.get(attribute_id, 0)))
+        return character.attributes.get(name, average) if name else average
+
+    return value(sde.PRIMARY_ATTRIBUTE) + value(sde.SECONDARY_ATTRIBUTE) / 2
 
 
 def skill_rank(db: sqlite3.Connection, skill_id: int) -> float:
