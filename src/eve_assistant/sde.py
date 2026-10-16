@@ -30,10 +30,15 @@ REQUIRED_SKILL_ATTRIBUTES = {182: 277, 183: 278, 184: 279, 1285: 1286, 1289: 128
 SKILL_RANK = 275
 PRIMARY_ATTRIBUTE = 180
 SECONDARY_ATTRIBUTE = 181
+REPROCESSING_SKILL = 790  # the ore processing skill for an ore type
 ATTRIBUTE_IDS = frozenset(
     {*REQUIRED_SKILL_ATTRIBUTES, *REQUIRED_SKILL_ATTRIBUTES.values()}
-    | {SKILL_RANK, PRIMARY_ATTRIBUTE, SECONDARY_ATTRIBUTE}
+    | {SKILL_RANK, PRIMARY_ATTRIBUTE, SECONDARY_ATTRIBUTE, REPROCESSING_SKILL}
 )
+
+# Bump when load() starts filling new tables or attributes; a database loaded
+# by an older loader is then reported as needing a reload.
+LOADER_VERSION = 2
 
 
 class SdeError(Exception):
@@ -121,6 +126,9 @@ def load(db: sqlite3.Connection, zip_path: Path) -> SdeBuild:
                 "sde_regions",
                 "sde_solar_systems",
                 "sde_npc_stations",
+                "sde_type_materials",
+                "sde_jumps",
+                "sde_npc_corporations",
             ):
                 db.execute(f"DELETE FROM {table}")  # noqa: S608 - fixed table names
 
@@ -219,11 +227,47 @@ def load(db: sqlite3.Connection, zip_path: Path) -> SdeBuild:
                     for r in _rows(archive, "npcStations.jsonl")
                 ),
             )
+            db.executemany(
+                "INSERT INTO sde_type_materials VALUES (?, ?, ?)",
+                (
+                    (r["_key"], m["materialTypeID"], m["quantity"])
+                    for r in _rows(archive, "typeMaterials.jsonl")
+                    for m in r.get("materials", [])
+                ),
+            )
+            db.executemany(
+                "INSERT OR IGNORE INTO sde_jumps VALUES (?, ?)",
+                (
+                    (r["solarSystemID"], r["destination"]["solarSystemID"])
+                    for r in _rows(archive, "mapStargates.jsonl")
+                ),
+            )
+            db.executemany(
+                "INSERT INTO sde_npc_corporations VALUES (?, ?)",
+                ((r["_key"], r.get("factionID")) for r in _rows(archive, "npcCorporations.jsonl")),
+            )
             db.execute(
-                "INSERT INTO sde_meta VALUES (?, ?, ?)",
-                (build.build_number, build.release_date, utc_now()),
+                "INSERT INTO sde_meta (build_number, release_date, loaded_at, loader_version) "
+                "VALUES (?, ?, ?, ?)",
+                (build.build_number, build.release_date, utc_now(), LOADER_VERSION),
             )
     return build
+
+
+def needs_reload(db: sqlite3.Connection) -> bool:
+    """True when the static data was loaded by an older version of this loader."""
+    row = db.execute("SELECT loader_version FROM sde_meta").fetchone()
+    return row is not None and row[0] < LOADER_VERSION
+
+
+def require_current(db: sqlite3.Connection) -> None:
+    if loaded_build(db) is None:
+        raise SdeError("No static data loaded yet. Run `eve-assistant sde-update`.")
+    if needs_reload(db):
+        raise SdeError(
+            "The static data needs reloading for this feature. "
+            "Run `eve-assistant sde-update --force`."
+        )
 
 
 def update(
@@ -232,6 +276,11 @@ def update(
     """Bring the static data up to date. Returns (build, whether anything was loaded)."""
     latest = latest_build(http)
     current = loaded_build(db)
-    if not force and current and current.build_number == latest.build_number:
+    if (
+        not force
+        and current
+        and current.build_number == latest.build_number
+        and not needs_reload(db)
+    ):
         return current, False
     return load(db, download(http, latest)), True

@@ -32,7 +32,9 @@ def db_path(tmp_path):
     conn.execute("INSERT INTO sde_clone_grade_skills VALUES (1, 'Alpha Test', ?, 4)", (SKILL,))
     conn.execute("INSERT INTO sde_solar_systems VALUES (30000142, 'Jita', 1, 1, 0.946, 'B')")
     conn.execute("INSERT INTO sde_regions VALUES (1, 'The Forge')")
-    conn.execute("INSERT INTO sde_meta VALUES (1, 'x', 'y')")
+    conn.execute(
+        "INSERT INTO sde_meta (build_number, release_date, loaded_at) VALUES (1, 'x', 'y')"
+    )
     snapshots.ensure_character(conn, 7, "Test Pilot")
     for kind, payload in {
         "public": {"race_id": 1},

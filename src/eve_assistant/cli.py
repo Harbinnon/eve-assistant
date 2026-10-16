@@ -3,10 +3,22 @@
 import argparse
 import sys
 
-from eve_assistant import __version__, accounts, auth, goals, refresh, sde, skills, store
+from eve_assistant import (
+    __version__,
+    accounts,
+    auth,
+    goals,
+    market,
+    ore,
+    refresh,
+    sde,
+    skills,
+    snapshots,
+    store,
+)
 from eve_assistant.accounts import AccountError
 from eve_assistant.config import ConfigError, load_config
-from eve_assistant.esi.client import EsiError
+from eve_assistant.esi.client import EsiClient, EsiError
 from eve_assistant.esi.sso import SSOError
 from eve_assistant.goals import GoalError
 from eve_assistant.sde import SdeError
@@ -202,6 +214,55 @@ def _cmd_goal_status(args) -> int:
     return 0
 
 
+def _resolve_station(db, character_id: int, station: str | None) -> int:
+    if station:
+        for hub in market.HUBS:
+            if hub.name.lower() == station.lower():
+                return hub.station_id
+        if station.isdigit():
+            return int(station)
+        raise ore.OreError(f"Unknown station '{station}'. Use a hub name or a station ID.")
+    location = snapshots.latest(db, character_id, "location") or {}
+    if location.get("station_id"):
+        return location["station_id"]
+    raise ore.OreError(
+        "The character is not docked at an NPC station. Pass --station, e.g. --station Jita."
+    )
+
+
+def _cmd_ore(args) -> int:
+    config = load_config()
+    secrets = default_store()
+    with store.connect() as db, auth.http_client(config) as client:
+        character_id = goals.resolve_character(db, args.character)
+        type_id = skills.find_type(db, args.ore)
+        station_id = _resolve_station(db, character_id, args.station)
+        esi = EsiClient(client, db, token_for=auth.AccessTokens(config, secrets, client).get)
+        result = ore.analyse(
+            db, esi, character_id, type_id, args.quantity, station_id,
+            highsec_only=not args.allow_lowsec,
+        )  # fmt: skip
+    print(
+        f"{result.quantity:,} {result.type_name} ({result.volume_m3:,.0f} m3"
+        + (
+            f", {result.compressed_volume_m3:,.0f} m3 compressed"
+            if result.compressed_volume_m3
+            else ""
+        )  # fmt: skip
+        + f"). Refining here: {result.refine_yield:.1%} yield, {result.refine_tax:.1%} tax."
+    )
+    for option in result.options:
+        flag = "" if option.instant else "  (waits for buyers)"
+        print(
+            f"  {option.isk:>14,.0f} ISK  {option.active_minutes:>5.0f} min  {option.title}{flag}"
+        )
+        for reason in option.reasons:
+            if reason.code == "not_enough_buyers":
+                print(f"{'':24}not enough buyers for {reason.detail['unsold']:,} units")
+    print("  Travel time assumes about 1 minute per jump until the tool learns your pace.")
+    return 0
+
+
 def _cmd_accounts(_args) -> int:
     with store.connect() as db:
         views = accounts.overview(db)
@@ -274,6 +335,14 @@ def build_parser() -> argparse.ArgumentParser:
     skills_cmd.add_argument("item", help='item name, e.g. "Retriever"')
     skills_cmd.set_defaults(func=_cmd_skills)
 
+    ore_cmd = commands.add_parser("ore", help="compare selling, refining and hauling ore")
+    ore_cmd.add_argument("character", help="character name or ID")
+    ore_cmd.add_argument("ore", help='ore name, e.g. "Veldspar"')
+    ore_cmd.add_argument("quantity", type=int)
+    ore_cmd.add_argument("--station", help="hub name or station ID (default: where docked)")
+    ore_cmd.add_argument("--allow-lowsec", action="store_true", help="allow lowsec routes")
+    ore_cmd.set_defaults(func=_cmd_ore)
+
     serve = commands.add_parser("serve", help="run the dashboard on this PC")
     serve.add_argument("--port", type=int, default=8700)
     serve.set_defaults(func=_cmd_serve)
@@ -310,6 +379,7 @@ def main(argv: list[str] | None = None) -> int:
         AccountError,
         SkillsError,
         GoalError,
+        ore.OreError,
     ) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 2

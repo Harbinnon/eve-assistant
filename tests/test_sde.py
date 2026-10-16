@@ -76,6 +76,14 @@ def sample_zip(tmp_path):
                 "reprocessingStationsTake": 0.05,
             }
         ],
+        "typeMaterials.jsonl": [
+            {"_key": 1230, "materials": [{"materialTypeID": 34, "quantity": 400}]}
+        ],
+        "mapStargates.jsonl": [
+            {"_key": 1, "solarSystemID": 30000142, "destination": {"solarSystemID": 30000144}},
+            {"_key": 2, "solarSystemID": 30000144, "destination": {"solarSystemID": 30000142}},
+        ],
+        "npcCorporations.jsonl": [{"_key": 1000035, "factionID": 500001}],
     }
     with zipfile.ZipFile(path, "w") as archive:
         for name, rows in files.items():
@@ -101,6 +109,18 @@ def test_load_fills_tables_with_english_names(db, sample_zip):
     assert attrs == {182: 17940.0, 277: 1.0}  # attribute 9 is not kept
     assert db.execute("SELECT max_level FROM sde_clone_grade_skills").fetchone()[0] == 4
     assert sde.loaded_build(db).build_number == 42
+    assert db.execute("SELECT quantity FROM sde_type_materials").fetchone()[0] == 400
+    assert db.execute("SELECT COUNT(*) FROM sde_jumps").fetchone()[0] == 2
+    assert db.execute("SELECT faction_id FROM sde_npc_corporations").fetchone()[0] == 500001
+    assert not sde.needs_reload(db)
+
+
+def test_data_from_an_older_loader_must_be_reloaded(db, sample_zip):
+    sde.load(db, sample_zip)
+    db.execute("UPDATE sde_meta SET loader_version = 1")
+    assert sde.needs_reload(db)
+    with pytest.raises(sde.SdeError, match="--force"):
+        sde.require_current(db)
 
 
 def test_reload_replaces_rather_than_duplicates(db, sample_zip):

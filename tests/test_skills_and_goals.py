@@ -39,7 +39,9 @@ def db():
     conn.execute(
         "INSERT INTO sde_clone_grade_skills VALUES (?, 'Alpha Test', ?, 4)", (RACE, MINING)
     )
-    conn.execute("INSERT INTO sde_meta VALUES (1, 'x', 'y')")
+    conn.execute(
+        "INSERT INTO sde_meta (build_number, release_date, loaded_at) VALUES (1, 'x', 'y')"
+    )
     conn.commit()
     yield conn
     conn.close()
