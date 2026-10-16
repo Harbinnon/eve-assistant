@@ -7,6 +7,7 @@ from eve_assistant import (
     __version__,
     accounts,
     auth,
+    couriers,
     goals,
     market,
     mining,
@@ -321,6 +322,56 @@ def _cmd_mining(args) -> int:
     return 0
 
 
+def _cmd_couriers(args) -> int:
+    config = load_config()
+    with store.connect() as db, auth.http_client(config) as client:
+        character_id = goals.resolve_character(db, args.character)
+        region_ids = None
+        if args.region:
+            region_ids = []
+            for name in args.region:
+                row = db.execute(
+                    "SELECT region_id FROM sde_regions WHERE name = ? COLLATE NOCASE", (name,)
+                ).fetchone()
+                if row is None:
+                    raise couriers.CourierError(f"No region called '{name}'.")
+                region_ids.append(row["region_id"])
+        result = couriers.find(
+            db,
+            EsiClient(client, db),
+            character_id,
+            region_ids=region_ids,
+            highsec_only=not args.allow_lowsec,
+            max_minutes=args.minutes,
+            limit=args.limit,
+            what_if_ship_id=skills.find_type(db, args.ship) if args.ship else None,
+        )
+    print(f"Courier contracts in {', '.join(result.regions)}, best ISK per minute first:")
+    if not result.options:
+        print("  None that fit right now.")
+    for o in result.options:
+        security = f"{o.lowest_security:.1f}" if o.lowest_security is not None else "?"
+        print(
+            f"  {o.reward:>12,.0f} ISK  {o.minutes:>4.0f} min  {o.isk_per_minute:>9,.0f}/min  "
+            f"{o.start_system} -> {o.end_system} ({o.pickup_jumps}+{o.delivery_jumps} jumps, "
+            f"lowest sec {security})"
+        )
+        whose = "a" if any(r.code == "what_if_ship" for r in o.reasons) else "your"
+        print(
+            f"{'':16}{o.volume_m3:,.0f} m3 in {whose} {o.ship.name}, collateral "
+            f"{o.collateral:,.0f}, {o.days_to_complete} days to deliver"
+        )
+        for reason in o.reasons:
+            if reason.code == "collateral_large_share":
+                print(f"{'':16}warning: collateral is {reason.detail['share']:.0%} of the wallet")
+    if result.excluded:
+        skipped = ", ".join(f"{n} {k.replace('_', ' ')}" for k, n in result.excluded.items())
+        print(f"  Skipped: {skipped}.")
+    print("  Travel time assumes about 1 minute per jump. Lawless highsec is not detected:")
+    print("  check the route in game before accepting anything valuable.")
+    return 0
+
+
 def _cmd_accounts(_args) -> int:
     with store.connect() as db:
         views = accounts.overview(db)
@@ -413,6 +464,17 @@ def build_parser() -> argparse.ArgumentParser:
     mining_cmd.add_argument("--station", help="where the ore would be sold (default: docked)")
     mining_cmd.set_defaults(func=_cmd_mining)
 
+    couriers_cmd = commands.add_parser("couriers", help="find courier contracts worth taking")
+    couriers_cmd.add_argument("character", help="character name or ID")
+    couriers_cmd.add_argument("--region", action="append", help="region name (repeat)")
+    couriers_cmd.add_argument(
+        "--minutes", type=float, help="only jobs that fit in this many minutes"
+    )
+    couriers_cmd.add_argument("--allow-lowsec", action="store_true", help="allow lowsec routes")
+    couriers_cmd.add_argument("--limit", type=int, default=10)
+    couriers_cmd.add_argument("--ship", help='plan as if you had this ship, e.g. "Tayra"')
+    couriers_cmd.set_defaults(func=_cmd_couriers)
+
     serve = commands.add_parser("serve", help="run the dashboard on this PC")
     serve.add_argument("--port", type=int, default=8700)
     serve.set_defaults(func=_cmd_serve)
@@ -451,6 +513,7 @@ def main(argv: list[str] | None = None) -> int:
         GoalError,
         ore.OreError,
         mining.MiningError,
+        couriers.CourierError,
     ) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 2
