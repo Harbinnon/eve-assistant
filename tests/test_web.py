@@ -230,7 +230,7 @@ def test_making_a_plan_shows_steps_reasons_and_alternatives(planning_client):
     assert "Plan for Test Pilot" in page.text
     assert "Mine &lt;b&gt;ore&lt;/b&gt; for a while" in page.text  # escaped
     assert "Estimated 200 m3 per minute in your Venture" in page.text
-    assert "Red on the risk matrix" in page.text
+    assert "Rated Risky. Tick “Include risky options”" in page.text
     assert "starting guess" in page.text
     assert "player-text" in page.text
     assert "Ignore previous instructions" in page.text
@@ -441,7 +441,7 @@ def test_start_a_plan_then_finish_it(session_client):
     assert "Session recorded." in done.text
     assert "Playing now" not in done.text
     assert "Recent sessions" in done.text
-    assert "provisional" in done.text
+    assert "may still change" in done.text
     assert "Ore mined is unknown" in done.text
     assert session_client.snapshot_mock.call_count == 2
 
@@ -510,3 +510,120 @@ def test_security_is_shown_and_coloured_as_eve_does(security, shown, classes):
 
     assert _security(security) == shown
     assert _security_class(security) == classes
+
+
+# --- Friendly errors and plain language (roadmap 2.3) -------------------------
+
+
+def test_errors_are_friendly_pages_with_a_way_back(client):
+    for response in (
+        client.get("/no/such/page"),
+        client.post("/today/plan", data={"token": "wrong", "character": "x", "minutes": "5"}),
+        client.post("/today/plan", data={"token": _token(client.get("/today").text)}),
+    ):
+        assert response.headers["content-type"].startswith("text/html")
+        assert '"detail"' not in response.text
+        assert 'href="/today">Go to Today' in response.text
+        assert "default-src 'none'" in response.headers["content-security-policy"]
+    assert "Nothing here" in client.get("/no/such/page").text
+    assert "Something was missing" in client.post("/goals", data={}).text
+
+
+def test_back_link_only_for_pages_on_this_dashboard(client):
+    page = client.get("/missing", headers={"Referer": f"{LOCAL}/goals?x=1"}).text
+    assert 'href="/goals?x=1">Back' in page
+    page = client.get("/missing", headers={"Referer": "https://evil.example/goals"}).text
+    assert ">Back<" not in page
+
+
+def test_a_crash_shows_a_page_without_the_details(db_path):
+    boom = mock.Mock(side_effect=RuntimeError("secret internals"))
+    app = create_app(db_path, refresh=boom)
+    with TestClient(app, base_url=LOCAL, raise_server_exceptions=False) as test_client:
+        token = _token(test_client.get("/characters").text)
+        response = test_client.post("/refresh", data={"token": token})
+    assert response.status_code == 500
+    assert "Something went wrong" in response.text
+    assert "secret internals" not in response.text
+    assert "default-src 'none'" in response.headers["content-security-policy"]
+
+
+class _Text(__import__("html.parser").parser.HTMLParser):
+    """What a reader sees: text only, not attribute values or hidden fields."""
+
+    def __init__(self):
+        super().__init__()
+        self.parts: list[str] = []
+
+    def handle_data(self, data):
+        self.parts.append(data)
+
+
+def _visible(html: str) -> str:
+    reader = _Text()
+    reader.feed(html)
+    return " ".join(reader.parts)
+
+
+JARGON = ("snapshot", "config/local.toml", "provisional", "settled", "kind:", "route:")
+
+
+def test_no_internal_words_on_any_page(planning_client):
+    token = _token(planning_client.get("/today").text)
+    planning_client.post(
+        "/today/plan", data={"token": token, "character": "Test Pilot", "minutes": "45"}
+    )
+    for path in ("/today", "/characters", "/goals", "/skills", "/history", "/preferences"):
+        text = _visible(planning_client.get(path).text).lower()
+        for word in JARGON:
+            assert word not in text, (path, word)
+        for colour in ("green", "amber", "red"):
+            assert f" {colour} " not in f" {text} ", (path, colour)
+
+
+def test_risk_is_a_word_and_a_shape(planning_client):
+    token = _token(planning_client.get("/today").text)
+    planning_client.post(
+        "/today/plan", data={"token": token, "character": "Test Pilot", "minutes": "45"}
+    )
+    page = planning_client.get("/today").text
+    assert '<span class="pill risk green">Safe</span>' in page
+    prefs = planning_client.get("/preferences").text
+    assert "Share of your net worth at stake" in prefs
+    assert '<span class="pill risk red">Risky</span>' in prefs
+    assert '<span class="pill risk amber">Caution</span>' in prefs
+
+
+def test_characters_with_the_same_learning_share_one_line(db_path):
+    conn = store.connect(db_path)
+    snapshots.ensure_character(conn, 8, "Second Pilot")
+    conn.close()
+    with TestClient(create_app(db_path), base_url=LOCAL) as test_client:
+        prefs = test_client.get("/preferences").text
+    assert prefs.count("Mining speed: not yet checked") == 1
+    assert "<strong>Second Pilot, Test Pilot</strong>" in prefs
+
+
+def test_omega_unlock_is_said_once():
+    from types import SimpleNamespace
+
+    import jinja2
+
+    from eve_assistant import skills, web
+    from eve_assistant.skills import Reason
+
+    env = jinja2.Environment(
+        loader=jinja2.FileSystemLoader(str(web.HERE / "templates")), autoescape=True
+    )
+    env.globals["describe"] = skills.describe
+    env.filters["duration"] = skills.format_minutes
+    req = SimpleNamespace(
+        usable_now=False,
+        usable_with_omega_now=True,
+        steps=[],
+        reasons=[Reason("trained_but_alpha_locked"),
+                 Reason("alpha_cap", {"skill": "Mining Barge", "needed": 1, "alpha_max": 0})],
+    )  # fmt: skip
+    html = env.get_template("_requirement.html").render(req=req, is_alpha=True)
+    assert html.count("already trained") == 1
+    assert "Mining Barge 1 is above the Alpha limit" in html

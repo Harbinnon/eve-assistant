@@ -54,10 +54,10 @@ LEDGER_CAP = timedelta(hours=2)
 PRICE_MAX_AGE = timedelta(days=7)
 
 NOTES = {
-    "provisional": "Provisional: EVE caches wallet and mining data for up to an hour. "
-    "Refresh after {settles_at} to settle it.",
-    "ledger_start_unknown": "Ore mined is unknown: there was no mining-ledger snapshot "
-    "at the start of the session.",
+    "provisional": "May still change: EVE holds wallet and mining data back for up to an "
+    "hour, so this is final after {settles_at}.",
+    "ledger_start_unknown": "Ore mined is unknown: the mining ledger wasn't read when the "
+    "session started.",
     "ledger_end_late": "The mining ledger wasn't checked soon enough after the session, "
     "so ore mined may be incomplete.",
     "after_next_session": "The next session started soon after; mining was counted up "
@@ -97,7 +97,13 @@ class Outcome:
         return plan["minutes"] if plan else None
 
     def notes(self) -> list[str]:
-        return [NOTES[n["code"]].format(**n) for n in self.details["notes"]]
+        shown = []
+        for note in self.details["notes"]:
+            fields = dict(note)
+            if "settles_at" in fields:  # '2026-10-17T07:40:21+00:00' -> '07:40 UTC'
+                fields["settles_at"] = f"{fields['settles_at'][11:16]} UTC"
+            shown.append(NOTES[note["code"]].format(**fields))
+        return shown
 
 
 def _parse(stamp: str) -> datetime:

@@ -253,6 +253,12 @@ dl.facts dd { margin: 0; font-variant-numeric: tabular-nums; min-width: 0; overf
 .pill.red, .pill.bad { color: var(--bad); background: var(--bad-soft); }
 .pill.new { color: var(--action); background: var(--action-soft); }
 .pill.unknown { color: var(--muted); background: transparent; }
+/* Risk: a shape as well as a colour, for colour-blind players */
+.pill.risk::before { display: inline-block; margin-right: 4px; font-weight: 700; }
+.pill.risk.green::before { content: "\2713" / ""; }
+.pill.risk.amber::before { content: "!" / ""; }
+.pill.risk.red::before { content: "\2715" / ""; }
+th[scope="row"] { font: inherit; letter-spacing: normal; text-transform: none; color: var(--fg); background: transparent; }
 
 /* System security: a bar in EVE's colour beside the number. The number stays
    in the text colour because EVE's low and null reds are too dark to read. */
@@ -341,6 +347,21 @@ button.primary:hover { background: var(--action-hover); border-color: var(--acti
 button:disabled, button:disabled:hover { opacity: 0.45; cursor: not-allowed; border-color: var(--line-strong); color: var(--fg); }
 button.primary:disabled { background: var(--action); color: var(--on-action); }
 button.small { padding: 5px 10px; font-size: 12px; }
+a.button {
+  display: inline-block;
+  font: 600 13px/1.2 var(--display);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-decoration: none;
+  color: var(--fg);
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
+  padding: 9px 16px;
+}
+a.button:hover { border-color: var(--action); color: var(--action-hover); }
+a.button.primary { background: var(--action); border-color: var(--action); color: var(--on-action); }
+a.button.primary:hover { background: var(--action-hover); border-color: var(--action-hover); color: var(--on-action); }
+.error-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 24px; }
 .checks { display: flex; gap: 16px; flex-wrap: wrap; font-size: 14px; color: var(--muted); }
 form.stack .checks label {
   flex-direction: row;

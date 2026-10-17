@@ -31,6 +31,8 @@
   </p>
   {% endif %}
 {% endif %}
-{% if req.reasons %}
-<ul class="reasons">{% for r in req.reasons %}<li>{{ describe(r) }}</li>{% endfor %}</ul>
+{# "Omega unlocks it" above already says what this reason says. #}
+{% set shown = req.reasons|rejectattr("code", "equalto", "trained_but_alpha_locked")|list if req.usable_with_omega_now else req.reasons %}
+{% if shown %}
+<ul class="reasons">{% for r in shown %}<li>{{ describe(r) }}</li>{% endfor %}</ul>
 {% endif %}

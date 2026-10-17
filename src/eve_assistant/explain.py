@@ -11,7 +11,7 @@ from eve_assistant.skills import Reason
 WHY_NOT = {
     "worse": "Less ISK after expected losses than what was chosen.",
     "too_long": "Does not fit in the time you have.",
-    "red_risk": "Red on the risk matrix. Tick 'include risky options' to allow it.",
+    "red_risk": "Rated Risky. Tick “Include risky options” to allow it.",
     "muted": "You muted this kind of suggestion.",
     "new_limit": "Only one new activity per plan.",
     "too_many_projects": "You already have the most open projects; finish or drop one first.",
@@ -75,7 +75,7 @@ def describe(code: str, detail: dict | None = None) -> str:
             f"{LEARNED.get(d.get('what'), d.get('what'))}: not yet checked against your real "
             "sessions, so this is the published figure."
             + (
-                " It learns from sessions played with game logs on ([logs] in config/local.toml)."
+                " It learns from the sessions you record while EVE's game logs are being read."
                 if d.get("what") == "mining_rate"
                 else ""
             )

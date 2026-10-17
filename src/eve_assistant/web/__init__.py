@@ -17,12 +17,15 @@ import secrets
 import sqlite3
 from collections.abc import Callable
 from pathlib import Path
-from urllib.parse import urlencode
+from types import SimpleNamespace
+from urllib.parse import urlencode, urlsplit
 
 from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from eve_assistant import (
@@ -86,6 +89,21 @@ SECURITY_HEADERS = {
     "Cache-Control": "no-store",
 }
 
+# Risk ratings in words; the stored ratings stay green, amber and red.
+RISK_LABELS = {"green": "Safe", "amber": "Caution", "red": "Risky"}
+
+# Error pages: a heading per status, and words for Starlette's own errors.
+ERROR_TITLES = {
+    400: "That didn't work",
+    403: "Not allowed",
+    404: "Nothing here",
+    405: "Nothing here",
+    422: "Something was missing",
+    500: "Something went wrong",
+}
+NO_PAGE = "There's no page at this address."
+NO_BANNER = SimpleNamespace(needs_update=False)  # error pages skip the database
+
 # Colour themes, kept in a cookie set by the form in every page's footer.
 THEMES = ("dark", "light", "system")
 # The cookie gets one of these constants, never the posted text itself.
@@ -142,6 +160,24 @@ def _when(value) -> str:
     if not value:
         return "never"
     return f"{value[:10]} {value[11:16]} UTC"
+
+
+def _theme(request: Request) -> str:
+    theme = request.cookies.get(THEME_COOKIE, DEFAULT_THEME)
+    return theme if theme in THEMES else DEFAULT_THEME
+
+
+def _safe_back(path: str) -> str:
+    """A path on this dashboard for an error page's "Back" link, else Today.
+    Never another site ("//host", "/\\host") or a header break."""
+    if (
+        not path.startswith("/")
+        or path.startswith("//")
+        or "\\" in path
+        or any(ord(ch) < 32 for ch in path)
+    ):
+        return TODAY
+    return path
 
 
 def _security_tenths(value: float) -> int:
@@ -227,6 +263,8 @@ def create_app(
     templates.env.globals["explain"] = explain.describe
     templates.env.globals["risk_summary"] = explain.risk_summary
     templates.env.globals["why_not"] = explain.WHY_NOT
+    templates.env.globals["risk_labels"] = RISK_LABELS
+    templates.env.globals["category_labels"] = preferences.KNOWN
     form_token = secrets.token_urlsafe(32)
 
     def db() -> sqlite3.Connection:
@@ -234,7 +272,6 @@ def create_app(
 
     def render(request: Request, name: str, **context) -> HTMLResponse:
         message = MESSAGES.get(request.query_params.get("msg", ""))
-        theme = request.cookies.get(THEME_COOKIE, DEFAULT_THEME)
         conn = db()
         try:
             static_data = sde.update_status(conn)
@@ -249,16 +286,72 @@ def create_app(
                 "auto": auto_status,
                 "static_data": static_data,
                 "page": name.split(".")[0],
-                "theme": theme if theme in THEMES else DEFAULT_THEME,
+                "theme": _theme(request),
                 "here": request.url.path,  # where the theme form returns to
                 **context,
             },  # fmt: skip
         )
 
+    def render_error(request: Request, status: int, detail: str) -> HTMLResponse:
+        """A page for any error, with a way back. It doesn't touch the
+        database, so it still works when that is the problem."""
+        referer = urlsplit(request.headers.get("referer", ""))
+        back_to = None
+        if referer.netloc == request.url.netloc and referer.path != request.url.path:
+            back_to = _safe_back(referer.path + (f"?{referer.query}" if referer.query else ""))
+        response = templates.TemplateResponse(
+            request,
+            "error.html",
+            {
+                "form_token": form_token,
+                "message": None,
+                "auto": auto_status,
+                "static_data": NO_BANNER,
+                "page": "error",
+                "theme": _theme(request),
+                "here": TODAY,
+                "status": status,
+                "title": ERROR_TITLES.get(status, "That didn't work"),
+                "detail": detail,
+                "back_to": back_to,
+            },  # fmt: skip
+            status_code=status,
+        )
+        response.headers.update(SECURITY_HEADERS)  # a 500 skips the header middleware
+        return response
+
+    @app.exception_handler(StarletteHTTPException)
+    async def http_error(request: Request, exc: StarletteHTTPException):
+        if exc.status_code in (404, 405) and exc.detail in ("Not Found", "Method Not Allowed"):
+            return render_error(request, exc.status_code, NO_PAGE)
+        return render_error(request, exc.status_code, str(exc.detail))
+
+    @app.exception_handler(RequestValidationError)
+    async def form_error(request: Request, _exc: RequestValidationError):
+        return render_error(
+            request,
+            422,
+            "Something the form needs was missing or not a number. Go back and try again.",
+        )
+
+    @app.exception_handler(Exception)
+    async def server_error(request: Request, _exc: Exception):
+        # The server still logs the traceback in its window: Starlette re-raises after this.
+        return render_error(
+            request,
+            500,
+            "Something went wrong on the dashboard's side; the details are in its window. "
+            "Going back and trying again may work.",
+        )
+
     def check_form(request: Request, token: str) -> None:
         origin = request.headers.get("origin")
         if origin and origin.rstrip("/") != str(request.base_url).rstrip("/"):
-            raise HTTPException(403, "Cross-site form posts are not allowed.")
+            raise HTTPException(
+                403,
+                "This form was sent from another website, so it was refused. If you pressed a "
+                "button on this dashboard, reload the page and try again.",
+            )
         if not secrets.compare_digest(token, form_token):
             raise HTTPException(403, "This form has expired. Reload the page and try again.")
 
@@ -485,10 +578,13 @@ def create_app(
         try:
             active = preferences.active_mutes(conn)
             weekly = projects.weekly_minutes(conn)
-            learned = [
-                (r["name"], corrections.correction(conn, r["character_id"], "mining_rate"))
-                for r in conn.execute("SELECT character_id, name FROM characters ORDER BY name")
-            ]
+            # Characters with the same text share one line ("not yet checked" thrice is noise).
+            learned_by_text: dict[str, list[str]] = {}
+            for r in conn.execute("SELECT character_id, name FROM characters ORDER BY name"):
+                reason = corrections.correction(conn, r["character_id"], "mining_rate").reason()
+                text = explain.describe(reason.code, reason.detail)
+                learned_by_text.setdefault(text, []).append(r["name"])
+            learned = [(", ".join(names), text) for text, names in learned_by_text.items()]
             play_time = pace.weekly_play(conn)
             finish = pace.finish_rate(conn)
             folder = Path(backups_dir) if backups_dir else backups.default_folder(db_path)
