@@ -651,6 +651,9 @@ login (§4.1–4.2), whatever the code licence says.
 - **Dashboard:** listens on `127.0.0.1` only and refuses hosted mode until
   a login exists; every form carries a per-process token and cross-site
   posts are rejected; templates escape all output; no third-party scripts.
+  Every error is a plain page with a way back (a "Back" link only to pages
+  on the dashboard itself); a crash shows no internal details, which stay
+  in the dashboard's window.
 - **Data:** parameterised SQL; plans, plan items, responses, play sessions,
   session outcomes and snapshots are append-only, enforced by database triggers.
 - **Supply chain:** every dependency pinned exactly (direct and indirect,
