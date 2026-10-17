@@ -156,8 +156,8 @@ BAND_LABELS = {
     "none": "No player risk (Exordium)",
     "very_low": "Very low (quiet highsec)",
     "low": "Low (busy highsec, quiet lowsec)",
-    "medium": "Medium (active lowsec, incursions)",
-    "high": "High (camped, nullsec, unknown)",
+    "medium": "Medium (active lowsec, gank hotspots, incursions)",
+    "high": "High (camped lowsec, nullsec, unknown)",
 }
 
 MESSAGES = {
