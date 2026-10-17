@@ -25,6 +25,7 @@ class Config:
     callback_url: str
     contact: str | None
     mode: str
+    gamelogs_dir: Path | None = None  # EVE's Gamelogs folder; None: don't read logs
 
 
 def _is_placeholder(value: str | None) -> bool:
@@ -53,9 +54,11 @@ def load_config(path: Path = DEFAULT_CONFIG_PATH) -> Config:
         raise ConfigError(f'[app] mode in {path} must be "local" or "hosted", not "{mode}".')
 
     contact = esi.get("contact")
+    gamelogs = data.get("logs", {}).get("gamelogs_dir")
     return Config(
         client_id=client_id.strip(),
         callback_url=esi.get("callback_url", DEFAULT_CALLBACK_URL),
         contact=None if _is_placeholder(contact) else contact.strip(),
         mode=mode,
+        gamelogs_dir=None if _is_placeholder(gamelogs) else Path(gamelogs.strip()),
     )

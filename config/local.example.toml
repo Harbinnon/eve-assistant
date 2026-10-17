@@ -15,3 +15,9 @@ contact = "<your EVE character name or email>"
 [app]
 # "local" (default) or "hosted". Hosted mode is not built yet.
 mode = "local"
+
+[logs]
+# Optional, local mode only: EVE's game log folder, so the assistant can read
+# your mining cycles (real yield per minute). Only "(mining)" lines from your
+# own characters' logs are read. Leave it out to turn this off.
+# gamelogs_dir = "C:/Users/<you>/Documents/EVE/logs/Gamelogs"

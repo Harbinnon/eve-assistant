@@ -90,7 +90,8 @@
         <td class="num">{{ s.minutes()|round|int }} min</td>
         <td class="num">{% if o and o.planned_isk is not none %}{{ o.planned_isk|isk }} · {{ o.planned_minutes|round|int }} min{% else %}–{% endif %}</td>
         <td class="num">{% if o %}{{ o.net_isk|isk }}{% else %}–{% endif %}</td>
-        <td class="num">{% if o and o.mined_value is not none %}{{ o.details.mined_m3|round|int }} m³ · ~{{ o.mined_value|isk }}{% else %}–{% endif %}</td>
+        <td class="num">{% if o and o.mined_value is not none %}{{ o.details.mined_m3|round|int }} m³ · ~{{ o.mined_value|isk }}{% else %}–{% endif %}
+          {% if o and o.log_mining and o.log_mining.m3_per_active_minute %}<br><span class="muted small-print">logs: {{ o.log_mining.m3_per_active_minute|round|int }} m³/min while mining</span>{% endif %}</td>
         <td>{% if not o %}not worked out yet{% elif o.settled %}settled{% else %}provisional{% endif %}
           {% if o and o.notes() %}<details class="why"><summary>Notes</summary><ul>{% for n in o.notes() %}<li>{{ n }}</li>{% endfor %}</ul></details>{% endif %}</td>
       </tr>

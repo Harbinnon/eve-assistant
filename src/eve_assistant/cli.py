@@ -8,6 +8,7 @@ from eve_assistant import (
     accounts,
     auth,
     couriers,
+    gamelogs,
     goals,
     market,
     mining,
@@ -602,8 +603,33 @@ def _cmd_outcomes(_args) -> int:
                 f"  Ore mined: {outcome.details['mined_m3']:,.0f} m3, "
                 f"about {outcome.mined_value:,.0f} ISK at average prices."
             )
+        if (logs := outcome.log_mining) is not None:
+            active = logs["m3_per_active_minute"]
+            print(
+                f"  From game logs: {logs['m3']:,.0f} m3 in {logs['cycles']} cycles"
+                + (f", {active:,.0f} m3/min while mining" if active else "")
+                + "."
+            )
         for note in outcome.notes():
             print(f"  {note}")
+    return 0
+
+
+def _cmd_gamelogs(_args) -> int:
+    config = load_config()
+    if config.gamelogs_dir is None:
+        print("No game log folder set. Add [logs] gamelogs_dir to config/local.toml.")
+        return 2
+    with store.connect() as db:
+        problems = refresh.read_game_logs(config, db)
+        if problems:
+            raise ConfigError(problems[0])
+        report = gamelogs.import_folder(db, config.gamelogs_dir)
+        total = db.execute("SELECT COUNT(*) FROM mining_cycles").fetchone()[0]
+    print(
+        f"Read {report.files_read} log files: {report.cycles_added} new mining lines "
+        f"({total} in all). Skipped {report.skipped_files} files from other characters."
+    )
     return 0
 
 
@@ -755,6 +781,9 @@ def build_parser() -> argparse.ArgumentParser:
     commands.add_parser(
         "outcomes", help="what happened in recent sessions, against the plan"
     ).set_defaults(func=_cmd_outcomes)
+    commands.add_parser(
+        "gamelogs", help="read mining cycles from EVE's game logs now"
+    ).set_defaults(func=_cmd_gamelogs)
     session_cmd = commands.add_parser("session", help="start or end a play session").add_subparsers(
         dest="session_command", required=True
     )

@@ -217,6 +217,22 @@ change adding an append-only row; settled outcomes are never recomputed.
 The Today page lists recent sessions with planned and actual figures; the
 per-step comparison is the History page's job.
 
+**Game logs (optional, local mode).** The ledger can't say how fast a
+session mined, only how much a day. EVE's game logs have a line per mining
+cycle, so when `[logs] gamelogs_dir` is set in `config/local.toml`, every
+refresh and session snapshot reads new lines first:
+
+- Only logs whose listener is one of the owner's characters are read, and
+  only their "(mining)" lines (mined, critical success, residue). Combat,
+  notices and anything naming other people are never stored.
+- Logs are read from where the last read stopped, and a half-written last
+  line is left for next time. A log from a character who logs in to the
+  tool later is picked up then.
+- Each outcome then carries the session's cycles, ore per type, residue,
+  and m³ per minute both over the whole session and while actually mining.
+  On the owner's real logs the per-type totals matched the mining ledger
+  exactly.
+
 From that it learns:
 
 1. **Corrections per activity.** "Predicted 8M an hour, made 6M." After a
@@ -475,7 +491,8 @@ Not legal advice.
   data names other people too (who bought from you, who sent you ISK), so
   wallet snapshots are cleaned before they are stored: other players' IDs,
   journal descriptions (which carry names) and player-written reasons are
-  dropped; amounts, dates, item types and reference types are kept.
+  dropped; amounts, dates, item types and reference types are kept. From
+  game logs (optional) only the owner's own mining lines are kept.
 - **Trademarks:** don't present the app as CCP's or suggest affiliation
   (§2.7, §7.3). README and dashboard footer carry: *"EVE Online and the
   EVE logo are the trademarks or registered trademarks of CCP hf."* (The
