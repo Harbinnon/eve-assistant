@@ -63,7 +63,7 @@ AUTO_TICK_SECONDS = 60.0
 log = logging.getLogger(__name__)
 TODAY = "/today"
 GOALS = "/goals"
-PREFERENCES = "/preferences"
+SETTINGS = "/settings"
 UNKNOWN_ACTION = "Unknown action."
 COMMIT_WITH_THE_PLAN = (
     "Steps aren't taken on one by one: press “Start this plan” to start the whole "
@@ -132,7 +132,7 @@ THEME_MAX_AGE = 365 * 24 * 3600
 # Pages the theme form may return to; anything else goes to Today.
 # Each maps to itself, so the redirect is always one of these constants.
 RETURN_PAGES = {
-    page: page for page in (TODAY, "/characters", GOALS, "/skills", "/history", PREFERENCES)
+    page: page for page in (TODAY, "/characters", GOALS, "/skills", "/history", SETTINGS)
 }
 
 BAND_LABELS = {
@@ -150,7 +150,7 @@ MESSAGES = {
     "refreshed": "Character data refreshed from EVE.",
     "do": "Project started: it's under Open projects.",
     "not_now": "Recorded: not now.",
-    "mute": "Muted. You can undo that on the Preferences page.",
+    "mute": "Muted. You can undo that in Settings.",
     "muted": "Muted.",
     "unmuted": "Unmuted.",
     "project_done": "Project marked done.",
@@ -720,41 +720,33 @@ def create_app(
         # Back to the step that was answered, not the top of the page.
         return back(f"/plans/{row['plan_id']}", anchor=f"item-{item_id}", msg=response)
 
-    @app.get(PREFERENCES, response_class=HTMLResponse)
-    def preferences_page(request: Request):
+    @app.get("/preferences")
+    def old_preferences_page():
+        return RedirectResponse(SETTINGS, status_code=308)  # renamed: old links still work
+
+    @app.get(SETTINGS, response_class=HTMLResponse)
+    def settings_page(request: Request):
         conn = db()
         try:
             active = preferences.active_mutes(conn)
             weekly = projects.weekly_minutes(conn)
-            # Characters with the same text share one line ("not yet checked" thrice is noise).
-            learned_by_text: dict[str, list[str]] = {}
-            for r in conn.execute("SELECT character_id, name FROM characters ORDER BY name"):
-                reason = corrections.correction(conn, r["character_id"], "mining_rate").reason()
-                text = explain.describe(reason.code, reason.detail)
-                learned_by_text.setdefault(text, []).append(r["name"])
-            learned = [(", ".join(names), text) for text, names in learned_by_text.items()]
             play_time = pace.weekly_play(conn)
-            finish = pace.finish_rate(conn)
             folder = Path(backups_dir) if backups_dir else backups.default_folder(db_path)
             kept = backups.list_backups(folder)
         finally:
             conn.close()
         return render(
             request,
-            "preferences.html",
+            "settings.html",
             active=active,
             categories=preferences.KNOWN,
-            risk_matrix=risk.MATRIX,
-            band_labels=BAND_LABELS,
             weekly_hours=weekly / 60,
-            learned=learned,
             play_time=play_time,
-            finish=finish,
             backups_folder=folder,
             backups_kept=kept,
         )
 
-    @app.post("/preferences-play-time")
+    @app.post("/settings/play-time")
     def change_play_time(request: Request, token: str = Form(...), hours: float = Form(...)):
         check_form(request, token)
         conn = db()
@@ -764,9 +756,9 @@ def create_app(
             raise HTTPException(400, str(exc)) from None
         finally:
             conn.close()
-        return back(PREFERENCES, msg="play_time")
+        return back(SETTINGS, msg="play_time")
 
-    @app.post("/preferences/{action}")
+    @app.post("/settings/{action}")
     def change_preference(
         request: Request, action: str, token: str = Form(...), category: str = Form(...)
     ):
@@ -783,7 +775,7 @@ def create_app(
             raise HTTPException(400, str(exc)) from None
         finally:
             conn.close()
-        return back(PREFERENCES, msg=f"{action}d")
+        return back(SETTINGS, msg=f"{action}d")
 
     @app.get("/history", response_class=HTMLResponse)
     def history_page(request: Request):
@@ -795,6 +787,14 @@ def create_app(
                 (r["name"], corrections.mining_observations(conn, r["character_id"]))
                 for r in conn.execute("SELECT character_id, name FROM characters ORDER BY name")
             ]
+            # Characters with the same text share one line ("not yet checked" thrice is noise).
+            learned_by_text: dict[str, list[str]] = {}
+            for r in conn.execute("SELECT character_id, name FROM characters ORDER BY name"):
+                reason = corrections.correction(conn, r["character_id"], "mining_rate").reason()
+                text = explain.describe(reason.code, reason.detail)
+                learned_by_text.setdefault(text, []).append(r["name"])
+            learned = [(", ".join(names), text) for text, names in learned_by_text.items()]
+            finish = pace.finish_rate(conn)
         finally:
             conn.close()
         return render(
@@ -802,6 +802,10 @@ def create_app(
             "history.html",
             past=past,
             speeds=[(name, found) for name, found in speeds if found],
+            learned=learned,
+            finish=finish,
+            risk_matrix=risk.MATRIX,
+            band_labels=BAND_LABELS,
         )
 
     @app.get("/characters", response_class=HTMLResponse)

@@ -259,16 +259,17 @@ def test_responding_records_and_mute_shows_in_preferences(planning_client):
         f"/plan-items/{item_id}/respond", data={"token": token, "response": "mute"}
     )
     assert "Muted." in muted.text
-    prefs = planning_client.get("/preferences").text
+    prefs = planning_client.get("/settings").text
     assert "kind:mining" in prefs
-    assert "What it has learned" in prefs
-    assert "Mining speed: not yet checked" in prefs
     assert "Play time: 6.0 hours a week, your setting" in prefs
-    assert "assumed 10% are not finished" in prefs
     assert "Unmute" in prefs
+    learning = planning_client.get("/history").text  # learning lives with History now
+    assert "What it has learned" in learning
+    assert "Mining speed: not yet checked" in learning
+    assert "assumed 10% are not finished" in learning
 
     unmuted = planning_client.post(
-        "/preferences/unmute", data={"token": token, "category": "kind:mining"}
+        "/settings/unmute", data={"token": token, "category": "kind:mining"}
     )
     assert "Unmuted." in unmuted.text
 
@@ -288,7 +289,7 @@ def test_today_forms_need_the_token(planning_client):
     )
     assert (
         planning_client.post(
-            "/preferences/mute", data={"token": "x", "category": "kind:mining"}
+            "/settings/mute", data={"token": "x", "category": "kind:mining"}
         ).status_code
         == 403
     )
@@ -341,8 +342,8 @@ def test_open_projects_show_on_today_and_can_be_closed(planning_client, db_path)
 
 
 def test_play_time_is_set_on_preferences(planning_client):
-    token = _token(planning_client.get("/preferences").text)
-    saved = planning_client.post("/preferences-play-time", data={"token": token, "hours": "9.5"})
+    token = _token(planning_client.get("/settings").text)
+    saved = planning_client.post("/settings/play-time", data={"token": token, "hours": "9.5"})
     assert "Play time saved." in saved.text
     assert 'value="9.5"' in saved.text
 
@@ -576,7 +577,7 @@ def test_no_internal_words_on_any_page(planning_client):
     planning_client.post(
         "/today/plan", data={"token": token, "character": "Test Pilot", "minutes": "45"}
     )
-    for path in ("/today", "/characters", "/goals", "/skills", "/history", "/preferences"):
+    for path in ("/today", "/characters", "/goals", "/skills", "/history", "/settings"):
         text = _visible(planning_client.get(path).text).lower()
         for word in JARGON:
             assert word not in text, (path, word)
@@ -591,7 +592,7 @@ def test_risk_is_a_word_and_a_shape(planning_client):
     )
     page = planning_client.get("/today").text
     assert '<span class="pill risk green">Safe</span>' in page
-    prefs = planning_client.get("/preferences").text
+    prefs = planning_client.get("/history").text
     assert "Share of your net worth at stake" in prefs
     assert '<span class="pill risk red">Risky</span>' in prefs
     assert '<span class="pill risk amber">Caution</span>' in prefs
@@ -602,7 +603,7 @@ def test_characters_with_the_same_learning_share_one_line(db_path):
     snapshots.ensure_character(conn, 8, "Second Pilot")
     conn.close()
     with TestClient(create_app(db_path), base_url=LOCAL) as test_client:
-        prefs = test_client.get("/preferences").text
+        prefs = test_client.get("/history").text
     assert prefs.count("Mining speed: not yet checked") == 1
     assert "<strong>Second Pilot, Test Pilot</strong>" in prefs
 
@@ -918,3 +919,17 @@ def test_times_say_how_long_ago_or_until(monkeypatch):
     assert web._when_ago("2026-10-19T12:00:00+00:00") == "2026-10-19 12:00 UTC · in 2 days"
     assert web._when_ago("2026-10-17T12:00:20+00:00").endswith("· just now")
     assert web._when_ago(None) == "never"
+
+
+# --- Navigation (roadmap 2.9) -------------------------------------------------
+
+
+def test_preferences_became_settings(client):
+    old = client.get("/preferences", follow_redirects=False)
+    assert old.status_code == 308
+    assert old.headers["location"] == "/settings"
+    page = client.get("/settings").text
+    assert "<h1>Settings</h1>" in page
+    assert 'href="/settings" aria-current="page">Settings</a>' in page
+    assert "Risk matrix" not in page  # moved to History and learning
+    assert "<h1>History and learning</h1>" in client.get("/history").text

@@ -285,7 +285,7 @@ moves it a quarter of the way, four sessions a little over half.
   corrected figure, so the correction can't feed on itself.
 - Without game logs the mining correction stays at 1 and the plan says it
   is the published figure, with how to turn the logs on.
-- The Preferences page and `eve-assistant learned` show what has been
+- The History and learning page and `eve-assistant learned` show what has been
   learned per character.
 - Still to come: sale prices actually reached, and travel time. Plans
   don't yet record the per-unit price and per-jump time they assumed, so
@@ -351,8 +351,8 @@ A **web dashboard** is the main interface.
 | **Goals** | Progress, estimated arrival date, what is slowing it down, what Omega would change. |
 | **Characters** | All characters side by side: training, wallet, net worth, location, ship. |
 | **Skills** | Training plan for the current goal, with each skill's payback. |
-| **History** | Past plans against results, so the learning can be checked rather than trusted. |
-| **Preferences** | Everything declined or muted, the risk matrix lines, with undo. |
+| **History and learning** | Past plans against results, what the planner has learned from them, and the risk matrix, so the learning can be checked rather than trusted. |
+| **Settings** | Everything muted (with undo), play time, backups. The theme switch is at the bottom of every page. |
 
 Server-rendered pages with a small amount of self-written JavaScript,
 everything self-hosted, **no third-party scripts or CDNs**.
@@ -418,7 +418,7 @@ registers for an established one.
 
 Ranking uses profit minus (chance of loss × amount exposed). The starting
 lines are a guess; they move with the player's choices, and every change
-is visible on Preferences. A loss is recorded and feeds straight back in.
+is visible on History and learning. A loss is recorded and feeds straight back in.
 
 ### 4.9 Declining, and discovering options
 
@@ -430,7 +430,7 @@ Every suggestion has:
 - **Why?**: how the estimate was made, with a link to a guide (EVE
   University wiki) for anything unfamiliar.
 
-Mutes live on Preferences with undo. A muted category whose numbers improve
+Mutes live in Settings with undo. A muted category whose numbers improve
 a lot gets one polite mention a month at most, which can also be turned
 off.
 
