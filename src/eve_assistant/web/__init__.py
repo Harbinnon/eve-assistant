@@ -54,6 +54,7 @@ AutoRefresher = Callable[[], object]
 AUTO_TICK_SECONDS = 60.0
 log = logging.getLogger(__name__)
 TODAY = "/today"
+UNKNOWN_ACTION = "Unknown action."
 
 HERE = Path(__file__).parent
 
@@ -361,7 +362,7 @@ def create_app(
     ):
         check_form(request, token)
         if how not in ("finish", "cancel"):
-            raise HTTPException(404, "Unknown action.")
+            raise HTTPException(404, UNKNOWN_ACTION)
         try:
             played = float(minutes) if minutes.strip() else None
         except ValueError:
@@ -387,7 +388,7 @@ def create_app(
     ):
         check_form(request, token)
         if action not in ("record", "dismiss"):
-            raise HTTPException(404, "Unknown action.")
+            raise HTTPException(404, UNKNOWN_ACTION)
         try:
             if action == "record":
                 session_flow.record_detected(db_path, character_id, login)
@@ -466,7 +467,7 @@ def create_app(
     ):
         check_form(request, token)
         if action not in ("mute", "unmute"):
-            raise HTTPException(404, "Unknown action.")
+            raise HTTPException(404, UNKNOWN_ACTION)
         conn = db()
         try:
             if action == "mute":
