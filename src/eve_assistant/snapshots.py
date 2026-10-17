@@ -43,6 +43,7 @@ KINDS = (
     Kind("orders", "/characters/{id}/orders"),
     Kind("industry_jobs", "/characters/{id}/industry/jobs"),
     Kind("contracts", "/characters/{id}/contracts", names_others=True),
+    Kind("fittings", "/characters/{id}/fittings"),
 )
 
 
@@ -99,6 +100,15 @@ def sanitise(db: sqlite3.Connection, kind: str, payload):
         payload = [e for e in payload if isinstance(e, dict)] if isinstance(payload, list) else []
     if kind == "wallet_transactions":
         return [{k: v for k, v in t.items() if k not in TRANSACTION_DROP} for t in payload]
+    if kind == "fittings":
+        # Descriptions are free text and not needed; names are kept (shown labelled).
+        if not isinstance(payload, list):
+            return []
+        return [
+            {k: f[k] for k in ("fitting_id", "name", "ship_type_id", "items") if k in f}
+            for f in payload
+            if isinstance(f, dict)
+        ]
     if kind == "contracts":
         known = _known_parties(db)
         cleaned = []

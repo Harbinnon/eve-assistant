@@ -335,3 +335,71 @@ def test_ore_in_an_accessible_structure_is_offered_and_sold_there(db):
     codes = {n.code for n in plan.notes}
     assert "selling_at_structure_here" in codes
     assert "ore_in_structure_skipped" not in codes
+
+
+def _saved_fits(db, fits):
+    from eve_assistant import snapshots as snaps
+
+    snaps.record(db, 7, "fittings", snaps.sanitise(db, "fittings", fits))
+
+
+def _fit(name, lasers, fitting_id=1):
+    return {
+        "fitting_id": fitting_id,
+        "name": name,
+        "description": "My own notes",
+        "ship_type_id": FRIGATE,
+        "items": [{"type_id": LASER, "flag": f"HiSlot{n}", "quantity": 1} for n in range(lasers)]
+        + [{"type_id": ORE, "flag": "Cargo", "quantity": 500}],
+    }
+
+
+@respx.mock
+def test_a_better_saved_fit_is_mentioned_without_changing_the_estimate(db):
+    _mock_market_and_contracts()
+    with httpx.Client() as http:
+        before = planner.build_plan(db, EsiClient(http, db, base_url=BASE), 7, 60).items[-1]
+    _saved_fits(db, [_fit("Same as now", 1, 1), _fit("Two <lasers>", 2, 2)])
+    with httpx.Client() as http:
+        mining = planner.build_plan(db, EsiClient(http, db, base_url=BASE), 7, 60).items[-1]
+    note = next(r for r in mining.reasons if r.code == "better_saved_fit")
+    assert note.detail["fit_name"] == "Two <lasers>"
+    assert note.detail["with_fit"] == pytest.approx(2 * note.detail["now"])
+    assert note.detail["missing"] == ["Test Miner"]  # the second laser isn't in the hangar
+    assert mining.inputs["quantity"] == before.inputs["quantity"]  # still the real fit
+
+    from eve_assistant import explain
+
+    text = explain.describe(note.code, note.detail)
+    assert "your own name for it" in text
+    assert "Not where the ship is: Test Miner." in text
+
+
+@respx.mock
+def test_no_note_when_saved_fits_are_no_better_or_the_modules_are_there(db):
+    _mock_market_and_contracts()
+    _saved_fits(db, [_fit("Same as now", 1)])
+    with httpx.Client() as http:
+        mining = planner.build_plan(db, EsiClient(http, db, base_url=BASE), 7, 60).items[-1]
+    assert "better_saved_fit" not in [r.code for r in mining.reasons]
+
+    from eve_assistant import fittings
+    from eve_assistant import snapshots as snaps
+
+    assets = snaps.latest(db, 7, "assets") + [
+        {"type_id": LASER, "location_id": STATION, "location_flag": "Hangar", "quantity": 1}
+    ]
+    snaps.record(db, 7, "assets", assets)
+    _saved_fits(db, [_fit("Two lasers", 2)])
+    (fit,) = fittings.for_hull(db, 7, FRIGATE)
+    assert fit.modules == (LASER, LASER)  # cargo isn't fitted
+    assert fittings.missing_modules(db, 7, fit, 9001, STATION) == []
+
+
+def test_saved_fit_descriptions_are_not_kept(db):
+    _saved_fits(db, [_fit("Name", 1)])
+    from eve_assistant import snapshots as snaps
+
+    (stored,) = snaps.latest(db, 7, "fittings")
+    assert "description" not in stored
+    assert snaps.sanitise(db, "fittings", {"error": "x"}) == []
