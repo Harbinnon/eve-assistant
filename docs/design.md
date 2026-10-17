@@ -447,14 +447,16 @@ login (§4.1–4.2), whatever the code licence says.
 
 ### Repository
 
-- **Private until the base framework is done, then public.** Before going
-  public, the whole history is scanned to confirm nothing personal or
-  secret was ever committed. Both developers commit with GitHub's private
+- **Private until the base framework was done, public since 2026-10-16.**
+  Before going public, the whole history was scanned to confirm nothing personal or
+  secret had ever been committed. Both developers commit with GitHub's private
   "noreply" email address from the first commit.
 - Changes arrive through reviewed pull requests, with the repository owner
-  as code owner (`CODEOWNERS`). While private on the free plan this is an
-  agreed rule; once public, `main` becomes a protected branch and it is
-  enforced.
+  as code owner (`CODEOWNERS`). A ruleset on `main` enforces it: pull
+  requests only, one code-owner approval, the CI `checks` job must pass,
+  squash merges only, no force-pushes or deletion. The repository admin
+  can bypass the approval for their own pull requests (GitHub does not let
+  anyone approve their own), but never push to `main` directly.
 - Tests and a secret scanner run on every pull request; the secret scanner
   also runs before each commit.
 - `CONTRIBUTING.md` and a project `CLAUDE.md` so contributors and their AI
@@ -566,12 +568,19 @@ In order; each box is ticked in this document when done.
 - [x] Every pull request title and description on GitHub read through for
       personal details (they become public too) (2026-10-16: all 19, plus
       comments and reviews; nothing found).
-- [ ] Repository switched to public.
-- [ ] `main` protected: changes only through pull requests approved by the
-      code owner; CI checks required to pass.
-- [ ] GitHub secret scanning with **push protection** switched on.
-- [ ] **Dependabot** alerts and security updates switched on.
-- [ ] **CodeQL** code scanning added (deep security analysis).
+- [x] Repository switched to public (2026-10-16).
+- [x] Workflow runs from first-time and outside contributors' pull requests
+      need the owner's approval; only GitHub-owned Actions allowed; the
+      workflow token is read-only.
+- [x] Private vulnerability reporting switched on (`SECURITY.md` relies on
+      it).
+- [x] `main` protected by a ruleset: changes only through pull requests
+      approved by the code owner; the CI `checks` job required to pass;
+      no force-pushes or deletion (admin bypass for own pull requests
+      only).
+- [x] GitHub secret scanning with **push protection** switched on.
+- [x] **Dependabot** alerts and security updates switched on.
+- [x] **CodeQL** code scanning added (GitHub's default setup).
 - [ ] **SonarQube Cloud** added: code quality, security hotspots,
       duplication and test coverage, with a pass/fail quality gate on every
       pull request. Needs:

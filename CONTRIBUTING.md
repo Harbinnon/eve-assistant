@@ -6,7 +6,7 @@ listed in [CLAUDE.md](CLAUDE.md) and apply to people and AI sessions alike.
 ## One-time setup
 
 1. Use GitHub's private "noreply" email for commits, so your real address
-   never appears in the history (the repository will become public). Find it
+   never appears in the history (the repository is public). Find it
    under GitHub → Settings → Emails, then:
    ```
    git config --global user.email "<id>+<username>@users.noreply.github.com"
@@ -29,8 +29,9 @@ listed in [CLAUDE.md](CLAUDE.md) and apply to people and AI sessions alike.
    owner reviews, may ask for changes, and merges.
 6. After it is merged, go back to step 1.
 
-**Never push directly to `main`.** While the repository is private this is
-an agreed rule; once it is public it is enforced.
+**Never push directly to `main`.** GitHub enforces this: `main` only
+accepts pull requests that pass the checks and are approved by the
+repository owner.
 
 ## Conventions
 
