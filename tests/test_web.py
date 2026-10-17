@@ -17,8 +17,11 @@ def db_path(tmp_path):
     path = tmp_path / "test.sqlite3"
     conn = store.connect(path)
     conn.executemany(
-        "INSERT INTO sde_types (type_id, name, group_id, published) VALUES (?, ?, 1, 1)",
-        [(SKILL, "Mining"), (SHIP, "Big Barge"), (32880, "Venture")],
+        "INSERT INTO sde_types (type_id, name, group_id, published) VALUES (?, ?, ?, 1)",
+        [(SKILL, "Mining", 1), (SHIP, "Big Barge", 2), (32880, "Venture", 2)],
+    )
+    conn.executemany(
+        "INSERT INTO sde_groups VALUES (?, ?, ?, 1)", [(1, 16, "Skills"), (2, 6, "Ships")]
     )
     conn.executemany(
         "INSERT INTO sde_type_attributes VALUES (?, ?, ?)",
@@ -834,3 +837,84 @@ def test_only_known_characters_can_be_chosen(client):
     assert refused.status_code == 400
     client.cookies.set("character", "not-a-number")
     assert '<option value="7" selected>Test Pilot</option>' in client.get("/today").text
+
+
+# --- Skills to Goals, and better goals (roadmap 2.8) ---------------------------
+
+
+def test_a_ship_becomes_a_goal_with_progress_in_two_clicks(client):
+    checked = client.get("/skills", params={"item": "Big Barge"}).text  # click 1: Check
+    assert '<datalist id="ship-names">' in checked
+    assert '<option value="Big Barge">' in checked
+    assert ">Set as goal</button>" in checked
+    added = client.post(  # click 2: Set as goal
+        "/goals",
+        data={"token": _token(checked), "kind": "ship", "target": "Big Barge",
+              "character": "Test Pilot"},
+    )  # fmt: skip
+    assert "Goal added." in added.text
+    assert "Fly a Big Barge" in added.text
+    assert "% of the skill points trained" in added.text
+    assert '<progress value="' in added.text
+
+
+def test_goal_names_are_suggested_while_typing(client):
+    page = client.get("/goals").text
+    assert (
+        '<input id="target" name="target" required placeholder="Retriever" list="goal-names"'
+        in page
+    )
+    assert '<option value="Mining">' in page  # skills
+    assert '<option value="Venture">' in page  # and ships
+
+
+def test_isk_goals_read_the_same_way_as_other_isk(client):
+    token = _token(client.get("/goals").text)
+    client.post(
+        "/goals",
+        data={"token": token, "kind": "isk", "target": "2460000000", "character": "Test Pilot"},
+    )
+    assert "Have 2.46B ISK" in client.get("/goals").text
+
+
+def test_dropping_a_goal_asks_first(client):
+    token = _token(client.get("/goals").text)
+    client.post(
+        "/goals",
+        data={"token": token, "kind": "ship", "target": "Big Barge", "character": "Test Pilot"},
+    )
+    page = client.get("/goals").text
+    goal_id = re.search(r'href="/goals/(\d+)/drop">Drop</a>', page).group(1)
+    confirm = client.get(f"/goals/{goal_id}/drop").text
+    assert "Drop this goal?" in confirm
+    assert "Fly a Big Barge" in confirm
+    assert 'href="/goals">Keep it</a>' in confirm
+    assert "Fly a Big Barge" in client.get("/goals").text  # nothing dropped yet
+    dropped = client.post(f"/goals/{goal_id}/status", data={"token": token, "status": "dropped"})
+    assert "Goal dropped." in dropped.text
+    assert client.get("/goals/999/drop").status_code == 404
+
+
+def test_dropping_a_project_asks_first(planning_client, db_path):
+    from eve_assistant import projects
+
+    conn = store.connect(db_path)
+    project_id = projects.start(conn, 7, "haul", "1:2:x", "Haul ore", 120, 5e6, {})
+    conn.close()
+    page = planning_client.get("/today").text
+    assert f'href="/projects/{project_id}/drop">Drop</a>' in page
+    confirm = planning_client.get(f"/projects/{project_id}/drop").text
+    assert "Drop this project?" in confirm
+    assert f'action="/projects/{project_id}/dropped"' in confirm
+
+
+def test_times_say_how_long_ago_or_until(monkeypatch):
+    from datetime import UTC, datetime
+
+    from eve_assistant import web
+
+    monkeypatch.setattr(web, "_now", lambda: datetime(2026, 10, 17, 12, 0, tzinfo=UTC))
+    assert web._when_ago("2026-10-17T06:00:00+00:00") == "2026-10-17 06:00 UTC · 6 hours ago"
+    assert web._when_ago("2026-10-19T12:00:00+00:00") == "2026-10-19 12:00 UTC · in 2 days"
+    assert web._when_ago("2026-10-17T12:00:20+00:00").endswith("· just now")
+    assert web._when_ago(None) == "never"

@@ -62,7 +62,7 @@
         <button class="small" type="submit" name="theme" value="{{ value }}" aria-pressed="{{ 'true' if theme == value else 'false' }}">{{ label }}</button>
         {% endfor %}
       </form>
-      <p class="auto-status">{% if auto.enabled %}Updates from EVE automatically while this page's server runs{% if auto.last_run %} · last check {{ auto.last_run|when }}{% else %} · starting{% endif %}.
+      <p class="auto-status">{% if auto.enabled %}Updates from EVE automatically while this page's server runs{% if auto.last_run %} · last check {{ auto.last_run|when_ago }}{% else %} · starting{% endif %}.
         {% if auto.problems %}<span class="error-text">{{ auto.problems|length }} problem{{ "s" if auto.problems|length != 1 }}: {{ auto.problems|first }}</span>{% endif %}
         {% else %}Automatic updates are off; press Refresh on the Characters page.{% endif %}</p>
       EVE Online and the EVE logo are the trademarks or registered trademarks of CCP hf.

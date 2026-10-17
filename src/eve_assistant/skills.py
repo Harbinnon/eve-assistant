@@ -84,6 +84,13 @@ class Requirement:
     minutes_as_alpha: float | None  # None when Alpha cannot get there at all
     minutes_as_omega: float
     reasons: tuple[Reason, ...]
+    total_skillpoints: int = 0  # every required level, from nothing
+    trained_skillpoints: int = 0  # of those, already trained
+
+    @property
+    def progress(self) -> float:
+        """Share of the required skill points already trained (1.0 when none are needed)."""
+        return self.trained_skillpoints / self.total_skillpoints if self.total_skillpoints else 1.0
 
 
 def load_character_skills(db: sqlite3.Connection, character_id: int) -> CharacterSkills:
@@ -118,6 +125,30 @@ def load_character_skills(db: sqlite3.Connection, character_id: int) -> Characte
 def type_name(db: sqlite3.Connection, type_id: int) -> str:
     row = db.execute("SELECT name FROM sde_types WHERE type_id = ?", (type_id,)).fetchone()
     return row["name"] if row else f"type {type_id}"
+
+
+SHIP_CATEGORY, SKILL_CATEGORY = 6, 16
+
+
+def is_ship(db: sqlite3.Connection, type_id: int) -> bool:
+    row = db.execute(
+        "SELECT g.category_id FROM sde_types t JOIN sde_groups g USING (group_id) "
+        "WHERE t.type_id = ?",
+        (type_id,),
+    ).fetchone()
+    return bool(row) and row["category_id"] == SHIP_CATEGORY
+
+
+def names_in(db: sqlite3.Connection, *categories: int) -> list[str]:
+    """Published item names in some categories, for suggestions while typing."""
+    marks = ",".join("?" * len(categories))
+    rows = db.execute(
+        "SELECT t.name FROM sde_types t JOIN sde_groups g USING (group_id) "  # noqa: S608  # placeholders only
+        f"WHERE g.category_id IN ({marks}) AND t.published = 1 AND g.published = 1 "
+        "ORDER BY t.name",
+        categories,
+    )
+    return [r["name"] for r in rows]
 
 
 def find_type(db: sqlite3.Connection, name: str) -> int:
@@ -235,6 +266,7 @@ def _plan(
     usable_now = True
     usable_with_omega_now = True
     alpha_possible = not character.alpha_training_blocked
+    total_points = trained_points = 0
 
     for skill_id, level in needed:
         trained = character.skills.get(skill_id, TrainedSkill(0, 0, 0))
@@ -258,6 +290,9 @@ def _plan(
                 )  # fmt: skip
             )
         rank = skill_rank(db, skill_id)
+        full = rank * SP_FOR_LEVEL[level]
+        total_points += full
+        trained_points += min(trained.skillpoints, full)
         rate = sp_per_minute(db, character, skill_id)
         for step_level in range(trained.trained_level + 1, level + 1):
             target = rank * SP_FOR_LEVEL[step_level]
@@ -299,6 +334,8 @@ def _plan(
         minutes_as_alpha=(minutes_omega / ALPHA_TRAINING_MULTIPLIER) if alpha_possible else None,
         minutes_as_omega=minutes_omega,
         reasons=tuple(reasons),
+        total_skillpoints=round(total_points),
+        trained_skillpoints=round(trained_points),
     )
 
 

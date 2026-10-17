@@ -376,6 +376,7 @@ a.button:hover { border-color: var(--action); color: var(--action-hover); }
 a.button.primary { background: var(--action); border-color: var(--action); color: var(--on-action); }
 a.button.primary:hover { background: var(--action-hover); border-color: var(--action-hover); color: var(--on-action); }
 .error-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 24px; }
+a.button.small { padding: 5px 10px; font-size: 12px; }
 .checks { display: flex; gap: 16px; flex-wrap: wrap; font-size: 14px; color: var(--muted); }
 form.stack .checks label {
   flex-direction: row;

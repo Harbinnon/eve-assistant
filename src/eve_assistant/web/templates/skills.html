@@ -10,7 +10,8 @@
   <p class="form-for">For <strong>{{ character }}</strong><span class="muted small-print">switch at the top</span></p>
   {% endif %}
   <label for="item">Ship or module
-    <input id="item" name="item" value="{{ item }}" required placeholder="Retriever">
+    <input id="item" name="item" value="{{ item }}" required placeholder="Retriever" list="ship-names" autocomplete="off">
+    <datalist id="ship-names">{% for n in suggestions %}<option value="{{ n }}">{% endfor %}</datalist>
   </label>
   <button class="primary" type="submit">Check</button>
 </form>
@@ -21,5 +22,13 @@
 <h2>{{ requirement.type_name }} <span class="muted">for {{ character }}</span>
   <span class="pill {{ clone_state }}">{{ clone_state|capitalize }}</span></h2>
 {% with req = requirement, is_alpha = clone_state != "omega" %}{% include "_requirement.html" %}{% endwith %}
+<form class="spaced" method="post" action="/goals">
+  <input type="hidden" name="token" value="{{ form_token }}">
+  <input type="hidden" name="kind" value="ship">
+  <input type="hidden" name="target" value="{{ requirement.type_name }}">
+  <input type="hidden" name="character" value="{{ character }}">
+  <button class="primary" type="submit">Set as goal</button>
+  <span class="muted small-print">Track it on Goals, with its progress and what it would take.</span>
+</form>
 {% endif %}
 {% endblock %}

@@ -44,7 +44,7 @@ goal dates. Your setting is the starting point; recorded sessions take over as w
 downloaded from EVE again, so keep the folder somewhere safe: another drive or a synced folder is
 best. The README's Backups section says how to move it.</p>
 {% if backups_kept %}
-<p>Last backup {{ backups_kept[0].taken_at.isoformat()|when }} · {{ backups_kept|length }} kept in
+<p>Last backup {{ backups_kept[0].taken_at.isoformat()|when_ago }} · {{ backups_kept|length }} kept in
   <span class="mono">{{ backups_folder }}</span></p>
 {% else %}
 <p class="muted">No backup yet. The first one is made within a minute of the dashboard starting,

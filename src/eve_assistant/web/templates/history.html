@@ -11,7 +11,7 @@
 
 {% for h in past %}
 <article class="card">
-  <h2 class="history-title">{{ h.session.character_name }} · {{ h.session.started_at|when }}</h2>
+  <h2 class="history-title">{{ h.session.character_name }} · {{ h.session.started_at|when_ago }}</h2>
   <p class="figures">
     Played {{ h.session.minutes()|round|int }} min{% if h.plan %} of a {{ h.plan.total_minutes|round|int }}-minute <a href="/plans/{{ h.plan.plan_id }}">plan</a>{% else %}, no plan{% endif %}
     {% if h.outcome %} · wallet change {{ h.outcome.net_isk|isk }} ISK

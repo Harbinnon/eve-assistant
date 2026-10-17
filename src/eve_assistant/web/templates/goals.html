@@ -11,8 +11,11 @@
 
 {% for s in statuses %}
 <article class="card goal">
-  <h3>{{ s.goal.label }}{% if s.character_name %} <span class="muted">· {{ s.character_name }}</span>{% endif %}</h3>
+  <h3>{% if s.goal.kind == "isk" %}Have {{ s.goal.isk|isk }} ISK{% else %}{{ s.goal.label }}{% endif %}{% if s.character_name %} <span class="muted">· {{ s.character_name }}</span>{% endif %}</h3>
   {% if s.requirement %}
+    {% set done = s.requirement.progress %}
+    <p class="progress spaced"><progress value="{{ done }}" max="1" aria-label="{{ (done * 100)|round|int }}% of the skill points trained"></progress>
+      <span class="small-print">{{ (done * 100)|round|int }}% of the skill points trained</span></p>
     {% with req = s.requirement, is_alpha = s.is_alpha %}{% include "_requirement.html" %}{% endwith %}
   {% endif %}
   {% if s.price is not none or s.isk_needed is not none %}
@@ -37,13 +40,12 @@
     {% elif r.code == "goal_date_needs_sessions" %}<p class="muted">A date comes once two of this character's recorded sessions are final (press Start this plan, then I'm done).</p>{% endif %}
   {% endfor %}
   <div class="actions">
-    {% for status, label in [("done", "Mark done"), ("dropped", "Drop")] %}
     <form class="inline" method="post" action="/goals/{{ s.goal.goal_id }}/status">
       <input type="hidden" name="token" value="{{ form_token }}">
-      <input type="hidden" name="status" value="{{ status }}">
-      <button class="small" type="submit">{{ label }}</button>
+      <input type="hidden" name="status" value="done">
+      <button class="small" type="submit">Mark done</button>
     </form>
-    {% endfor %}
+    <a class="button small" href="/goals/{{ s.goal.goal_id }}/drop">Drop</a>
   </div>
 </article>
 {% else %}
@@ -61,7 +63,8 @@
     </select>
   </label>
   <label for="target">Ship, skill or ISK amount
-    <input id="target" name="target" required placeholder="Retriever">
+    <input id="target" name="target" required placeholder="Retriever" list="goal-names" autocomplete="off">
+    <datalist id="goal-names">{% for n in suggestions %}<option value="{{ n }}">{% endfor %}</datalist>
   </label>
   <label for="level">Level (skills)
     <input id="level" name="level" type="number" min="1" max="5" class="narrow">

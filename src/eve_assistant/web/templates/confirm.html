@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} · EVE Assistant{% endblock %}
+{% block content %}
+<h1>{{ title }}</h1>
+<p class="lede"><strong>{{ what }}</strong></p>
+<p>{{ detail }}</p>
+<form class="error-actions" method="post" action="{{ action }}">
+  <input type="hidden" name="token" value="{{ form_token }}">
+  {% if field %}<input type="hidden" name="{{ field[0] }}" value="{{ field[1] }}">{% endif %}
+  <button class="primary" type="submit">{{ button }}</button>
+  <a class="button" href="{{ cancel }}">Keep it</a>
+</form>
+{% endblock %}

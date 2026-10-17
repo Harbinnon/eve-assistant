@@ -26,6 +26,11 @@ def db():
     conn.executemany(
         "INSERT INTO sde_types (type_id, name, group_id, published) VALUES (?, ?, 1, 1)", types
     )
+    # Skills in a skill group, ships in a ship group (goal titles say "Fly" for ships).
+    conn.executemany(
+        "INSERT INTO sde_groups VALUES (?, ?, ?, 1)", [(1, 16, "Skills"), (2, 6, "Ships")]
+    )
+    conn.execute("UPDATE sde_types SET group_id = 2 WHERE type_id IN (?, ?)", (BARGE_SHIP, FRIGATE))
     attrs = []
     for skill in (MINING, GEOLOGY, BARGE_SKILL):
         attrs += [(skill, 275, 1.0), (skill, 180, 167), (skill, 181, 168)]
@@ -179,3 +184,12 @@ def test_prices_refresh_replaces_old_rows(db):
         assert goals.update_prices(db, EsiClient(http, db, base_url="https://esi.test")) == 1
     assert goals.price_of(db, BARGE_SHIP) == 5.0
     assert goals.price_of(db, 999) is None
+
+
+def test_requirements_know_how_much_is_already_trained(db):
+    cid = _character(db, {MINING: (4, 4, 45255)})
+    requirement = skills.plan(db, skills.load_character_skills(db, cid), BARGE_SHIP)
+    assert 0 < requirement.trained_skillpoints < requirement.total_skillpoints
+    assert requirement.progress == pytest.approx(
+        requirement.trained_skillpoints / requirement.total_skillpoints
+    )

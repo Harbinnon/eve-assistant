@@ -50,7 +50,7 @@
 <p class="muted small-print">From EVE's login and logout times. Record them so the assistant can learn from them; nothing is recorded until you say so.</p>
 {% for d in noticed %}
 <article class="card session">
-  <p><strong>{{ d.character_name }}</strong> · {{ d.login|when }} to {{ d.logout[11:16] }} UTC · {{ d.minutes|round|int }} min
+  <p><strong>{{ d.character_name }}</strong> · {{ d.login|when_ago }}, to {{ d.logout[11:16] }} UTC · {{ d.minutes|round|int }} min
     {% if d.plan_id %} · with <a href="/plans/{{ d.plan_id }}">plan {{ d.plan_id }}</a>{% endif %}</p>
   {% for action, label, cls in [("record", "Record it", "small primary"), ("dismiss", "Not a session", "small")] %}
   <form class="inline" method="post" action="/detected/{{ action }}">
@@ -189,14 +189,13 @@
           aria-label="{{ p.minutes_done|round|int }} of {{ p.total_minutes|round|int }} minutes done"></progress>
           <span class="small-print">{{ p.minutes_done|round|int }} / {{ p.total_minutes|round|int }} min</span></span></td>
         <td class="num">{{ p.isk|isk }}</td>
-        <td>{{ p.deadline|when if p.deadline else "none" }}</td>
+        <td>{{ p.deadline|when_ago if p.deadline else "none" }}</td>
         <td>
-          {% for status, label in [("done", "Done"), ("dropped", "Drop")] %}
-          <form class="inline" method="post" action="/projects/{{ p.project_id }}/{{ status }}">
+          <form class="inline" method="post" action="/projects/{{ p.project_id }}/done">
             <input type="hidden" name="token" value="{{ form_token }}">
-            <button class="small" type="submit">{{ label }}</button>
+            <button class="small" type="submit">Done</button>
           </form>
-          {% endfor %}
+          <a class="button small" href="/projects/{{ p.project_id }}/drop">Drop</a>
         </td>
       </tr>
     {% endfor %}

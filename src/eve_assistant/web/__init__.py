@@ -179,13 +179,42 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
-def _minutes_since(value) -> float | None:
+def _minutes_from_now(value) -> float | None:
+    """Minutes since a time (negative for a time still to come)."""
     if not value:
         return None
-    then = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    then = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
     if then.tzinfo is None:
         then = then.replace(tzinfo=UTC)
-    return max(0.0, (_now() - then).total_seconds() / 60)
+    return (_now() - then).total_seconds() / 60
+
+
+def _minutes_since(value) -> float | None:
+    minutes = _minutes_from_now(value)
+    return None if minutes is None else max(0.0, minutes)
+
+
+def _span(minutes: float) -> str:
+    if minutes < 60:
+        return f"{minutes:.0f} min"
+    hours = minutes / 60
+    if hours < 48:
+        return f"{hours:.0f} hour{'s' if round(hours) != 1 else ''}"
+    return f"{hours / 24:.0f} days"
+
+
+def _when_ago(value) -> str:
+    """'2026-10-16 02:50 UTC · 6 hours ago', or '· in 2 days' for times to come."""
+    minutes = _minutes_from_now(value)
+    if minutes is None:
+        return "never"
+    if abs(minutes) < 1:
+        relative = "just now"
+    elif minutes > 0:
+        relative = f"{_span(minutes)} ago"
+    else:
+        relative = f"in {_span(-minutes)}"
+    return f"{_when(str(value))} · {relative}"
 
 
 def _ago(value) -> str:
@@ -195,12 +224,7 @@ def _ago(value) -> str:
         return "never"
     if minutes < 1:
         return "just now"
-    if minutes < 60:
-        return f"{minutes:.0f} min ago"
-    hours = minutes / 60
-    if hours < 48:
-        return f"{hours:.0f} hour{'s' if round(hours) != 1 else ''} ago"
-    return f"{hours / 24:.0f} days ago"
+    return f"{_span(minutes)} ago"
 
 
 def _theme(request: Request) -> str:
@@ -301,6 +325,7 @@ def create_app(
     templates.env.filters["security"] = _security
     templates.env.filters["when"] = _when
     templates.env.filters["ago"] = _ago
+    templates.env.filters["when_ago"] = _when_ago
     templates.env.globals["minutes_since"] = _minutes_since
     templates.env.globals["plan_stale_minutes"] = PLAN_STALE_MINUTES
     templates.env.globals["describe"] = skills.describe
@@ -812,6 +837,7 @@ def create_app(
                 except SkillsError as exc:
                     problems.append(f"{goal.label}: {exc}")
             names = _names(conn)
+            suggestions = skills.names_in(conn, skills.SHIP_CATEGORY, skills.SKILL_CATEGORY)
         finally:
             conn.close()
         return render(
@@ -820,7 +846,52 @@ def create_app(
             statuses=statuses,
             problems=problems,
             character_names=names,
+            suggestions=suggestions,
             error=error,
+        )
+
+    @app.get("/goals/{goal_id}/drop", response_class=HTMLResponse)
+    def confirm_drop_goal(request: Request, goal_id: int):
+        conn = db()
+        try:
+            goal = next((g for g in goals.active_goals(conn) if g.goal_id == goal_id), None)
+        finally:
+            conn.close()
+        if goal is None:
+            raise HTTPException(404, f"No open goal {goal_id}.")
+        return render(
+            request,
+            "confirm.html",
+            title="Drop this goal?",
+            what=goal.label,
+            detail="It leaves the Goals page. Its history is kept.",
+            action=f"/goals/{goal_id}/status",
+            field=("status", "dropped"),
+            button="Drop it",
+            cancel=GOALS,
+        )
+
+    @app.get("/projects/{project_id}/drop", response_class=HTMLResponse)
+    def confirm_drop_project(request: Request, project_id: int):
+        conn = db()
+        try:
+            project = next(
+                (p for p in projects.open_projects(conn) if p.project_id == project_id), None
+            )
+        finally:
+            conn.close()
+        if project is None:
+            raise HTTPException(404, f"No open project {project_id}.")
+        return render(
+            request,
+            "confirm.html",
+            title="Drop this project?",
+            what=project.title,
+            detail="It stops being planned. Minutes already logged are kept.",
+            action=f"/projects/{project_id}/dropped",
+            field=None,
+            button="Drop it",
+            cancel=TODAY,
         )
 
     @app.post(GOALS)
@@ -879,6 +950,7 @@ def create_app(
         conn = db()
         try:
             names = _names(conn)
+            suggestions = skills.names_in(conn, skills.SHIP_CATEGORY)
             if not character:
                 active = active_character(request, conn)
                 character = active[1] if active else ""
@@ -897,6 +969,7 @@ def create_app(
             request,
             "skills.html",
             character_names=names,
+            suggestions=suggestions,
             character=character,
             item=item,
             requirement=requirement,

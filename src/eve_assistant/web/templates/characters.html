@@ -49,7 +49,7 @@
       <dt>Alpha-locked</dt><dd>{{ c.alpha_locked_skills }} trained skills wait for Omega</dd>
       {% endif %}
     </dl>
-    <p class="sub checked">Checked {{ c.last_checked|when }}</p>
+    <p class="sub checked">Checked {{ c.last_checked|when_ago }}</p>
   </article>
   {% endfor %}
 </div>
