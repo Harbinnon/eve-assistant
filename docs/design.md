@@ -107,12 +107,19 @@ and the risk.
 |---|---|---|---|
 | **Mining** (by ore, belt or anomaly, system) | Ship and module yield, skills, ore prices, travel to the site and to market | Rough | The **mining ledger** (ESI records exactly what was mined, by day) |
 | **What to do with ore**: sell raw, compress, refine and sell minerals, or build with it | Prices and order-book depth at nearby hubs, refining skills and the facility's refine rate, sales tax and broker fees (skills and standings) | **Good**: arithmetic on known data | Predicted sale prices against what the wallet shows |
-| **Manufacturing** (the character's blueprints) | Material cost, job cost per system (published in ESI), sale price, tax | Good | Real job outcomes and sale prices |
+| **Manufacturing** (the character's blueprints; built in milestone 5) | Materials with the blueprint's ME, time with its TE and the Industry skills, the job fee (estimated item value × (system cost index + 0.25% NPC facility tax + 4% SCC surcharge, + 0.25% for Alpha)), product and materials at CCP averages | Good on costs, rough on prices | Sale prices against what the wallet shows |
 | **Courier contracts** | Public contracts (ESI), route length, cargo capacity and warp speed, collateral against the wallet, route risk | Fair; risk is the weak part | Real travel time per jump; whether contracts completed |
 | **Hauling own goods to a better market** | Price difference between hubs against travel time | Good | Wallet results |
+| **Gas harvesting** (milestone 5) | Scoop yield from the static data (ship role and per-level bonuses; one active harvester a level of Gas Cloud Harvesting), about 20 minutes to find a nebula, valued at the average highsec booster gas price | Rough: which gas a site holds varies | The mining ledger's gas, if it records it |
+| **Exploration**: relic and data sites (milestone 5) | Needs a probe launcher and an analyzer the character can use; a starting guess of about 1M ISK an hour in highsec (players' reports) | A guess: loot is luck | The change in net worth across the session |
+| **Distribution missions** (milestone 5) | The nearest Distribution agents the character's standing opens; a guess built on one published figure (level 4: about 400k ISK and 750 LP a mission), LP valued at the corporation's store (median of its ten best offers) | A guess | Mission rewards in the wallet journal |
 
-Later: missions, exploration, Planetary Industry, reactions. Each is just
-another model in the same planner.
+Military campaigns (Cradle of War) are read from ESI and the static data;
+a running objective that fits a modelled activity is mentioned in plans
+with its ISK, LP and standing. Trade hauling (buying to sell elsewhere)
+waits for the owner's decision (roadmap 5.5); the design's position is
+to keep using the dedicated market tools (section 11). Later: Planetary
+Industry, reactions. Each is just another model in the same planner.
 
 ### 4.3 The session planner: "I have an hour"
 
@@ -293,7 +300,9 @@ refresh and session snapshot reads new lines first:
   On the owner's real logs the per-type totals matched the mining ledger
   exactly.
 
-**Corrections** (built: mining speed, sale prices, travel time). Each
+**Corrections** (built: mining speed, sale prices, travel time; in
+milestone 5 also gas harvesting speed, mission income and exploration
+income, each learned from its own evidence, see 4.2). Each
 session gives a ratio of what happened to what its plan assumed:
 
 - **Mining speed:** a session whose plan had a mining step the player
@@ -939,6 +948,16 @@ hangars, not price moves. The line is a small SVG drawn on the server.
   read every hour while the dashboard runs; `/insurance/prices` once a day.
   No player is named in any of it. Later, zKillboard for hauler and miner
   kills over longer periods.
+- **Industry** (ESI `/industry/systems`, public): each system's
+  manufacturing cost index, once a day. Blueprints, their materials and
+  times, and NPC agents come from the static data (loader version 4,
+  which also keeps gas, slot and industry attributes); a newer loader
+  reloads the static data from the zip already on disk by itself.
+- **LP stores** (ESI `/loyalty/stores/{corporation_id}/offers`, public):
+  priced once a day per corporation a plan needs; the character's LP
+  balances come from `esi-characters.read_loyalty.v1`.
+- **Military campaigns** (ESI `/military-campaigns`, public, daily, plus the
+  static data's campaigns and objectives).
 - **Your own losses** (ESI, `esi-killmails.read_killmails.v1`): the list of
   the character's killmails, then each new one fetched once, kept out of
   the ESI cache; only the owner's own losses are kept, never attackers.
