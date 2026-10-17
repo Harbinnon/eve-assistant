@@ -2,7 +2,8 @@
 
 import pytest
 
-from eve_assistant import fleet, ore, planner, snapshots, store
+from eve_assistant import fleet, ore, snapshots, store
+from eve_assistant.activities import hauling
 
 HOME, AWAY = 31000001, 31000002
 STATION, AWAY_STATION = 61000001, 61000002
@@ -119,15 +120,15 @@ def test_hauler_choice_prefers_the_cheapest_ship_that_fits(db):
             jumps=5, hauled_m3=m3, hauled_is_ore=is_ore,
         )  # fmt: skip
 
-    small = planner._pick_hauler(ships, STATION, STATION, option(4000))
+    small = hauling.pick_hauler(ships, STATION, STATION, option(4000))
     assert small[0].name == "Venture"  # ore hold fits, already boarded
     assert small[1] == 0
-    minerals = planner._pick_hauler(ships, STATION, STATION, option(3000, is_ore=False))
+    minerals = hauling.pick_hauler(ships, STATION, STATION, option(3000, is_ore=False))
     assert minerals[0].name == "Hauler"
     assert minerals[1] == fleet.MINUTES_TO_SWITCH_SHIP
-    big_ore = planner._pick_hauler(ships, AWAY_STATION, STATION, option(30000))
+    big_ore = hauling.pick_hauler(ships, AWAY_STATION, STATION, option(30000))
     assert big_ore[0].name == "Ore Hauler"  # waiting at the ore's station
-    assert planner._pick_hauler(ships, STATION, STATION, option(99999)) is None
+    assert hauling.pick_hauler(ships, STATION, STATION, option(99999)) is None
 
 
 def test_ships_in_known_structures_get_a_system(db):
@@ -162,11 +163,11 @@ def test_loads_too_big_for_one_trip_pick_the_fewest_trips(db):
         key="k", title="t", isk=1.0, active_minutes=1.0, instant=True, location="x",
         jumps=5, hauled_m3=12_000, hauled_is_ore=True,
     )  # fmt: skip
-    ship, switch, trips = planner._multi_trip_haul(ships, STATION, STATION, load)
+    ship, switch, trips = hauling.multi_trip_haul(ships, STATION, STATION, load)
     # the Hauler's 6,000 m3 cargo takes ore too: 2 trips beats the Venture's 3
     assert ship.name == "Hauler"
     assert trips == 2
     assert switch == fleet.MINUTES_TO_SWITCH_SHIP
-    ship, _switch, trips = planner._multi_trip_haul(ships, AWAY_STATION, STATION, load)
+    ship, _switch, trips = hauling.multi_trip_haul(ships, AWAY_STATION, STATION, load)
     assert ship.name == "Ore Hauler"
     assert trips == 1

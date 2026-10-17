@@ -31,6 +31,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from eve_assistant import (
+    activities,
     backups,
     checklist,
     corrections,
@@ -40,6 +41,7 @@ from eve_assistant import (
     history,
     images,
     numbers,
+    omega,
     outcomes,
     overview,
     pace,
@@ -52,9 +54,12 @@ from eve_assistant import (
     sessions,
     skills,
     store,
+    train_next,
+    worth,
 )
 from eve_assistant.goals import GoalError
 from eve_assistant.skills import SkillsError
+from eve_assistant.web import charts
 
 # make_plan(character_id, minutes, allow_lowsec, allow_risky) -> plan_id
 PlanMaker = Callable[[int, float, bool, bool], int]
@@ -110,6 +115,9 @@ RELOADING_PAGES = ("today", "characters", "history")
 # open, and how long the result stays on the page.
 LOGIN_RELOAD_SECONDS = 5
 LOGIN_NEWS_MINUTES = 15
+
+# At most this many plans side by side in "who should play".
+MAX_COMPARED = 10
 
 # Past this age a plan's prices and contracts have likely moved: say so.
 PLAN_STALE_MINUTES = 60
@@ -181,6 +189,16 @@ def _when(value) -> str:
     if not value:
         return "never"
     return f"{value[:10]} {value[11:16]} UTC"
+
+
+def _worth(conn, character_ids) -> SimpleNamespace | None:
+    """Today's net worth and the line to it, for the Characters and Goals pages."""
+    points = worth.history(conn, character_ids)
+    if not points:
+        return None
+    return SimpleNamespace(
+        now=points[-1], line=charts.line([(p.at, p.total) for p in points]), days=worth.DAYS
+    )
 
 
 def _now() -> datetime:
@@ -285,6 +303,7 @@ def create_app(
     backups_dir: Path | str | None = None,
     add_character: Callable[[], str] | None = None,
     fetch_image: images.Fetch | None = None,
+    missing_scopes: Callable[[], dict[int, tuple[str, ...]]] | None = None,
 ) -> FastAPI:
     """refresh: called by the Refresh button; returns problem lines, empty when all went well.
     make_plan: builds and records a plan (needs ESI), returning its ID.
@@ -349,6 +368,7 @@ def create_app(
     templates.env.globals["why_not"] = explain.WHY_NOT
     templates.env.globals["why_not_here"] = planner.why_not
     templates.env.globals["per_hour"] = numbers.per_hour
+    templates.env.globals["plan_value"] = planner.plan_value
     templates.env.globals["risk_labels"] = RISK_LABELS
     templates.env.globals["category_labels"] = preferences.KNOWN
     form_token = secrets.token_urlsafe(32)
@@ -526,10 +546,18 @@ def create_app(
         return [r["name"] for r in conn.execute("SELECT name FROM characters ORDER BY name")]
 
     @app.get(TODAY, response_class=HTMLResponse)
-    def today_page(request: Request, error: str | None = None):
+    def today_page(request: Request, error: str | None = None, compare: str = ""):
         conn = db()
         try:
             names = _names(conn)
+            compared = []
+            for text in compare.split(",")[:MAX_COMPARED]:
+                if text.isdigit():
+                    try:
+                        compared.append(planner.load_plan(conn, int(text)))
+                    except planner.PlanError:
+                        continue
+            compared = planner.who_should_play(compared)
             active = active_character(request, conn)
             latest = planner.latest_plan_id(conn, active[0] if active else None)
             recent = planner.load_plan(conn, latest) if latest else None
@@ -556,6 +584,7 @@ def create_app(
             session_views=session_views,  # while playing, Today is the session view
             noticed=noticed,
             ship_type_id=ship_type_id,
+            compared=compared,
         )
 
     @app.post("/sessions/{session_id}/steps/{item_id}/{action}")
@@ -603,6 +632,7 @@ def create_app(
         minutes: float = Form(...),
         allow_lowsec: bool = Form(False),
         allow_risky: bool = Form(False),
+        compare: bool = Form(False),
     ):
         check_form(request, token)
         if make_plan is None:
@@ -610,11 +640,15 @@ def create_app(
         conn = db()
         try:
             character_id = goals.resolve_character(conn, character)
+            everyone = [r["character_id"] for r in conn.execute(CHARACTERS_BY_NAME)]
         except GoalError as exc:
             return today_page(request, error=str(exc))
         finally:
             conn.close()
         try:
+            if compare:  # the same plan for every character, to pick who plays
+                made = [make_plan(cid, minutes, allow_lowsec, allow_risky) for cid in everyone]
+                return back(TODAY, compare=",".join(str(int(plan_id)) for plan_id in made))
             plan_id = make_plan(character_id, minutes, allow_lowsec, allow_risky)
         except Exception as exc:  # noqa: BLE001  # shown to the person, never swallowed silently
             return today_page(request, error=f"Could not build a plan: {exc}")
@@ -812,9 +846,10 @@ def create_app(
             # Characters with the same text share one line ("not yet checked" thrice is noise).
             learned_by_text: dict[str, list[str]] = {}
             for r in conn.execute(CHARACTERS_BY_NAME):
-                reason = corrections.correction(conn, r["character_id"], "mining_rate").reason()
-                text = explain.describe(reason.code, reason.detail)
-                learned_by_text.setdefault(text, []).append(r["name"])
+                for correction in activities.learned(conn, r["character_id"]):
+                    reason = correction.reason()
+                    text = explain.describe(reason.code, reason.detail)
+                    learned_by_text.setdefault(text, []).append(r["name"])
             learned = [(", ".join(names), text) for text, names in learned_by_text.items()]
             finish = pace.finish_rate(conn)
         finally:
@@ -835,14 +870,22 @@ def create_app(
         conn = db()
         try:
             summaries = overview.all_characters(conn)
+            worth_lines = {c.character_id: _worth(conn, [c.character_id]) for c in summaries}
         finally:
             conn.close()
         recent = login["at"] and (_minutes_since(login["at"]) or 0) < LOGIN_NEWS_MINUTES
+        missing = {
+            cid: scopes
+            for cid, scopes in (missing_scopes() if missing_scopes else {}).items()
+            if scopes
+        }
         return render(
             request,
             "characters.html",
             characters=summaries,
+            worth_lines=worth_lines,
             problems=[],
+            missing=missing,
             login=login if login["state"] == "waiting" or recent else None,
             can_add=add_character is not None,
             # While EVE's login page is open, check back every few seconds.
@@ -909,22 +952,35 @@ def create_app(
         conn = db()
         try:
             summaries = overview.all_characters(conn)
+            worth_lines = {c.character_id: _worth(conn, [c.character_id]) for c in summaries}
         finally:
             conn.close()
-        return render(request, "characters.html", characters=summaries, problems=problems)
+        return render(
+            request,
+            "characters.html",
+            characters=summaries,
+            worth_lines=worth_lines,
+            problems=problems,
+        )
 
     @app.get(GOALS, response_class=HTMLResponse)
     def goals_page(request: Request, error: str | None = None):
         conn = db()
         try:
-            statuses, problems = [], []
+            statuses, problems, worth_lines = [], [], {}
             for goal in goals.active_goals(conn):
                 try:
                     statuses.append(goals.evaluate(conn, goal))
                 except SkillsError as exc:
                     problems.append(f"{goal.label}: {exc}")
+                if goal.kind in ("isk", "omega"):
+                    whose = [goal.character_id] if goal.character_id else worth.all_characters(conn)
+                    worth_lines[goal.goal_id] = _worth(conn, whose)
             names = _names(conn)
             suggestions = skills.names_in(conn, skills.SHIP_CATEGORY, skills.SKILL_CATEGORY)
+            active = active_character(request, conn)
+            omega_view = omega.compare(conn, active[0]) if active else None
+            hours_a_week = pace.weekly_play(conn).minutes / 60
         finally:
             conn.close()
         return render(
@@ -934,6 +990,9 @@ def create_app(
             problems=problems,
             character_names=names,
             suggestions=suggestions,
+            omega_view=omega_view,
+            hours_a_week=hours_a_week,
+            worth_lines=worth_lines,
             error=error,
         )
 
@@ -1009,6 +1068,9 @@ def create_app(
             elif kind == "isk":
                 amount = float(target.replace(",", "").replace("_", "").strip() or 0)
                 goals.add_goal(conn, "isk", character_id, isk=amount)
+            elif kind == "omega":
+                months = int(target.strip() or 1) if target.strip().isdigit() else level or 1
+                goals.add_goal(conn, "omega", character_id, level=months)
             else:
                 raise GoalError("Choose a goal type.")
         except (GoalError, SkillsError, ValueError) as exc:
@@ -1042,6 +1104,15 @@ def create_app(
                 active = active_character(request, conn)
                 character = active[1] if active else ""
             requirement, error, clone_state = None, None, None
+            train, train_goal, train_capped = [], None, False
+            if character:
+                try:
+                    character_id = goals.resolve_character(conn, character)
+                    train = train_next.suggestions(conn, character_id)
+                    train_goal = train_next.goal_for(conn, character_id)
+                    train_capped = not train and train_next.at_alpha_limits(conn, character_id)
+                except GoalError:
+                    pass
             if character and item:
                 try:
                     character_id = goals.resolve_character(conn, character)
@@ -1061,6 +1132,9 @@ def create_app(
             item=item,
             requirement=requirement,
             clone_state=clone_state,
+            train=train,
+            train_goal=train_goal,
+            train_capped=train_capped,
             error=error,
         )
 

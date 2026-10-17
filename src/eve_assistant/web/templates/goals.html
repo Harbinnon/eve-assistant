@@ -9,6 +9,32 @@
 <div class="problems" role="alert"><ul>{% for p in problems %}<li>{{ p }}</li>{% endfor %}</ul></div>
 {% endif %}
 
+{% if omega_view %}
+{% set o = omega_view %}
+<section class="card omega-view">
+  <h2 class="history-title">What Omega would change · {{ o.character_name }}</h2>
+  <div class="readout">
+    {% if o.alpha %}<div><span class="label">Now, as Alpha</span><span class="value minor">{{ o.alpha.m3_per_minute|round|int }}<small>m³/min · {{ o.alpha.ship }}</small></span></div>{% endif %}
+    <div><span class="label">As Omega</span><span class="value minor">{{ o.omega.m3_per_minute|round|int }}<small>m³/min · {{ o.omega.ship }}</small></span></div>
+    {% if o.gain_per_hour is not none %}<div><span class="label">Extra an hour</span><span class="value minor isk">{{ o.gain_per_hour|isk }}<small>ISK</small></span></div>{% endif %}
+    {% if o.month_cost %}<div><span class="label">A month of Omega</span><span class="value minor">{{ o.month_cost|isk }}<small>ISK · 500 PLEX</small></span></div>{% endif %}
+  </div>
+  {% set extra = o.extra_a_month(hours_a_week) %}
+  {% if extra is not none and o.month_cost %}
+  <p>At your {{ '%g'|format(hours_a_week|round(1)) }} hours a week, Omega would add about <span class="isk">{{ extra|isk }} ISK</span> a month,
+    against <strong>{{ o.month_cost|isk }} ISK</strong> for the month in PLEX{% if o.hours_to_pay %}: it pays for itself only past about {{ o.hours_to_pay|round|int }} hours of mining a month{% endif %}.</p>
+  {% endif %}
+  <p class="muted small-print">Mining speed is the published figure with your ships as fitted now{% if o.isk_per_m3 %}; ISK is at your latest plan's sale price for your ore{% else %}; plan a mining session to see it in ISK{% endif %}. Omega also trains faster (assumed twice as fast; not yet confirmed).</p>
+  <form class="inline" method="post" action="/goals">
+    <input type="hidden" name="token" value="{{ form_token }}">
+    <input type="hidden" name="kind" value="omega">
+    <input type="hidden" name="target" value="1">
+    <input type="hidden" name="character" value="{{ o.character_name }}">
+    <button class="small" type="submit">Add an Omega goal (500 PLEX)</button>
+  </form>
+</section>
+{% endif %}
+
 {% for s in statuses %}
 <article class="card goal">
   <h3>{% if s.goal.kind == "isk" %}Have {{ s.goal.isk|isk }} ISK{% else %}{{ s.goal.label }}{% endif %}{% if s.character_name %} <span class="muted">· {{ s.character_name }}</span>{% endif %}</h3>
@@ -21,14 +47,15 @@
   {% if s.price is not none or s.isk_needed is not none %}
   <dl class="facts spaced">
     {% if s.price is not none %}<dt>Rough price</dt><dd>{{ s.price|isk }} ISK <span class="muted">(CCP average, not a hub quote)</span></dd>{% endif %}
-    {% if s.goal.isk %}<dt>Target</dt><dd>{{ s.goal.isk|isk }} ISK</dd>{% endif %}
+    {% if s.target_isk and s.goal.kind in ("isk", "omega") %}<dt>Target</dt><dd>{{ s.target_isk|isk }} ISK{% if s.goal.kind == "omega" %} <span class="muted">(at today's PLEX price)</span>{% endif %}</dd>{% endif %}
     {% if s.wallet is not none %}<dt>Wallet</dt><dd>{{ s.wallet|isk }} ISK{% if not s.character_name %} <span class="muted">(all characters)</span>{% endif %}</dd>{% endif %}
-    {% if s.goal.isk and s.wallet is not none %}
-    {% set share = [s.wallet / s.goal.isk, 1]|min %}
+    {% if s.target_isk and s.goal.kind in ("isk", "omega") and s.wallet is not none %}
+    {% set share = [s.wallet / s.target_isk, 1]|min %}
     <dt>Progress</dt><dd><span class="progress"><progress class="isk" value="{{ share }}" max="1"
       aria-label="{{ (share * 100)|round|int }}% of the target"></progress>
       <span class="small-print">{{ (share * 100)|round|int }}%</span></span></dd>
     {% endif %}
+    {% with w = worth_lines.get(s.goal.goal_id) %}{% if w %}<dt>Net worth</dt><dd>{% include "_worth.html" %}</dd>{% endif %}{% endwith %}
     {% if s.isk_needed is not none %}<dt>Still needed</dt><dd>{% if s.isk_needed == 0 %}<span class="pill good">covered</span>{% else %}{{ s.isk_needed|isk }} ISK{% endif %}</dd>{% endif %}
     {% if s.earning %}<dt>At your pace</dt><dd>{% if s.weeks_to_isk is not none %}about {{ s.weeks_to_isk|round(1) }} weeks{% else %}not yet: your sessions haven't banked ISK{% endif %}
       <span class="muted">({{ s.earning.isk_per_hour|isk }} ISK an hour banked over {{ s.earning.sessions }} sessions; ore still in the hangar isn't counted)</span></dd>{% endif %}
@@ -60,6 +87,7 @@
       <option value="ship">Fly a ship</option>
       <option value="skill">Train a skill</option>
       <option value="isk">Have an amount of ISK</option>
+      <option value="omega">Omega via PLEX (months)</option>
     </select>
   </label>
   <label for="target">Ship, skill or ISK amount

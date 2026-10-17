@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from eve_assistant import refresh, snapshots, store
 from eve_assistant.config import Config, ConfigError, load_config
+from eve_assistant.esi import SCOPES
 from eve_assistant.esi.client import EsiRateLimited
 from eve_assistant.web import create_app
 
@@ -48,9 +49,10 @@ def test_due_kinds_follow_the_last_check(db_path):
     for kind in snapshots.KINDS:
         check(db, kind.name, minutes_ago=3)
     assert refresh.due_kinds(db, 7, NOW) == set()  # offline: only hourly (and online every 5)
-    snapshots.record(db, 7, "online", {"online": True})
-    for kind in snapshots.KINDS:  # record() checked "online" just now; put it back to 3 min
-        check(db, kind.name, minutes_ago=3)
+    # record() notes its check at the clock's time: pin it to 3 minutes before NOW.
+    three_ago = (NOW - timedelta(minutes=3)).isoformat(timespec="seconds")
+    with mock.patch.object(snapshots, "utc_now", return_value=three_ago):
+        snapshots.record(db, 7, "online", {"online": True})
     assert refresh.due_kinds(db, 7, NOW) == {"wallet", "location", "ship", "online"}
     db.close()
 
@@ -59,14 +61,16 @@ def test_due_kinds_follow_the_last_check(db_path):
 def fake_esi(monkeypatch):
     calls = []
     monkeypatch.setattr(
-        refresh.auth, "list_characters", lambda _s: [SimpleNamespace(character_id=7, name="Miner")]
+        refresh.auth,
+        "list_characters",
+        lambda _s: [SimpleNamespace(character_id=7, name="Miner", scopes=SCOPES)],
     )
     monkeypatch.setattr(refresh.auth, "http_client", lambda _c: contextlib.nullcontext(None))
     monkeypatch.setattr(
         refresh.auth, "AccessTokens", lambda *_a: SimpleNamespace(get=lambda _cid: "t")
     )
 
-    def snapshot_one(db, esi, character_id, name, kinds=None):
+    def snapshot_one(db, esi, character_id, name, kinds=None, granted=None):
         calls.append(set(kinds))
         for kind in kinds:
             check(db, kind, minutes_ago=0, character_id=character_id)
@@ -75,6 +79,7 @@ def fake_esi(monkeypatch):
     monkeypatch.setattr(refresh, "_snapshot_one", snapshot_one)
     prices = mock.Mock(return_value=1)
     monkeypatch.setattr(refresh.goals, "update_prices", prices)
+    monkeypatch.setattr(refresh.freelance, "refresh", mock.Mock(return_value=0))
     return calls, prices
 
 

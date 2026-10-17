@@ -12,12 +12,12 @@ from collections import Counter
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-from eve_assistant import routes, skills, snapshots
+from eve_assistant import routes, skills, snapshots, travel
 from eve_assistant.esi.client import EsiClient
 from eve_assistant.skills import Reason
 
 # Rough until learned from real trips (phase 3).
-MINUTES_PER_JUMP = 1.0
+MINUTES_PER_JUMP = travel.MINUTES_PER_JUMP  # before the player's pace is learned
 MINUTES_PER_DOCKING = 2.0  # accept and pick up, or deliver
 
 
@@ -112,9 +112,16 @@ def find(
     limit: int = 10,
     what_if_ship_id: int | None = None,
     ships: list[Ship] | None = None,
+    per_jump: tuple[float, Reason] | None = None,
 ) -> CourierSearch:
     """what_if_ship_id: plan as if the character had this ship (not owned, skills ignored).
-    ships: the ships to choose from (default: active ship and ships in this hangar)."""
+    ships: the ships to choose from (default: active ship and ships in this hangar).
+    per_jump: minutes a jump and its reason (corrections.minutes_per_jump); default the
+    starting assumption."""
+    a_jump, jump_reason = per_jump or (
+        MINUTES_PER_JUMP,
+        Reason("assumed_minutes_per_jump", {"minutes": MINUTES_PER_JUMP, "base": MINUTES_PER_JUMP}),
+    )
     location = snapshots.latest(db, character_id, "location") or {}
     here_system = location.get("solar_system_id")
     if here_system is None:
@@ -178,7 +185,7 @@ def find(
                 total = (
                     candidate.switch_minutes
                     + 2 * MINUTES_PER_DOCKING
-                    + (len(route) - 1 + len(delivery) - 1) * MINUTES_PER_JUMP
+                    + (len(route) - 1 + len(delivery) - 1) * a_jump
                 )
                 # quickest first, then the cheapest ship (least at stake)
                 if best is None or (total, candidate.value) < (best[0], best[1].value):
@@ -192,7 +199,7 @@ def find(
                 excluded["takes_too_long"] += 1
                 continue
             path = pickup + delivery[1:]
-            reasons = [Reason("assumed_minutes_per_jump", {"minutes": MINUTES_PER_JUMP})]
+            reasons = [jump_reason]
             if what_if_ship_id is not None:
                 reasons.append(Reason("what_if_ship", {"ship": ship.name}))
             if collateral > 0.5 * wallet:

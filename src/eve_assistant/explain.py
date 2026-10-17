@@ -18,7 +18,26 @@ WHY_NOT = {
 }
 
 
-LEARNED = {"mining_rate": "Mining speed"}
+LEARNED = {
+    "mining_rate": "Mining speed",
+    "sale_price": "Sale prices",
+    "minutes_per_jump": "Travel time",
+}
+# What a plan uses until a correction has sessions to learn from, and where it learns from.
+NOT_LEARNED = {
+    "mining_rate": (
+        "so this is the published figure. It learns from the sessions you record while EVE's "
+        "game logs are being read."
+    ),
+    "sale_price": (
+        "so plans expect what buyers' orders pay now. It learns from what your market sales "
+        "in recorded sessions actually got."
+    ),
+    "minutes_per_jump": (
+        "so plans assume about a minute a jump. It learns from your travel in recorded "
+        "sessions (the location EVE reports every couple of minutes)."
+    ),
+}
 RISK_WORTH_MENTIONING = 0.05  # of an option's ISK
 
 
@@ -63,6 +82,28 @@ def describe(code: str, detail: dict | None = None) -> str:
     d = detail or {}
     texts = {
         "same_stack": lambda: _same_stack(d),
+        "freelance_mining": lambda: (
+            f"The Freelance Job \u201c{d.get('job', '')}\u201d (named by its corporation) pays "
+            f"{numbers.isk(d.get('reward_per_unit', 0))} ISK a unit mined, for "
+            f"{d.get('counted', 0):,} of the {d.get('quantity', 0):,} units. Counted at the job's "
+            f"pay only: if the ore stays yours, selling it adds about "
+            f"{numbers.isk(d.get('ore_value', 0))}."
+            + (
+                ""
+                if d.get("committed")
+                else " Commit to the job in game first; it pays only after that."
+            )
+        ),
+        "freelance_delivery": lambda: (
+            f"The Freelance Job \u201c{d.get('job', '')}\u201d (named by its corporation) pays "
+            f"{numbers.isk(d.get('reward_per_unit', 0))} ISK an item delivered to "
+            f"{d.get('place', '?')}: {d.get('units', 0):,} items, which go to the corporation."
+            + (
+                ""
+                if d.get("committed")
+                else " Commit to the job in game first; it pays only after that."
+            )
+        ),
         "less_after_losses": lambda: _less_after_losses(d),
         "too_long": lambda: (
             f"Takes {d.get('minutes', 0):.0f} min; you have {d.get('available', 0):.0f}."
@@ -73,8 +114,11 @@ def describe(code: str, detail: dict | None = None) -> str:
         "alpha_sp_limit": lambda: skills.describe(Reason(code, d)),
         "trained_but_alpha_locked": lambda: skills.describe(Reason(code, d)),
         "assumed_minutes_per_jump": lambda: (
-            f"Travel time assumes about {d.get('minutes', 1):g} minute per jump until the tool "
-            "learns your pace."
+            f"Travel time assumes about {d.get('minutes', 1):.2g} minutes a jump, learned from "
+            f"{d['sessions']} of your sessions."
+            if d.get("sessions")
+            else f"Travel time assumes about {d.get('minutes', 1):g} minute a jump until the "
+            "tool learns your pace."
         ),
         "not_enough_buyers": lambda: (
             f"Not enough buyers for {d.get('unsold', 0):,} units; they would be left over."
@@ -118,12 +162,7 @@ def describe(code: str, detail: dict | None = None) -> str:
         ),
         "not_learned_yet": lambda: (
             f"{LEARNED.get(d.get('what'), d.get('what'))}: not yet checked against your real "
-            "sessions, so this is the published figure."
-            + (
-                " It learns from the sessions you record while EVE's game logs are being read."
-                if d.get("what") == "mining_rate"
-                else ""
-            )
+            f"sessions, {NOT_LEARNED.get(d.get('what'), 'so this is the published figure.')}"
         ),
         "better_saved_fit": lambda: (
             f"What if: your saved fit \u201c{d.get('fit_name', '')}\u201d (your own name for it) "

@@ -4,7 +4,7 @@ from unittest import mock
 import pytest
 from fastapi.testclient import TestClient
 
-from eve_assistant import cli, snapshots, store
+from eve_assistant import cli, snapshots, store, train_next
 from eve_assistant.config import Config
 from eve_assistant.web import create_app
 
@@ -83,11 +83,62 @@ def test_characters_page_shows_state_and_escapes_player_text(client):
     assert "trademarks or registered trademarks of CCP hf." in page.text
 
 
+def test_characters_and_goals_show_net_worth(client, db_path):
+    conn = store.connect(db_path)
+    conn.execute("INSERT INTO market_prices VALUES (32880, 2000000, NULL, 'x')")
+    conn.execute(
+        "INSERT INTO snapshots (character_id, kind, taken_at, content_hash, payload) "
+        "VALUES (7, 'wallet', '2026-01-01T00:00:00+00:00', 'h', '10000000')"
+    )
+    snapshots.record(conn, 7, "assets", [{"type_id": 32880, "quantity": 1}])
+    conn.close()
+    page = client.get("/characters").text
+    assert "Net worth" in page
+    assert "14.3M ISK" in page  # 12.3M wallet + a 2M Venture
+    assert '<svg class="worth-line"' in page
+    assert "<polyline points=" in page
+    client.post(
+        "/goals",
+        data={"token": _token(page), "kind": "isk", "target": "50000000", "character": ""},
+        headers={"Origin": LOCAL},
+    )
+    goals_page = client.get("/goals").text
+    assert "Net worth" in goals_page
+    assert "14.3M ISK" in goals_page  # all characters
+
+
 def test_skills_page_shows_plan(client):
     page = client.get("/skills", params={"character": "Test Pilot", "item": "Big Barge"})
     assert page.status_code == 200
     assert "Mining" in page.text
     assert "Omega" in page.text
+
+
+def test_skills_page_suggests_what_to_train_next(client, monkeypatch):
+    found = [
+        train_next.Suggestion("Astrogeology", 1, 90.0, 12.5, 1_200_000.0, 0.4, 90_000.0),
+        train_next.Suggestion("Mining", 5, 9000.0, 8.0, None, None, None, needs_omega=True),
+    ]
+    monkeypatch.setattr(train_next, "suggestions", lambda db, cid, limit=3: found)
+    monkeypatch.setattr(train_next, "goal_for", lambda db, cid: "Have 101M ISK")
+    page = client.get("/skills").text
+    assert "Train this next · Test Pilot" in page
+    for shown in ("Astrogeology 1", "+12.5 m³/min", "+1.2M"):
+        assert shown in page
+    assert "2.8 days" in page  # 0.4 weeks
+    assert "pays back in 0.1 h" in page
+    assert "needs Omega" in page
+    assert "these times are as Omega" in page
+    assert 'name="level" value="5"' in page  # Set as goal, per skill
+    assert "Have 101M ISK" in page
+
+
+def test_skills_page_says_when_alpha_limits_leave_nothing_to_train(client, monkeypatch):
+    monkeypatch.setattr(train_next, "suggestions", lambda db, cid, limit=3: [])
+    monkeypatch.setattr(train_next, "at_alpha_limits", lambda db, cid: True)
+    page = client.get("/skills").text
+    assert "Every skill your mining uses is at Alpha's limit" in page
+    assert 'href="/goals"' in page
 
 
 def test_skills_page_explains_unknown_items(client):
@@ -1103,3 +1154,80 @@ def test_a_compact_menu_for_narrow_screens(client):
     assert "<summary>Menu</summary>" in page
     assert page.count('<a href="/goals" aria-current="page">Goals</a>') == 2  # wide and narrow
     assert page.startswith("<!doctype html>")
+
+
+# --- Who should play today (roadmap 3.4) ------------------------------------------
+
+
+def _paying_plan_maker(db_path, isk_by_character):
+    from eve_assistant import planner, risk
+
+    def make(character_id, minutes, allow_lowsec, allow_risky):
+        conn = store.connect(db_path)
+        try:
+            item = planner.PlanItem(
+                kind="mining", key=str(character_id), title=f"Mine for {character_id}",
+                isk=isk_by_character[character_id], minutes=minutes,
+                risk=risk.rate("low", 100_000, 10_000_000),
+            )  # fmt: skip
+            plan = planner.Plan(character_id, minutes, (item,), (), (), 10_000_000)
+            return planner.record(conn, plan, {}).plan_id
+        finally:
+            conn.close()
+
+    return make
+
+
+def test_comparing_characters_says_who_should_play(db_path):
+    _second_character(db_path)
+    maker = _paying_plan_maker(db_path, {7: 1_000_000, 8: 4_000_000})
+    with TestClient(create_app(db_path, make_plan=maker), base_url=LOCAL) as client:
+        page = client.get("/today").text
+        assert ">Compare characters</button>" in page
+        compared = client.post(
+            "/today/plan",
+            data={"token": _token(page), "character": "Test Pilot", "minutes": "60",
+                  "compare": "true"},
+            follow_redirects=False,
+        )  # fmt: skip
+        assert compared.headers["location"].startswith("/today?compare=")
+        view = client.get(compared.headers["location"]).text
+    assert "Who should play · 60 minutes" in view
+    assert "<strong>Alpha Pilot</strong> would make the most" in view
+    assert "3M more than Test Pilot" in view
+    assert view.index("Play Alpha Pilot") < view.index("Play Test Pilot")  # best first
+
+
+def test_compare_is_offered_only_with_more_than_one_character(planning_client):
+    assert "Compare characters" not in planning_client.get("/today").text
+
+
+def test_the_compare_list_only_takes_plan_numbers(planning_client):
+    page = planning_client.get("/today?compare=1,x,%3Cscript%3E").text
+    assert "Who should play" not in page  # no such plans
+    assert "<script>" not in page
+
+
+# --- Omega comparison and a PLEX goal (roadmap 3.5) -------------------------------
+
+
+def test_goals_say_what_omega_would_change(client, monkeypatch):
+    from eve_assistant import omega
+    from eve_assistant.omega import Mining, OmegaComparison
+
+    monkeypatch.setattr(
+        omega,
+        "compare",
+        lambda _db, _cid: OmegaComparison(
+            "Test Pilot", Mining("Venture", 384.0), Mining("Procurer", 833.0), 92.0, 4_735_090.0
+        ),
+    )
+    page = client.get("/goals").text
+    assert "What Omega would change · Test Pilot" in page
+    assert "m³/min · Procurer" in page
+    assert "it pays for itself only past about" in page
+    added = client.post(
+        "/goals",
+        data={"token": _token(page), "kind": "omega", "target": "1", "character": "Test Pilot"},
+    )
+    assert "Omega for 1 month (500 PLEX)" in added.text

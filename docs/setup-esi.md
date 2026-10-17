@@ -19,7 +19,7 @@ see the design, section 6.2).
      ```
      The portal allows plain `http` only for `localhost`. A hosted copy
      needs its own application with its public `https://…/callback`.
-   - **Scopes:** tick these 18, all read-only. Leave everything else
+   - **Scopes:** tick these 21, all read-only. Leave everything else
      unticked, especially anything with "write", "manage" or "corporation"
      in the name.
      ```
@@ -41,7 +41,12 @@ see the design, section 6.2).
      esi-fittings.read_fittings.v1
      esi-universe.read_structures.v1
      esi-markets.structure_markets.v1
+     esi-characters.read_freelance_jobs.v1
+     esi-characters.read_loyalty.v1
+     esi-killmails.read_killmails.v1
      ```
+     The last three were added in version 0.6: an application made earlier
+     needs them ticked before anyone logs in again, or EVE refuses the login.
      Scopes can be changed later on the application page, but characters
      then need to log in to the tool again to pick up the new ones.
 3. Save. The page shows a **Client ID** and a **Secret Key**.

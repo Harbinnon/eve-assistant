@@ -40,7 +40,7 @@ def test_authorize_url_carries_pkce_and_scopes():
 
 
 def test_scopes_are_read_only():
-    assert len(SCOPES) == len(set(SCOPES)) == 18
+    assert len(SCOPES) == len(set(SCOPES)) == 21
     assert not [s for s in SCOPES if "write" in s or "corporation" in s]
 
 

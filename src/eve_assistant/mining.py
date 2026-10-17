@@ -213,7 +213,7 @@ def current_fit(db: sqlite3.Connection, character_id: int) -> tuple[int, list[in
     fitted = []
     for item in assets:
         flag = item.get("location_flag", "")
-        if item.get("location_id") == ship["ship_item_id"] and flag.startswith(
+        if item.get("location_id") == ship.get("ship_item_id") and flag.startswith(
             ("HiSlot", "MedSlot", "LoSlot")
         ):
             fitted.extend([item["type_id"]] * max(1, item.get("quantity", 1)))

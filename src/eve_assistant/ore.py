@@ -10,12 +10,12 @@ import math
 import sqlite3
 from dataclasses import dataclass, field
 
-from eve_assistant import fees, market, routes, sde, skills, structures
+from eve_assistant import corrections, fees, market, routes, sde, skills, structures, travel
 from eve_assistant.esi.client import EsiClient, EsiError
 from eve_assistant.skills import Reason
 
 # Rough until learned from real trips (phase 3).
-MINUTES_PER_JUMP = 1.0
+MINUTES_PER_JUMP = travel.MINUTES_PER_JUMP  # before the player's pace is learned
 MINUTES_TO_SELL = 2.0
 MINUTES_TO_REFINE = 2.0
 MINUTES_TO_LIST = 3.0
@@ -39,6 +39,9 @@ class Option:
     reasons: tuple[Reason, ...] = field(default_factory=tuple)
     hauled_m3: float = 0.0  # what has to be carried, if the option involves travel
     hauled_is_ore: bool = True  # ore fits in an ore hold; minerals need cargo space
+    # What each item sold is expected to fetch, per unit before tax and fees:
+    # recorded in plans so sales can be checked against it (corrections.py).
+    unit_prices: dict[int, float] = field(default_factory=dict)
 
     @property
     def isk_per_minute(self) -> float:
@@ -134,13 +137,16 @@ def analyse(
     quantity: int,
     station_id: int,
     highsec_only: bool = True,
+    per_jump: tuple[float, Reason] | None = None,
 ) -> OreAnalysis:
-    """Compare selling, refining and hauling for `quantity` units of an ore at a station."""
+    """Compare selling, refining and hauling for `quantity` units of an ore at a station.
+    per_jump: minutes a jump and its reason (corrections.minutes_per_jump), if known."""
     sde.require_current(db)
     if quantity <= 0:
         raise OreError("Quantity must be at least 1.")
     character = skills.load_character_skills(db, character_id)
     standings = fees.load_standings(db, character_id)
+    a_jump, jump_reason = per_jump or corrections.minutes_per_jump(db, character_id)
     here = _station(db, station_id)
     at_structure = here["is_structure"]
     owner_corp, _ = fees.station_owner(db, station_id)
@@ -174,7 +180,7 @@ def analyse(
                 "ore_processing": ore_skill,
             },
         ),  # fmt: skip
-        Reason("assumed_minutes_per_jump", {"minutes": MINUTES_PER_JUMP}),
+        jump_reason,
     ]
 
     portion = item["portion_size"] or 100
@@ -215,23 +221,26 @@ def analyse(
             books[(region_id, item_id)] = market.order_book(esi, region_id, item_id)
         return books[(region_id, item_id)]
 
-    def instant_value(region_id, station, system, item_id, qty) -> tuple[float, int]:
+    def instant_value(region_id, station, system, item_id, qty, prices) -> tuple[float, int]:
         orders = book(region_id, item_id)
         if structure_book is not None and station == station_id:
             orders = market.merge(orders, [o for o in structure_book if o.type_id == item_id])
         fill = market.sell_into_buy_orders(orders, qty, station, system)
+        if fill.average_price:
+            prices[item_id] = fill.average_price
         return fill.gross * (1 - tax_rate), qty - fill.quantity
 
     options: list[Option] = []
 
     def add_instant(key, title, region_id, station, system, location, jumps):
-        raw, unsold_raw = instant_value(region_id, station, system, type_id, quantity)
+        raw_prices: dict[int, float] = {}
+        raw, unsold_raw = instant_value(region_id, station, system, type_id, quantity, raw_prices)
         options.append(
             Option(
                 key=f"sell_raw_{key}",
                 title=f"Sell the ore {title}",
                 isk=raw,
-                active_minutes=MINUTES_TO_SELL + jumps * MINUTES_PER_JUMP,
+                active_minutes=MINUTES_TO_SELL + jumps * a_jump,
                 instant=True,
                 location=location,
                 jumps=jumps,
@@ -239,30 +248,32 @@ def analyse(
                 if unsold_raw
                 else (),
                 hauled_m3=ore_m3 if jumps else 0.0,
+                unit_prices=raw_prices,
             )
         )
         if at_structure:
             return  # refining here would be at the structure: not modelled
-        refined, unsold = 0.0, 0
+        refined, unsold, refined_prices = 0.0, 0, {}
         for mineral, amount in minerals.items():
-            value, left = instant_value(region_id, station, system, mineral, amount)
+            value, left = instant_value(region_id, station, system, mineral, amount, refined_prices)
             refined += value
             unsold += left
         if leftover:
-            value, _ = instant_value(region_id, station, system, type_id, leftover)
+            value, _ = instant_value(region_id, station, system, type_id, leftover, refined_prices)
             refined += value
         options.append(
             Option(
                 key=f"refine_sell_{key}",
                 title=f"Refine here, sell the minerals {title}",
                 isk=refined,
-                active_minutes=MINUTES_TO_REFINE + MINUTES_TO_SELL + jumps * MINUTES_PER_JUMP,
+                active_minutes=MINUTES_TO_REFINE + MINUTES_TO_SELL + jumps * a_jump,
                 instant=True,
                 location=location,
                 jumps=jumps,
                 reasons=(Reason("not_enough_buyers", {"unsold": unsold}),) if unsold else (),
                 hauled_m3=mineral_m3 if jumps else 0.0,
                 hauled_is_ore=False,
+                unit_prices=refined_prices,
             )
         )
 
@@ -289,7 +300,8 @@ def analyse(
                     key=f"list_raw_{hub.name.lower()}",
                     title=f"List the ore for sale at {hub.name} ({jumps} jumps)",
                     isk=quantity * listing * (1 - tax_rate - broker_rate),
-                    active_minutes=MINUTES_TO_LIST + jumps * MINUTES_PER_JUMP,
+                    active_minutes=MINUTES_TO_LIST + jumps * a_jump,
+                    unit_prices={type_id: listing},
                     instant=False,
                     location=hub.name,
                     jumps=jumps,

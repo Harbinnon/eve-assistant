@@ -43,6 +43,7 @@ class GoalStatus:
     reasons: tuple[Reason, ...] = field(default_factory=tuple)
     weeks_to_isk: float | None = None  # at the character's real pace, if known
     earning: "pace.EarningRate | None" = None
+    target_isk: float | None = None  # the ISK the goal comes to (ISK and Omega goals)
 
 
 def update_prices(db: sqlite3.Connection, esi: EsiClient) -> int:
@@ -59,6 +60,10 @@ def update_prices(db: sqlite3.Connection, esi: EsiClient) -> int:
             ),
         )
     return len(result.data)
+
+
+PLEX_TYPE_ID = 44992
+OMEGA_PLEX_PER_MONTH = 500  # one month of Omega
 
 
 def price_of(db: sqlite3.Connection, type_id: int) -> float | None:
@@ -102,6 +107,12 @@ def add_goal(
         if not isk or isk <= 0:
             raise GoalError("An ISK goal needs a positive amount.")
         label = f"Have {numbers.isk(isk)} ISK"
+    elif kind == "omega":
+        level = level or 1
+        if not 1 <= level <= 12:
+            raise GoalError("An Omega goal is for 1 to 12 months.")
+        plex = level * OMEGA_PLEX_PER_MONTH
+        label = f"Omega for {level} month{'s' if level != 1 else ''} ({plex:,} PLEX)"
     else:
         raise GoalError(f"Unknown goal kind '{kind}'.")
     cursor = db.execute(
@@ -188,11 +199,28 @@ def evaluate(db: sqlite3.Connection, goal: Goal) -> GoalStatus:
     requirement, price, is_alpha, target_isk = None, None, None, goal.isk
     if goal.kind in ("fly_ship", "skill"):
         requirement, price, is_alpha, target_isk = _skills_part(db, goal, reasons)
+    elif goal.kind == "omega":
+        # Follows the PLEX price: the ISK a month of Omega costs today.
+        plex_price = price_of(db, PLEX_TYPE_ID)
+        if plex_price is None:
+            reasons.append(Reason("no_price"))
+        else:
+            target_isk = (goal.level or 1) * OMEGA_PLEX_PER_MONTH * plex_price
 
     isk_needed = None
     if target_isk is not None and wallet is not None:
         isk_needed = max(0.0, target_isk - wallet)
     weeks, earning = _goal_date(db, goal, isk_needed, reasons)
     return GoalStatus(
-        goal, name, requirement, price, wallet, isk_needed, is_alpha, tuple(reasons), weeks, earning
+        goal,
+        name,
+        requirement,
+        price,
+        wallet,
+        isk_needed,
+        is_alpha,
+        tuple(reasons),
+        weeks,
+        earning,
+        target_isk,
     )

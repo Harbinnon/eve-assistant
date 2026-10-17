@@ -7,6 +7,9 @@
       <li>{{ risk_summary(item.details.risk) }}</li>
       {% if item.details.why_not and plan %}{% set r = why_not_here(plan, item) %}<li>Not chosen: {{ explain(r.code, r.detail) }}</li>{% endif %}
       {% for r in item.details.reasons %}<li>{{ explain(r.code, r) }}</li>{% endfor %}
+      {% if item.details.inputs.player_job_name %}
+      <li>Job name, written by its corporation: <span class="player-text">“{{ item.details.inputs.player_job_name }}”</span></li>
+      {% endif %}
       {% if item.details.inputs.player_title %}
       <li>Contract title, written by the issuer: <span class="player-text">“{{ item.details.inputs.player_title }}”</span></li>
       {% endif %}
@@ -130,6 +133,36 @@
 </section>
 {% endfor %}
 
+{% if compared %}
+{% set best = compared[0] %}
+<section class="card who-plays" id="who-plays">
+  <h2 class="history-title">Who should play · {{ best.minutes_available|int }} minutes</h2>
+  <p><strong>{{ best.character_name }}</strong> would make the most: <span class="isk">{{ plan_value(best)|isk }} ISK</span> after expected losses{% if compared|length > 1 %}, {{ (plan_value(best) - plan_value(compared[1]))|isk }} more than {{ compared[1].character_name }}{% endif %}.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Character</th><th class="num">ISK after losses</th><th class="num">Per hour</th><th>First step</th><th></th></tr></thead>
+      <tbody>
+      {% for p in compared %}
+        <tr>
+          <td data-label="Character"><img class="portrait tiny" src="/images/portrait/{{ p.character_id }}.png" alt="" width="26" height="26"> {{ p.character_name }}</td>
+          <td data-label="ISK after losses" class="num">{{ plan_value(p)|isk }}</td>
+          <td data-label="Per hour" class="num">{{ per_hour(plan_value(p), p.total_minutes)|isk if per_hour(plan_value(p), p.total_minutes) else "–" }}</td>
+          <td data-label="First step">{{ p.items[0].title if p.items else "nothing fits" }}</td>
+          <td><form class="inline" method="post" action="/character">
+            <input type="hidden" name="token" value="{{ form_token }}">
+            <input type="hidden" name="character_id" value="{{ p.character_id }}">
+            <input type="hidden" name="return_to" value="/today">
+            <button class="{{ 'small primary' if loop.first else 'small' }}" type="submit">Play {{ p.character_name }}</button>
+          </form></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="muted small-print">The same {{ best.minutes_available|int }} minutes planned for each character. Characters on one Alpha account can't play at the same time.</p>
+</section>
+{% endif %}
+
 {% if not session_views %}
 <form class="stack card" method="post" action="/today/plan">
   <input type="hidden" name="token" value="{{ form_token }}">
@@ -146,6 +179,9 @@
     <label for="allow_risky"><input id="allow_risky" name="allow_risky" type="checkbox" value="true"> Include risky options</label>
   </div>
   <button class="primary" type="submit" {% if not can_plan or not character_names %}disabled{% endif %}>Plan my time</button>
+  {% if character_names|length > 1 %}
+  <button type="submit" name="compare" value="true" {% if not can_plan %}disabled{% endif %}>Compare characters</button>
+  {% endif %}
 </form>
 {% if not character_names %}<p class="muted">No characters yet: add one on the <a href="/characters">Characters</a> page.</p>{% endif %}
 <p class="muted small-print">Planning reads live market prices and contracts, so it takes a few seconds.</p>

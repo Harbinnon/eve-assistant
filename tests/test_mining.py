@@ -25,8 +25,8 @@ ATTRS = {
 }
 
 
-@pytest.fixture
-def db():
+def make_db():
+    """The fake universe, with the character "Miner" (7) in it."""
     conn = store.connect(":memory:")
     conn.executemany("INSERT INTO sde_dogma_attributes VALUES (?, ?)", ATTRS.items())
     conn.executemany(
@@ -73,6 +73,12 @@ def db():
              "skillpoints_in_skill": 0}]},
     )  # fmt: skip
     conn.commit()
+    return conn
+
+
+@pytest.fixture
+def db():
+    conn = make_db()
     yield conn
     conn.close()
 

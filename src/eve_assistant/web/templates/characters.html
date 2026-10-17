@@ -20,6 +20,13 @@
   </div>
 </div>
 
+{% if missing %}
+<div class="banner" role="status">
+  <p><strong>{{ missing|length }} character{{ "s" if missing|length != 1 }} need{{ "s" if missing|length == 1 }} to log in again</strong> for new read-only permissions (Freelance Jobs, loyalty points, your own losses).</p>
+  <p>First tick them on your ESI application (docs/setup-esi.md lists them), then press <strong>Add a character</strong> and pick each character again.</p>
+</div>
+{% endif %}
+
 {% if login %}
   {% if login.state == "waiting" %}
   <p class="notice" role="status">EVE's login page is open in your browser: log in there and pick the character to add. This page checks back every few seconds.</p>
@@ -45,13 +52,15 @@
   <article class="card">
     <div class="who">
       <img class="portrait" src="/images/portrait/{{ c.character_id }}.png" alt="" width="56" height="56">
-      <h3>{{ c.name }} <span class="pill {{ c.clone_state }}">{{ c.clone_state|capitalize }}</span></h3>
+      <h3>{{ c.name }} <span class="pill {{ c.clone_state }}">{{ c.clone_state|capitalize }}</span>
+        {% if c.character_id in missing %}<span class="pill amber">log in again</span>{% endif %}</h3>
     </div>
     <p class="sub">{% if c.account %}Account: {{ c.account }}{% else %}No account set{% endif %}
       {% if c.online %} · <span class="pill good">online</span>{% endif %}</p>
     <dl class="facts">
       <dt>Skill points</dt><dd>{{ "{:,}".format(c.total_sp) }}</dd>
       <dt>Wallet</dt><dd>{{ c.wallet|isk }} ISK</dd>
+      {% with w = worth_lines.get(c.character_id) %}{% if w %}<dt>Net worth</dt><dd>{% include "_worth.html" %}</dd>{% endif %}{% endwith %}
       <dt>Location</dt>
       <dd>{% if c.system_name %}{{ c.system_name }}
         <span class="{{ c.security|security_class }}">{{ c.security|security }}</span>

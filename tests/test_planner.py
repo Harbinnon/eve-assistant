@@ -12,6 +12,7 @@ import pytest
 import respx
 
 from eve_assistant import planner, preferences, risk, sde, snapshots, store
+from eve_assistant.activities import hauling
 from eve_assistant.esi.client import EsiClient
 
 HOME, LOW = 31000001, 31000002
@@ -225,10 +226,10 @@ def test_ship_capacity_decides_what_can_be_hauled():
         )  # fmt: skip
 
     holds = (50.0, 5000.0)  # cargo, ore hold
-    assert planner._fits_in_ship(option(4000), holds)  # ore goes in the ore hold
-    assert not planner._fits_in_ship(option(6000), holds)
-    assert not planner._fits_in_ship(option(100, is_ore=False), holds)  # minerals: cargo only
-    assert planner._fits_in_ship(option(10**9, jumps=0), holds)  # selling where it is
+    assert hauling.fits_in_ship(option(4000), holds)  # ore goes in the ore hold
+    assert not hauling.fits_in_ship(option(6000), holds)
+    assert not hauling.fits_in_ship(option(100, is_ore=False), holds)  # minerals: cargo only
+    assert hauling.fits_in_ship(option(10**9, jumps=0), holds)  # selling where it is
 
 
 @respx.mock
@@ -289,11 +290,12 @@ def test_mining_uses_the_learned_speed_but_records_the_raw_estimate(db, monkeypa
     codes = [r.code for r in plain.reasons]
     assert "not_learned_yet" in codes
 
-    monkeypatch.setattr(
-        planner.corrections,
-        "correction",
-        lambda *_args: corrections.Correction("mining_rate", 0.5, 4, 0.4),
-    )
+    def slower_mining(_db, _character_id, what):
+        if what == "mining_rate":
+            return corrections.Correction(what, 0.5, 4, 0.4)
+        return corrections.Correction(what, 1.0, 0, None)
+
+    monkeypatch.setattr(corrections, "correction", slower_mining)
     with httpx.Client() as http:
         slower = planner.build_plan(db, EsiClient(http, db, base_url=BASE), 7, 60).items[-1]
     raw = [r.detail["m3_per_minute"] for r in (plain.reasons[0], slower.reasons[0])]
@@ -302,6 +304,31 @@ def test_mining_uses_the_learned_speed_but_records_the_raw_estimate(db, monkeypa
     learned = next(r for r in slower.reasons if r.code == "learned_correction")
     assert learned.detail["factor"] == 0.5
     assert learned.detail["sessions"] == 4
+
+
+@respx.mock
+def test_learned_sale_prices_scale_plan_isk_but_record_the_market_prices(db, monkeypatch):
+    from eve_assistant import corrections
+
+    _mock_market_and_contracts()
+    with httpx.Client() as http:
+        plain = planner.build_plan(db, EsiClient(http, db, base_url=BASE), 7, 60).items
+
+    def lower_sales(_db, _character_id, what):
+        if what == "sale_price":
+            return corrections.Correction(what, 0.8, 3, 0.7)
+        return corrections.Correction(what, 1.0, 0, None)
+
+    monkeypatch.setattr(corrections, "correction", lower_sales)
+    with httpx.Client() as http:
+        lower = planner.build_plan(db, EsiClient(http, db, base_url=BASE), 7, 60).items
+    for before, after in zip(plain[1:], lower[1:], strict=True):  # selling, then mining
+        assert after.kind == before.kind
+        assert after.isk == pytest.approx(before.isk * 0.8)
+        assert after.inputs["unit_prices"] == before.inputs["unit_prices"]
+        assert after.inputs["unit_prices"]  # the market's price per unit, before tax
+        learned = [r for r in after.reasons if r.code == "learned_correction"]
+        assert [r.detail["what"] for r in learned] == ["sale_price"]
 
 
 STRUCTURE = 1_050_000_000_002

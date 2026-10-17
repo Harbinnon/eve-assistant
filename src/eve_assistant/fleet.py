@@ -141,6 +141,7 @@ def boarding(
     character_id: int,
     ship: FleetShip,
     highsec_only: bool = True,
+    minutes_a_jump: float = ore.MINUTES_PER_JUMP,
 ) -> Boarding | None:
     """Minutes and route to get into this ship from where the character is now,
     or None if it cannot be reached (unknown location, no route, can't fly it)."""
@@ -159,5 +160,5 @@ def boarding(
     if path is None:
         return None
     jumps = len(path) - 1
-    minutes = jumps * ore.MINUTES_PER_JUMP + MINUTES_TO_SWITCH_SHIP + 2.0
+    minutes = jumps * minutes_a_jump + MINUTES_TO_SWITCH_SHIP + 2.0
     return Boarding(ship, minutes, jumps, path)

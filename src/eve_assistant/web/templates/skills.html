@@ -18,6 +18,50 @@
 
 {% if error %}<p class="error spaced" role="alert">{{ error }}</p>{% endif %}
 
+{% if train %}
+<section class="card train-next">
+  <h2 class="history-title">Train this next · {{ character }}</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Skill</th><th class="num">Training</th><th class="num">Mining</th><th class="num">ISK an hour</th>{% if train_goal %}<th class="num">Goal sooner</th>{% endif %}<th class="num">Skill book</th><th></th></tr></thead>
+      <tbody>
+      {% for t in train %}
+        <tr>
+          <td data-label="Skill">{{ t.skill }} {{ t.level }}{% if t.needs_omega %} <span class="pill alpha">needs Omega</span>{% endif %}</td>
+          <td data-label="Training" class="num">{{ t.training_minutes|duration }}</td>
+          <td data-label="Mining" class="num">+{{ t.m3_gain|round(1) }} m³/min</td>
+          <td data-label="ISK an hour" class="num isk">{% if t.isk_gain %}+{{ t.isk_gain|isk }}{% else %}<span class="muted">no plan yet</span>{% endif %}</td>
+          {% if train_goal %}<td data-label="Goal sooner" class="num">{% if t.weeks_sooner and t.weeks_sooner >= 1 %}{{ t.weeks_sooner|round(1) }} weeks{% elif t.weeks_sooner %}{{ (t.weeks_sooner * 7)|round(1) }} days{% else %}<span class="muted">—</span>{% endif %}</td>{% endif %}
+          <td data-label="Skill book" class="num">{% if t.book_price %}{{ t.book_price|isk }}{% if t.payback_hours %} <span class="muted">· pays back in {{ t.payback_hours|round(1) }} h</span>{% endif %}{% elif t.level == 1 %}<span class="muted">no price</span>{% else %}<span class="muted">owned</span>{% endif %}</td>
+          <td>
+            <form class="inline" method="post" action="/goals">
+              <input type="hidden" name="token" value="{{ form_token }}">
+              <input type="hidden" name="kind" value="skill">
+              <input type="hidden" name="target" value="{{ t.skill }}">
+              <input type="hidden" name="level" value="{{ t.level }}">
+              <input type="hidden" name="character" value="{{ character }}">
+              <button class="small" type="submit">Set as goal</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="muted small-print">
+    Each skill one level up, with your ship as fitted now; mining speed is the published figure{% if train[0].isk_gain %}, and ISK is at your latest plan's sale price for your ore{% endif %}.
+    {% if train_goal %}"Goal sooner" is for <strong>{{ train_goal }}</strong>, if all your usual play time were mining.{% endif %}
+    {% if train|selectattr("needs_omega")|list %}Alpha training stops at 5,000,000 skill points, so these times are as Omega.{% endif %}
+  </p>
+</section>
+{% elif train_capped %}
+<section class="card train-next">
+  <h2 class="history-title">Train this next · {{ character }}</h2>
+  <p>Every skill your mining uses is at Alpha's limit, so there's nothing more to train for mining as Alpha.
+    Omega lifts the limits: see <a href="/goals">What Omega would change</a> on Goals.</p>
+</section>
+{% endif %}
+
 {% if requirement %}
 <h2>{{ requirement.type_name }} <span class="muted">for {{ character }}</span>
   <span class="pill {{ clone_state }}">{{ clone_state|capitalize }}</span></h2>

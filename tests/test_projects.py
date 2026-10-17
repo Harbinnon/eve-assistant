@@ -5,6 +5,7 @@ import sqlite3
 import pytest
 
 from eve_assistant import planner, projects, risk, snapshots, store
+from eve_assistant.activities import projects as project_steps
 
 
 @pytest.fixture
@@ -51,7 +52,7 @@ def test_start_progress_close_and_limits(db):
 
 
 def _project_start_item(total_minutes=180.0, minutes=60.0):
-    return planner._project_item(
+    return project_steps.project_item(
         kind="haul",
         key="61000001:1230:sell_raw_jita",
         title="Haul ore to Jita",
@@ -100,7 +101,7 @@ def test_doing_a_project_start_creates_it_and_later_plans_continue_it(db):
     assert project.minutes_done == 60
 
     notes = []
-    (cont,) = planner.project_candidates(db, 7, 90, 100_000_000, notes)
+    (cont,) = project_steps.project_candidates(db, 7, 90, 100_000_000, notes)
     assert cont.kind == "project_continue"
     assert cont.minutes == 90  # 120 left, 90 available
     assert cont.isk == pytest.approx(9_000_000 * (90 / 180) * (1 - projects.NOT_FINISHING_CHANCE))
@@ -111,7 +112,7 @@ def test_doing_a_continue_records_progress(db):
     project_id = projects.start(
         db, 7, "courier", "5", "Courier", 100, 2e6, {"risk": {"band": "low", "exposure": 1e6}}
     )
-    (cont,) = planner.project_candidates(db, 7, 30, 1e8, [])
+    (cont,) = project_steps.project_candidates(db, 7, 30, 1e8, [])
     plan = planner.record(
         db,
         planner.Plan(7, 30, (cont,), (), (), 1e8),
