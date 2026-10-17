@@ -16,7 +16,7 @@
     {% with req = s.requirement, is_alpha = s.is_alpha %}{% include "_requirement.html" %}{% endwith %}
   {% endif %}
   {% if s.price is not none or s.isk_needed is not none %}
-  <dl class="facts" style="margin-top:12px">
+  <dl class="facts spaced">
     {% if s.price is not none %}<dt>Rough price</dt><dd>{{ s.price|isk }} ISK <span class="muted">(CCP average, not a hub quote)</span></dd>{% endif %}
     {% if s.goal.isk %}<dt>Target</dt><dd>{{ s.goal.isk|isk }} ISK</dd>{% endif %}
     {% if s.wallet is not none %}<dt>Wallet</dt><dd>{{ s.wallet|isk }} ISK{% if not s.character_name %} <span class="muted">(all characters)</span>{% endif %}</dd>{% endif %}
@@ -55,7 +55,7 @@
     <input id="target" name="target" required placeholder="Retriever">
   </label>
   <label for="level">Level (skills)
-    <input id="level" name="level" type="number" min="1" max="5" style="width:6em">
+    <input id="level" name="level" type="number" min="1" max="5" class="narrow">
   </label>
   <label for="character">Character
     <select id="character" name="character">

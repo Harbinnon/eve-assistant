@@ -189,6 +189,13 @@ form.stack .checks label { flex-direction: row; align-items: center; gap: 6px; }
 .alt-why { color: var(--muted); font-size: 13px; }
 .notes { margin: 16px 0 0; padding-left: 20px; color: var(--muted); font-size: 14px; }
 
+/* Small helpers (no inline styles: the Content-Security-Policy forbids them) */
+.spaced { margin-top: 12px; }
+.checked { margin: 12px 0 0; }
+.narrow { width: 7em; }
+.small-print { font-size: 13px; }
+.heading-note { font-weight: 400; font-size: 14px; }
+
 footer { color: var(--muted); font-size: 12px; border-top: 1px solid var(--line); padding-block: 16px 24px; }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }

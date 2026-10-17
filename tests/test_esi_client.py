@@ -131,3 +131,15 @@ def test_collect_keeps_going_after_one_kind_fails(db, esi):
     assert results["assets"] == "failed"
     assert results["wallet"] == "changed"
     assert len(results) == len(snapshots.KINDS)
+
+
+@respx.mock
+def test_responses_about_other_players_are_not_kept(db, esi):
+    route = respx.get(f"{BASE}/contracts/public/1").mock(
+        return_value=httpx.Response(200, json=[{"issuer_id": 5}], headers={"etag": '"x"'})
+    )
+    esi.get("/contracts/public/1", remember=False)
+    esi.get("/contracts/public/1", remember=False)
+    assert route.call_count == 2
+    assert "if-none-match" not in route.calls.last.request.headers
+    assert db.execute("SELECT COUNT(*) FROM esi_cache").fetchone()[0] == 0

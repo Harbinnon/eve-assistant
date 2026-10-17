@@ -1,13 +1,14 @@
 # Runs on every commit after `pre-commit install`. Also run in CI.
+# Hook versions are pinned to commit SHAs (tag in the comment), like the Actions.
 repos:
   - repo: https://github.com/Yelp/detect-secrets
-    rev: v1.5.0
+    rev: 01886c8a910c64595c47f186ca1ffc0b77fa5458  # frozen: v1.5.0  # pragma: allowlist secret
     hooks:
       - id: detect-secrets
         args: ["--baseline", ".secrets.baseline"]
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v6.0.0
+    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c  # frozen: v6.0.0  # pragma: allowlist secret
     hooks:
       - id: check-added-large-files
         args: ["--maxkb=500"]
@@ -18,7 +19,7 @@ repos:
       - id: trailing-whitespace
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.9
+    rev: a56c0b927e6465d37cae3e97d35d4d18ab2b96cd  # frozen: v0.16.9  # pragma: allowlist secret
     hooks:
       - id: ruff-check
       - id: ruff-format
