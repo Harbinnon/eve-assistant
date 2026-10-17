@@ -37,6 +37,7 @@ from eve_assistant import (
     explain,
     goals,
     history,
+    numbers,
     outcomes,
     overview,
     pace,
@@ -161,12 +162,7 @@ MESSAGES = {
 
 
 def _isk(value) -> str:
-    if value is None:
-        return "?"
-    for limit, suffix in ((1e9, "B"), (1e6, "M"), (1e3, "k")):
-        if abs(value) >= limit:
-            return f"{value / limit:,.1f}{suffix}"
-    return f"{value:,.0f}"
+    return numbers.isk(value)
 
 
 def _when(value) -> str:
@@ -308,6 +304,8 @@ def create_app(
     templates.env.globals["explain"] = explain.describe
     templates.env.globals["risk_summary"] = explain.risk_summary
     templates.env.globals["why_not"] = explain.WHY_NOT
+    templates.env.globals["why_not_here"] = planner.why_not
+    templates.env.globals["per_hour"] = numbers.per_hour
     templates.env.globals["risk_labels"] = RISK_LABELS
     templates.env.globals["category_labels"] = preferences.KNOWN
     form_token = secrets.token_urlsafe(32)

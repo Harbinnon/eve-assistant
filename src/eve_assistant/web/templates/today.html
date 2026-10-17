@@ -5,7 +5,7 @@
     <summary>Why?</summary>
     <ul>
       <li>{{ risk_summary(item.details.risk) }}</li>
-      {% if item.details.why_not %}<li>Not chosen: {{ why_not.get(item.details.why_not, item.details.why_not) }}</li>{% endif %}
+      {% if item.details.why_not and plan %}{% set r = why_not_here(plan, item) %}<li>Not chosen: {{ explain(r.code, r.detail) }}</li>{% endif %}
       {% for r in item.details.reasons %}<li>{{ explain(r.code, r) }}</li>{% endfor %}
       {% if item.details.inputs.player_title %}
       <li>Contract title, written by the issuer: <span class="player-text">“{{ item.details.inputs.player_title }}”</span></li>
@@ -252,7 +252,7 @@
         <div class="title">{{ item.title }}
           {% if item.details.new_to_you %}<span class="pill new">new to you</span>{% endif %}</div>
         <div class="figures">
-          <strong>{{ item.isk|isk }} ISK</strong> · {{ item.minutes|round|int }} min ·
+          <strong>{{ item.isk|isk }} ISK</strong> · {{ item.minutes|round|int }} min{% if per_hour(item.isk, item.minutes) %} · {{ per_hour(item.isk, item.minutes)|isk }} an hour{% endif %} ·
           <span class="pill risk {{ item.risk_rating }}">{{ risk_labels[item.risk_rating] }}</span>
           {% if item.expected_loss > 0 %} · expected loss {{ item.expected_loss|isk }}{% endif %}
         </div>
@@ -272,15 +272,16 @@
 <h2>Also considered</h2>
 <div class="table-wrap">
   <table>
-    <thead><tr><th>Option</th><th class="num">ISK</th><th class="num">Minutes</th><th>Risk</th><th>Why not</th></tr></thead>
+    <thead><tr><th>Option</th><th class="num">ISK</th><th class="num">Minutes</th><th class="num">Per hour</th><th>Risk</th><th>Why not</th></tr></thead>
     <tbody>
     {% for alt in plan.alternatives[:12] %}
       <tr id="item-{{ alt.item_id }}">
         <td>{{ alt.title }}{{ why(alt) }}</td>
         <td class="num">{{ alt.isk|isk }}</td>
         <td class="num">{{ alt.minutes|round|int }}</td>
+        <td class="num">{{ per_hour(alt.isk, alt.minutes)|isk if per_hour(alt.isk, alt.minutes) else "–" }}</td>
         <td><span class="pill risk {{ alt.risk_rating }}">{{ risk_labels[alt.risk_rating] }}</span></td>
-        <td class="alt-why">{{ why_not.get(alt.details.why_not, alt.details.why_not) }}</td>
+        <td class="alt-why">{% set r = why_not_here(plan, alt) %}{{ explain(r.code, r.detail) }}</td>
       </tr>
     {% endfor %}
     </tbody>
