@@ -37,6 +37,7 @@ from eve_assistant import (
     preferences,
     projects,
     risk,
+    session_flow,
     sessions,
     skills,
     store,
@@ -324,45 +325,24 @@ def create_app(
             open_sessions=playing,
         )
 
-    def _snapshot(character_id: int) -> list[str]:
-        if snapshot is None:
-            return ["Snapshots are not available here, so none was taken."]
-        try:
-            return snapshot(character_id)
-        except Exception as exc:  # noqa: BLE001  # the session is still recorded
-            return [f"Snapshot failed: {exc}"]
-
-    def _after_session(request: Request, problems: list[str], msg: str):
-        if problems:
+    def _after_session(request: Request, result: session_flow.Result, msg: str):
+        if result.problems:
             done = MESSAGES[msg]
-            return today_page(request, error=f"{done} Snapshot problems: " + "; ".join(problems))
+            return today_page(
+                request, error=f"{done} Snapshot problems: " + "; ".join(result.problems)
+            )
         return back(TODAY, msg=msg)
 
     @app.post("/sessions/start")
     def start_session(request: Request, token: str = Form(...), plan_id: int = Form(...)):
         check_form(request, token)
-        conn = db()
         try:
-            row = conn.execute(
-                "SELECT character_id FROM plans WHERE plan_id = ?", (plan_id,)
-            ).fetchone()
-            if row is None:
-                raise HTTPException(404, "No such plan.")
-            character_id = row["character_id"]
-            if sessions.open_session(conn, character_id) is not None:
-                return today_page(request, error="That character already has a session running.")
-        finally:
-            conn.close()
-        now = store.utc_now()
-        problems = _snapshot(character_id)
-        conn = db()
-        try:
-            sessions.start(conn, character_id, plan_id, problems, now=now)
+            result = session_flow.begin(db_path, snapshot, plan_id=plan_id)
+        except sessions.SessionNotFound as exc:
+            raise HTTPException(404, str(exc)) from None
         except sessions.SessionError as exc:
             return today_page(request, error=str(exc))
-        finally:
-            conn.close()
-        return _after_session(request, problems, "session_started")
+        return _after_session(request, result, "session_started")
 
     @app.post("/sessions/{session_id}/{how}")
     def end_session(
@@ -380,28 +360,15 @@ def create_app(
         except ValueError:
             return today_page(request, error="Minutes played must be a number.")
         ending = "finished" if how == "finish" else "cancelled"
-        now = store.utc_now()
-        conn = db()
         try:
-            session = sessions.get(conn, session_id)
-        except sessions.SessionError as exc:
+            result = session_flow.end(
+                db_path, snapshot, session_id, how=ending, minutes_played=played
+            )
+        except sessions.SessionNotFound as exc:
             raise HTTPException(404, str(exc)) from None
-        finally:
-            conn.close()
-        try:
-            sessions.check_end(session, played, ending, now)
         except sessions.SessionError as exc:
             return today_page(request, error=str(exc))
-        problems = _snapshot(session.character_id) if ending == "finished" else []
-        conn = db()
-        try:
-            ended = sessions.finish(conn, session_id, played, ending, problems, now=now)
-            outcomes.update(conn, ended.character_id)
-        except sessions.SessionError as exc:
-            return today_page(request, error=str(exc))
-        finally:
-            conn.close()
-        return _after_session(request, problems, f"session_{ended.how}")
+        return _after_session(request, result, f"session_{result.session.how}")
 
     @app.post("/plan-items/{item_id}/respond")
     def respond(request: Request, item_id: int, token: str = Form(...), response: str = Form(...)):

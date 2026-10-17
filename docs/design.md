@@ -189,6 +189,9 @@ can come later. Details:
   left out of the learning.
 - A snapshot problem (ESI down, a character logged out) never blocks the
   session; it is recorded with it.
+- Starting and ending go through one service module (`session_flow`) that
+  the dashboard and CLI share: it checks first, then takes the snapshot, so
+  a mistake never costs one.
 - ESI caches some data for up to an hour (wallet journal, assets), so the
   end snapshot may not show the whole session yet. Outcomes are worked
   out from timestamped entries once the data has caught up, not at the

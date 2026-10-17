@@ -27,6 +27,10 @@ class SessionError(Exception):
     pass
 
 
+class SessionNotFound(SessionError):
+    """The session, plan or character asked for doesn't exist."""
+
+
 @dataclass(frozen=True)
 class PlaySession:
     session_id: int
@@ -86,7 +90,7 @@ def _load(row) -> PlaySession:
 def get(db: sqlite3.Connection, session_id: int) -> PlaySession:
     row = db.execute(f"{_SELECT} WHERE s.session_id = ?", (session_id,)).fetchone()
     if row is None:
-        raise SessionError(f"No session {session_id}.")
+        raise SessionNotFound(f"No session {session_id}.")
     return _load(row)
 
 
@@ -109,6 +113,26 @@ def recent(db: sqlite3.Connection, limit: int = 20) -> list[PlaySession]:
     return [_load(r) for r in rows]
 
 
+def check_start(db: sqlite3.Connection, character_id: int, plan_id: int | None = None) -> None:
+    """Raise SessionError if this session can't start. Callers use it before
+    taking the start snapshot, so a mistake doesn't cost a snapshot."""
+    known = db.execute("SELECT 1 FROM characters WHERE character_id = ?", (character_id,))
+    if known.fetchone() is None:
+        raise SessionNotFound(f"Unknown character {character_id}.")
+    if plan_id is not None:
+        row = db.execute("SELECT character_id FROM plans WHERE plan_id = ?", (plan_id,)).fetchone()
+        if row is None:
+            raise SessionNotFound(f"No plan {plan_id}.")
+        if row["character_id"] != character_id:
+            raise SessionError(f"Plan {plan_id} is for another character.")
+    already = open_session(db, character_id)
+    if already is not None:
+        raise SessionError(
+            f"{already.character_name} already has a session running since "
+            f"{already.started_at}. Finish or cancel it first."
+        )
+
+
 def start(
     db: sqlite3.Connection,
     character_id: int,
@@ -118,21 +142,7 @@ def start(
 ) -> PlaySession:
     """Record the start of a session. `now` is when the player pressed start,
     taken before the snapshot so the snapshot's few seconds don't count."""
-    known = db.execute("SELECT 1 FROM characters WHERE character_id = ?", (character_id,))
-    if known.fetchone() is None:
-        raise SessionError(f"Unknown character {character_id}.")
-    if plan_id is not None:
-        row = db.execute("SELECT character_id FROM plans WHERE plan_id = ?", (plan_id,)).fetchone()
-        if row is None:
-            raise SessionError(f"No plan {plan_id}.")
-        if row["character_id"] != character_id:
-            raise SessionError(f"Plan {plan_id} is for another character.")
-    already = open_session(db, character_id)
-    if already is not None:
-        raise SessionError(
-            f"{already.character_name} already has a session running since "
-            f"{already.started_at}. Finish or cancel it first."
-        )
+    check_start(db, character_id, plan_id)
     cursor = db.execute(
         "INSERT INTO play_sessions (character_id, plan_id, started_at, start_problems) "
         "VALUES (?, ?, ?, ?)",

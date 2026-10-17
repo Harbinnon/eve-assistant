@@ -1,4 +1,3 @@
-import functools
 import sqlite3
 
 import pytest
@@ -132,7 +131,9 @@ def cli_db(tmp_path, monkeypatch):
     snapshots.ensure_character(conn, 7, "Miner")
     plan_id = _plan(conn)
     conn.close()
-    monkeypatch.setattr(store, "connect", functools.partial(store.connect, path))
+    real_connect = store.connect
+    monkeypatch.setattr(store, "DEFAULT_DB_PATH", path)
+    monkeypatch.setattr(store, "connect", lambda _db_path=None: real_connect(path))
     taken = []
     monkeypatch.setattr(cli, "_snapshot_for_session", lambda cid: taken.append(cid) or [])
     return path, plan_id, taken
