@@ -743,3 +743,47 @@ def test_start_project_is_offered_on_a_projects_first_step(db_path):
     conn = store.connect(db_path)
     assert [p.title for p in projects.open_projects(conn, 7)] == ["Haul ore"]
     conn.close()
+
+
+# --- Plan age and staying in place (roadmap 2.5) ------------------------------
+
+
+def test_ago_reads_like_a_person_would_say_it(monkeypatch):
+    from datetime import UTC, datetime
+
+    from eve_assistant import web
+
+    monkeypatch.setattr(web, "_now", lambda: datetime(2026, 10, 17, 12, 0, tzinfo=UTC))
+    assert web._ago("2026-10-17T11:59:40+00:00") == "just now"
+    assert web._ago("2026-10-17T11:48:00+00:00") == "12 min ago"
+    assert web._ago("2026-10-17T11:00:00+00:00") == "1 hour ago"
+    assert web._ago("2026-10-17T06:00:00Z") == "6 hours ago"
+    assert web._ago("2026-10-14T12:00:00+00:00") == "3 days ago"
+    assert web._ago(None) == "never"
+
+
+def test_an_old_plan_says_so_and_offers_to_plan_again(planning_client, monkeypatch):
+    from datetime import UTC, datetime, timedelta
+
+    from eve_assistant import web
+
+    _token_value, plan_url = _new_plan(planning_client)
+    assert "Plan again" not in planning_client.get(plan_url).text  # fresh
+    monkeypatch.setattr(web, "_now", lambda: datetime.now(UTC) + timedelta(hours=6))
+    page = planning_client.get(plan_url).text
+    assert "This plan was made 6 hours ago." in page
+    assert ">Plan again</button>" in page
+    assert '<input type="hidden" name="character" value="Test Pilot">' in page
+    assert '<input type="hidden" name="minutes" value="60">' in page
+
+
+def test_answering_a_step_returns_to_it(planning_client):
+    token, plan_url = _new_plan(planning_client)
+    page = planning_client.get(plan_url).text
+    item_id = re.search(r'<li class="step" id="item-(\d+)"', page).group(1)
+    response = planning_client.post(
+        f"/plan-items/{item_id}/respond",
+        data={"token": token, "response": "not_now"},
+        follow_redirects=False,
+    )
+    assert response.headers["location"].endswith(f"?msg=not_now#item-{item_id}")

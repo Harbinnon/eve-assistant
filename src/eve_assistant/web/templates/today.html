@@ -207,8 +207,22 @@
 {% endif %}
 
 {% if plan and not session_views %}
-<h2>Plan for {{ plan.character_name }} · {{ plan.minutes_available|int }} minutes
-  <span class="muted heading-note">· made {{ plan.created_at|when }}</span></h2>
+<h2 id="plan">Plan for {{ plan.character_name }} · {{ plan.minutes_available|int }} minutes
+  <span class="muted heading-note">· made {{ plan.created_at|when }}, {{ plan.created_at|ago }}</span></h2>
+
+{% if (minutes_since(plan.created_at) or 0) > plan_stale_minutes %}
+<div class="banner stale-plan">
+  <p><strong>This plan was made {{ plan.created_at|ago }}.</strong> Prices and contracts have moved since, so its numbers may be off.</p>
+  <form class="inline" method="post" action="/today/plan">
+    <input type="hidden" name="token" value="{{ form_token }}">
+    <input type="hidden" name="character" value="{{ plan.character_name }}">
+    <input type="hidden" name="minutes" value="{{ plan.minutes_available|int }}">
+    {% if plan.allow_lowsec %}<input type="hidden" name="allow_lowsec" value="true">{% endif %}
+    {% if plan.allow_risky %}<input type="hidden" name="allow_risky" value="true">{% endif %}
+    <button class="small" type="submit" {% if not can_plan %}disabled{% endif %}>Plan again</button>
+  </form>
+</div>
+{% endif %}
 
 {% set busy = open_sessions|selectattr("character_id", "equalto", plan.character_id)|list %}
 {% if not busy %}
@@ -232,7 +246,7 @@
   </div>
   <ol class="steps">
     {% for item in plan.items %}
-    <li class="step">
+    <li class="step" id="item-{{ item.item_id }}">
       <span class="num" aria-hidden="true">{{ loop.index }}</span>
       <div class="body">
         <div class="title">{{ item.title }}
@@ -261,7 +275,7 @@
     <thead><tr><th>Option</th><th class="num">ISK</th><th class="num">Minutes</th><th>Risk</th><th>Why not</th></tr></thead>
     <tbody>
     {% for alt in plan.alternatives[:12] %}
-      <tr>
+      <tr id="item-{{ alt.item_id }}">
         <td>{{ alt.title }}{{ why(alt) }}</td>
         <td class="num">{{ alt.isk|isk }}</td>
         <td class="num">{{ alt.minutes|round|int }}</td>

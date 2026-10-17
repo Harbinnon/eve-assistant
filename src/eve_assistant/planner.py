@@ -1063,6 +1063,8 @@ class StoredPlan:
     notes: list[dict]
     items: list[StoredItem]
     alternatives: list[StoredItem]
+    allow_lowsec: bool = False  # the options it was made with, to plan again the same way
+    allow_risky: bool = False
 
     @property
     def total_isk(self) -> float:
@@ -1118,6 +1120,8 @@ def load_plan(db: sqlite3.Connection, plan_id: int) -> StoredPlan:
         notes=inputs.get("notes", []),
         items=items,
         alternatives=alternatives,
+        allow_lowsec=bool(inputs.get("allow_lowsec")),
+        allow_risky=bool(inputs.get("risky")),
     )
 
 

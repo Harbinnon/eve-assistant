@@ -16,6 +16,7 @@ import math
 import secrets
 import sqlite3
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import urlencode, urlsplit
@@ -99,6 +100,9 @@ SECURITY_HEADERS = {
 RELOAD_SECONDS = 60
 RELOADING_PAGES = ("today", "characters", "history")
 
+# Past this age a plan's prices and contracts have likely moved: say so.
+PLAN_STALE_MINUTES = 60
+
 # Risk ratings in words; the stored ratings stay green, amber and red.
 RISK_LABELS = {"green": "Safe", "amber": "Caution", "red": "Risky"}
 
@@ -170,6 +174,34 @@ def _when(value) -> str:
     if not value:
         return "never"
     return f"{value[:10]} {value[11:16]} UTC"
+
+
+def _now() -> datetime:
+    return datetime.now(UTC)
+
+
+def _minutes_since(value) -> float | None:
+    if not value:
+        return None
+    then = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if then.tzinfo is None:
+        then = then.replace(tzinfo=UTC)
+    return max(0.0, (_now() - then).total_seconds() / 60)
+
+
+def _ago(value) -> str:
+    """ISO UTC timestamp -> '12 min ago', '6 hours ago', '3 days ago'."""
+    minutes = _minutes_since(value)
+    if minutes is None:
+        return "never"
+    if minutes < 1:
+        return "just now"
+    if minutes < 60:
+        return f"{minutes:.0f} min ago"
+    hours = minutes / 60
+    if hours < 48:
+        return f"{hours:.0f} hour{'s' if round(hours) != 1 else ''} ago"
+    return f"{hours / 24:.0f} days ago"
 
 
 def _theme(request: Request) -> str:
@@ -269,6 +301,9 @@ def create_app(
     templates.env.filters["security_class"] = _security_class
     templates.env.filters["security"] = _security
     templates.env.filters["when"] = _when
+    templates.env.filters["ago"] = _ago
+    templates.env.globals["minutes_since"] = _minutes_since
+    templates.env.globals["plan_stale_minutes"] = PLAN_STALE_MINUTES
     templates.env.globals["describe"] = skills.describe
     templates.env.globals["explain"] = explain.describe
     templates.env.globals["risk_summary"] = explain.risk_summary
@@ -609,7 +644,8 @@ def create_app(
             conn.close()
         if following:  # answered from the session view: go back to it
             return back(TODAY, anchor=f"session-{following[0].session_id}", msg=response)
-        return back(f"/plans/{row['plan_id']}", msg=response)
+        # Back to the step that was answered, not the top of the page.
+        return back(f"/plans/{row['plan_id']}", anchor=f"item-{item_id}", msg=response)
 
     @app.get(PREFERENCES, response_class=HTMLResponse)
     def preferences_page(request: Request):
