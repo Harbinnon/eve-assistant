@@ -635,10 +635,12 @@ def _cmd_outcomes(_args) -> int:
         )
         print(f"  Played {session.minutes():.0f} min; {planned}.")
         print(f"  Wallet change: {outcome.net_isk:+,.0f} ISK.")
-        if outcome.mined_value is not None:
+        if outcome.details["mined"] is not None:
+            value = outcome.mined_value
             print(
-                f"  Ore mined: {outcome.details['mined_m3']:,.0f} m3, "
-                f"about {outcome.mined_value:,.0f} ISK at average prices."
+                f"  Ore mined: {outcome.details['mined_m3']:,.0f} m3"
+                + (f", worth about {value:,.0f} ISK at buyers' prices after tax" if value else "")
+                + "."
             )
         if (logs := outcome.log_mining) is not None:
             active = logs["m3_per_active_minute"]

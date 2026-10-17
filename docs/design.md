@@ -226,7 +226,15 @@ can come later. Details:
   Without a ledger snapshot at the start, ore mined is reported as unknown
   rather than guessed. Mining is counted up to two hours after the end, or
   to the next session's start if sooner.
-- Ore is valued at EVE's average prices at the time of working out.
+- Ore is valued the way plans value it, so the two can be compared: what
+  buyers pay, after sales tax, per unit. Each ore's price is, in order:
+  what this session's plan expected to sell it for; what it sold for
+  during the session (with the session's own tax rate from the journal);
+  what the latest plan in the week before the session ended expected. Ore
+  none of these priced is left out of the value, with a note. CCP's
+  average price isn't used: it is what the item traded at across EVE, not
+  what selling it where you are gets. Prices are fixed by then, so later
+  market moves don't change an outcome.
 - Only amounts, dates, item types and reference types are copied into an
   outcome: never counterparties (other players' IDs) or journal
   descriptions and reasons, which can be player-written.
