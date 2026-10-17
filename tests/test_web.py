@@ -9,6 +9,7 @@ from eve_assistant.config import Config
 from eve_assistant.web import create_app
 
 SHIP, SKILL = 100, 1
+LOCAL = "http://127.0.0.1"
 
 
 @pytest.fixture
@@ -58,7 +59,7 @@ def db_path(tmp_path):
 def client(db_path):
     refresh = mock.Mock(return_value=[])
     app = create_app(db_path, refresh=refresh)
-    with TestClient(app) as test_client:
+    with TestClient(app, base_url=LOCAL) as test_client:
         test_client.refresh_mock = refresh
         yield test_client
 
@@ -131,7 +132,7 @@ def test_refresh_button_runs_refresh(client):
 
 def test_refresh_problems_are_shown(db_path):
     app = create_app(db_path, refresh=lambda: ["Market prices: ESI returned 502."])
-    with TestClient(app) as test_client:
+    with TestClient(app, base_url=LOCAL) as test_client:
         token = _token(test_client.get("/characters").text)
         page = test_client.post("/refresh", data={"token": token})
     assert "ESI returned 502" in page.text
@@ -193,7 +194,7 @@ def _fake_plan_maker(db_path):
 @pytest.fixture
 def planning_client(db_path):
     app = create_app(db_path, make_plan=_fake_plan_maker(db_path))
-    with TestClient(app) as test_client:
+    with TestClient(app, base_url=LOCAL) as test_client:
         yield test_client
 
 
@@ -272,7 +273,7 @@ def test_planning_errors_are_shown_not_crashed(db_path):
     def broken(*_args):
         raise RuntimeError("ESI is down")
 
-    with TestClient(create_app(db_path, make_plan=broken)) as test_client:
+    with TestClient(create_app(db_path, make_plan=broken), base_url=LOCAL) as test_client:
         token = _token(test_client.get("/today").text)
         page = test_client.post(
             "/today/plan", data={"token": token, "character": "Test Pilot", "minutes": "30"}
@@ -290,7 +291,7 @@ def test_structure_names_are_escaped_and_marked_as_player_text(db_path):
         conn, 7, "location", {"solar_system_id": 30000142, "structure_id": 1050000000001}
     )
     conn.close()
-    with TestClient(create_app(db_path)) as test_client:
+    with TestClient(create_app(db_path), base_url=LOCAL) as test_client:
         page = test_client.get("/characters").text
     assert "<img src=x>" not in page
     assert "&lt;img src=x&gt;Keepstar" in page
@@ -314,3 +315,47 @@ def test_play_time_is_set_on_preferences(planning_client):
     token = _token(planning_client.get("/preferences").text)
     saved = planning_client.post("/preferences-play-time", data={"token": token, "hours": "9.5"})
     assert "Play time saved." in saved.text and 'value="9.5"' in saved.text
+
+
+# --- security hardening -------------------------------------------------------
+
+
+@pytest.mark.parametrize("host", ["evil.example", "127.0.0.1.evil.example", "rebind.attacker.com"])
+def test_requests_for_other_host_names_are_refused(db_path, host):
+    # DNS rebinding: the browser sends the attacker's domain in the Host header.
+    with TestClient(create_app(db_path), base_url=LOCAL) as test_client:
+        response = test_client.get("/characters", headers={"host": host})
+    assert response.status_code == 400
+    assert "Test Pilot" not in response.text
+
+
+@pytest.mark.parametrize("host", ["127.0.0.1:8700", "localhost:8700", "localhost"])
+def test_local_host_names_are_served(db_path, host):
+    with TestClient(create_app(db_path), base_url=LOCAL) as test_client:
+        assert test_client.get("/characters", headers={"host": host}).status_code == 200
+
+
+def test_security_headers_on_pages_and_static_files(client):
+    for path in ("/characters", "/static/style.css"):
+        headers = client.get(path).headers
+        assert "default-src 'none'" in headers["content-security-policy"]
+        assert "frame-ancestors 'none'" in headers["content-security-policy"]
+        assert headers["x-frame-options"] == "DENY"
+        assert headers["x-content-type-options"] == "nosniff"
+        assert headers["referrer-policy"] == "no-referrer"
+        assert headers["cache-control"] == "no-store"
+
+
+def test_pages_have_no_inline_styles_or_scripts(planning_client):
+    # The Content-Security-Policy blocks both, so none may be used.
+    token = _token(planning_client.get("/today").text)
+    plan_url = planning_client.post(
+        "/today/plan",
+        data={"token": token, "character": "Test Pilot", "minutes": "30"},
+        follow_redirects=False,
+    ).headers["location"]
+    for path in ("/today", plan_url, "/characters", "/goals", "/skills", "/preferences"):
+        page = planning_client.get(path).text
+        assert "<script" not in page, path
+        assert "style=" not in page, path
+        assert "<style" not in page, path

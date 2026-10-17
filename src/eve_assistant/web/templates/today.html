@@ -44,7 +44,7 @@
   </label>
   <label for="minutes">Minutes
     <input id="minutes" name="minutes" type="number" min="5" max="600" step="5"
-      value="{{ (plan.minutes_available|int) if plan else 60 }}" style="width:7em" required>
+      value="{{ (plan.minutes_available|int) if plan else 60 }}" class="narrow" required>
   </label>
   <div class="checks">
     <label for="allow_lowsec"><input id="allow_lowsec" name="allow_lowsec" type="checkbox" value="true"> Allow lowsec</label>
@@ -53,7 +53,7 @@
   <button class="primary" type="submit" {% if not can_plan or not character_names %}disabled{% endif %}>Plan my time</button>
 </form>
 {% if not character_names %}<p class="muted">No characters yet: log one in with <span class="mono">eve-assistant login</span>, then refresh on the Characters page.</p>{% endif %}
-<p class="muted" style="font-size:13px">Planning reads live market prices and contracts, so it takes a few seconds.</p>
+<p class="muted small-print">Planning reads live market prices and contracts, so it takes a few seconds.</p>
 
 {% if open_projects %}
 <h2>Open projects</h2>
@@ -85,7 +85,7 @@
 
 {% if plan %}
 <h2>Plan for {{ plan.character_name }} · {{ plan.minutes_available|int }} minutes
-  <span class="muted" style="font-weight:400;font-size:14px">· made {{ plan.created_at|when }}</span></h2>
+  <span class="muted heading-note">· made {{ plan.created_at|when }}</span></h2>
 
 <article class="card">
   {% if not plan.items %}

@@ -27,6 +27,9 @@ Already in use: **pytest** 9.1.1, **ruff** 0.16.9, **pre-commit** 4.6.2,
 To add: **RESPX** 0.23.1, which mocks HTTPX calls so tests never touch the
 real ESI.
 
+Added 2026-10-16 with the owner's approval: **pip-audit** 2.10.1, which checks
+every pinned library for known vulnerabilities in CI.
+
 ## Standard library instead of a package
 
 | Need | Standard library | Instead of |

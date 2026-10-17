@@ -141,7 +141,7 @@ def find(
     pickups: dict[int, dict[int, list[int] | None]] = {}
     options: list[CourierOption] = []
     for region_id in region_ids:
-        for contract in esi.get(f"/contracts/public/{region_id}").data:
+        for contract in esi.get(f"/contracts/public/{region_id}", remember=False).data:
             if contract.get("type") != "courier":
                 continue
             expires = contract.get("date_expired", "")

@@ -16,6 +16,7 @@ from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from eve_assistant import (
     explain,
@@ -35,6 +36,27 @@ from eve_assistant.skills import SkillsError
 PlanMaker = Callable[[int, float, bool, bool], int]
 
 HERE = Path(__file__).parent
+
+# Only requests addressed to this PC by name are answered. This blocks DNS
+# rebinding: a website that points its own domain at 127.0.0.1 still sends
+# its domain in the Host header, and is refused.
+LOCAL_HOSTS = ("127.0.0.1", "localhost", "::1")
+
+# Sent with every response. The pages use no scripts and only their own
+# stylesheet, so the policy can be strict.
+SECURITY_HEADERS = {
+    "Content-Security-Policy": (
+        "default-src 'none'; style-src 'self'; img-src 'self' data:; form-action 'self'; "
+        "frame-ancestors 'none'; base-uri 'none'"
+    ),
+    "X-Frame-Options": "DENY",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+    "Cross-Origin-Opener-Policy": "same-origin",
+    "Cross-Origin-Resource-Policy": "same-origin",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
+    "Cache-Control": "no-store",
+}
 
 BAND_LABELS = {
     "none": "No player risk (Exordium)",
@@ -91,11 +113,21 @@ def create_app(
     db_path: Path | str = store.DEFAULT_DB_PATH,
     refresh: Callable[[], list[str]] | None = None,
     make_plan: PlanMaker | None = None,
+    allowed_hosts: tuple[str, ...] = LOCAL_HOSTS,
 ) -> FastAPI:
     """refresh: called by the Refresh button; returns problem lines, empty when all went well.
     make_plan: builds and records a plan (needs ESI), returning its ID."""
     app = FastAPI(title="EVE Assistant", docs_url=None, redoc_url=None, openapi_url=None)
     app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(allowed_hosts))
+
+    @app.middleware("http")
+    async def security_headers(request: Request, call_next):
+        response = await call_next(request)
+        for name, value in SECURITY_HEADERS.items():
+            response.headers.setdefault(name, value)
+        return response
+
     templates = Jinja2Templates(directory=HERE / "templates")
     templates.env.filters["isk"] = _isk
     templates.env.filters["duration"] = skills.format_minutes

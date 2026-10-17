@@ -20,7 +20,10 @@ contributor. Read [docs/design.md](docs/design.md) before changing behaviour.
 - **Request write ESI scopes.** Everything is read-only. A new scope needs a
   reason in docs/design.md, and means every character logs in again.
 - **Load third-party scripts or CDNs** in dashboard pages. Everything is
-  self-hosted.
+  self-hosted. No inline `<script>`, `<style>` or `style=""` either: the
+  Content-Security-Policy blocks them (a test checks every page).
+- **Weaken the dashboard's Host check or security headers**, or bind it to
+  anything but 127.0.0.1, without the repository owner's approval.
 - **Deploy to or change anyone's servers or infrastructure.** Hosted mode is
   set up by its owner.
 - **Push to `main` or merge pull requests.** Work on a branch and open a

@@ -62,14 +62,22 @@ class EsiClient:
         self._clock = clock
 
     def get(
-        self, path: str, character_id: int | None = None, params: dict | None = None
+        self,
+        path: str,
+        character_id: int | None = None,
+        params: dict | None = None,
+        remember: bool = True,
     ) -> EsiResult:
-        """GET a route. Pass character_id for routes that need that character's token."""
+        """GET a route. Pass character_id for routes that need that character's token.
+        remember=False keeps the response out of the local cache (for data about other
+        players, such as public contracts)."""
         query = "&".join(f"{k}={v}" for k, v in sorted((params or {}).items()))
         key = f"GET {path}?{query} as {character_id or '-'}"
-        cached = self._db.execute(
-            "SELECT etag, expires_at, body FROM esi_cache WHERE cache_key = ?", (key,)
-        ).fetchone()
+        cached = None
+        if remember:
+            cached = self._db.execute(
+                "SELECT etag, expires_at, body FROM esi_cache WHERE cache_key = ?", (key,)
+            ).fetchone()
         if cached and cached["expires_at"] and cached["expires_at"] > self._clock():
             return EsiResult(json.loads(cached["body"]), from_cache=True)
 
@@ -94,8 +102,8 @@ class EsiClient:
                 response = self._request(path, {**(params or {}), "page": page}, page_headers)
                 data.extend(response.json())
 
-        body = json.dumps(data)
-        self._store(key, first.headers.get("etag"), first.headers, body)
+        if remember:
+            self._store(key, first.headers.get("etag"), first.headers, json.dumps(data))
         return EsiResult(data, from_cache=False)
 
     def _request(self, path: str, params: dict | None, headers: dict) -> httpx.Response:

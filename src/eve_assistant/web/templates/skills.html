@@ -16,7 +16,7 @@
   <button class="primary" type="submit">Check</button>
 </form>
 
-{% if error %}<p class="error" role="alert" style="margin-top:18px">{{ error }}</p>{% endif %}
+{% if error %}<p class="error spaced" role="alert">{{ error }}</p>{% endif %}
 
 {% if requirement %}
 <h2>{{ requirement.type_name }} <span class="muted">for {{ character }}</span>

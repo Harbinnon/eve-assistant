@@ -486,21 +486,71 @@ login (§4.1–4.2), whatever the code licence says.
 
 ### Security hardening before going public
 
-1. **Host check (DNS rebinding):** answer only requests addressed to
-   `127.0.0.1` or `localhost`, so a malicious website cannot read the
-   dashboard through the browser.
-2. **Security headers:** a strict Content-Security-Policy (the dashboard's
-   own files only), no framing by other sites, no referrer, no MIME
-   sniffing.
-3. **Dependency vulnerability checks:** `pip-audit` in CI (a new
-   development library, needs the owner's approval) and Dependabot.
-4. **`SECURITY.md`:** how to report a vulnerability privately.
-5. **Threat model written down here:** what the tool protects against and
-   what it does not (DPAPI stops a copied token file from working, not
-   malware running as the user; the database holds character data, not
-   secrets, unencrypted in `var/`).
-6. **A full security review** of the codebase, every finding fixed or
-   recorded.
+1. **Host check (DNS rebinding): done.** The dashboard answers only
+   requests addressed to `127.0.0.1`, `localhost` or `::1`. A website that
+   points its own domain at 127.0.0.1 still sends its domain in the Host
+   header and is refused.
+2. **Security headers: done.** Every response carries a strict
+   Content-Security-Policy (`default-src 'none'`, only the dashboard's own
+   stylesheet, forms only to itself, no framing), plus `X-Frame-Options:
+   DENY`, `nosniff`, `no-referrer`, same-origin isolation, a
+   Permissions-Policy and `Cache-Control: no-store`. Pages contain no
+   scripts or inline styles; a test enforces it.
+3. **Dependency vulnerability checks: done.** `pip-audit` (approved by the
+   owner) checks every pinned library in `constraints.txt` against known
+   vulnerabilities on every pull request; Dependabot is configured (pip and
+   GitHub Actions, weekly, 14-day cooldown to keep the two-week rule).
+4. **`SECURITY.md`: done.** Private reporting through GitHub.
+5. **Threat model: done** (below).
+6. **Security review: done** (below; one finding fixed, the rest recorded).
+
+### Threat model
+
+**What is worth protecting:** the EVE refresh tokens (they give read access
+to a character's data for as long as they are valid), the character data
+itself (wallet, assets, location: useful to someone planning to rob or gank
+the player), and the player's computer.
+
+| Threat | Protection | Remaining risk |
+|---|---|---|
+| A website in the browser reads or changes the dashboard | Listens on 127.0.0.1 only; Host check against DNS rebinding; form token and Origin check on every change; strict CSP; no framing | None known |
+| Another device on the network reaches the dashboard | Bound to 127.0.0.1, not the network | None while in local mode |
+| Someone copies the token file | DPAPI ties it to the Windows login | None known |
+| Malware running as the same Windows user | Not protected: such a program can ask DPAPI to decrypt, like this tool does | Accepted; out of scope for an app |
+| Someone reads `var/eve-assistant.sqlite3` | Holds character data and plan history, **not** tokens or secrets | Unencrypted by design; protect the PC account |
+| A malicious or compromised dependency | Exact pins incl. indirect dependencies; two-week-old releases; Actions and hooks pinned to commit SHAs; `pip-audit` in CI; Dependabot | Residual supply-chain risk |
+| Secrets committed to git | Pre-commit and CI secret scanner; personal paths blocked; history scan before going public | Depends on the checks running |
+| Player-written text (contract titles, structure and ship names) | Escaped in pages; labelled as player-written; never interpreted | An AI assistant (future MCP server) must respect the label |
+| Forged or substituted EVE tokens | Signature, issuer, audience, expiry and character checked; PKCE; callback state check | None known |
+| Over-use of ESI | Respects cache headers, conditional requests, stops on 420/429 and a low error budget | None known |
+| Hosted mode exposed to the internet | Refuses to start in hosted mode until a login exists | Must be designed and reviewed when built |
+
+**Privacy:** the tool stores only data about characters whose owner logged
+them in. Public courier contracts (which name other players) are not
+cached; a contract's title is kept only inside the plan that suggested it,
+labelled as player-written. Wallet history naturally names the other side
+of the owner's own trades.
+
+### Security review (2026-10-16)
+
+Reviewed: login and token handling, secret storage, the local callback
+server, the ESI client, SQL, templates and forms, the dashboard server,
+CI and pre-commit configuration.
+
+| Area | Finding | Outcome |
+|---|---|---|
+| Dashboard | DNS rebinding could let a website read pages | **Fixed** (Host check) |
+| Dashboard | No security headers | **Fixed** (CSP and others) |
+| Privacy | Public contracts, naming other players, were kept in the ESI cache | **Fixed** (not cached; old copies removed by migration 0008) |
+| Supply chain | Pre-commit hooks pinned by tag, not commit | **Fixed** (pinned to commit SHAs) |
+| SQL | All queries parameterised; the few built strings use fixed table names or placeholder lists | No change needed |
+| Templates | Autoescaping on; no `|safe`; player text escaped (tests) | No change needed |
+| Code execution | No `eval`, `exec`, `subprocess`, `pickle` or shell use in the app | No change needed |
+| Redirects | All built from fixed paths or validated values | No change needed |
+| Tokens | Never printed, logged or put in error messages; login error bodies not echoed | No change needed |
+| Callback server | Bound to 127.0.0.1, one request, state checked, 5-minute limit | Recorded: a rebinding site could only abort an in-progress login |
+| Error pages | Planning errors show the exception message on the local page | Recorded: acceptable while local-only; revisit for hosted mode |
+| Dependencies | No automated vulnerability check in CI | **Fixed** (`pip-audit` in CI; none found at the time of review) |
 
 ### Going public checklist
 
