@@ -366,7 +366,15 @@ def test_pages_have_no_inline_styles_or_scripts(planning_client):
         data={"token": token, "character": "Test Pilot", "minutes": "30"},
         follow_redirects=False,
     ).headers["location"]
-    for path in ("/today", plan_url, "/characters", "/goals", "/skills", "/preferences"):
+    for path in (
+        "/today",
+        plan_url,
+        "/characters",
+        "/goals",
+        "/skills",
+        "/preferences",
+        "/history",
+    ):
         page = planning_client.get(path).text
         assert "<script" not in page, path
         assert "style=" not in page, path

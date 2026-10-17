@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}History · EVE Assistant{% endblock %}
+{% macro share(value) %}{% if value is not none %}<span class="pill {{ 'green' if 0.8 <= value <= 1.25 else 'amber' }}">{{ (value * 100)|round|int }}%</span>{% endif %}{% endmacro %}
+{% block content %}
+<h1>History</h1>
+<p class="lede">Each session you played, its plan, and what EVE's data says happened. This is how to check the learning rather than trust it.</p>
+
+{% if not past %}
+<p class="muted">No finished sessions yet. On Today, press “Start this plan” before you play and “I'm done” after.</p>
+{% endif %}
+
+{% for h in past %}
+<article class="card">
+  <h2 class="history-title">{{ h.session.character_name }} · {{ h.session.started_at|when }}</h2>
+  <p class="figures">
+    Played {{ h.session.minutes()|round|int }} min{% if h.plan %} of a {{ h.plan.total_minutes|round|int }}-minute <a href="/plans/{{ h.plan.plan_id }}">plan</a>{% else %}, no plan{% endif %}
+    {% if h.outcome %} · wallet change {{ h.outcome.net_isk|isk }} ISK
+      {% if h.outcome.mined_value is not none %} · ore mined ~{{ h.outcome.mined_value|isk }} ISK{% endif %}
+      · <span class="muted">{{ "settled" if h.outcome.settled else "provisional" }}</span>
+    {% else %} · <span class="muted">not worked out yet</span>{% endif %}
+  </p>
+  {% if h.steps %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Step</th><th>Your answer</th><th class="num">Planned</th><th class="num">Happened</th><th>Verdict</th></tr></thead>
+      <tbody>
+      {% for s in h.steps %}
+        <tr>
+          <td>{{ s.item.title }}</td>
+          <td>{{ {"do": "doing it", "not_now": "not now", "mute": "not this kind"}.get(s.item.response, "–") }}</td>
+          <td class="num">{{ s.item.isk|isk }} ISK{% if s.predicted_units %}<br><span class="muted small-print">{{ "{:,}".format(s.predicted_units) }} units</span>{% endif %}
+            {% if s.predicted_rate %}<br><span class="muted small-print">{{ s.predicted_rate|round|int }} m³/min</span>{% endif %}</td>
+          <td class="num">
+            {% if s.actual_isk is not none %}{{ s.actual_isk|isk }} ISK {{ share(s.isk_share) }}<br>{% endif %}
+            {% if s.actual_units is not none %}<span class="small-print">{{ "{:,}".format(s.actual_units) }} units ({{ s.source }})</span><br>{% endif %}
+            {% if s.actual_rate %}<span class="small-print">{{ s.actual_rate|round|int }} m³/min {{ share(s.rate_share) }}</span>{% endif %}
+          </td>
+          <td>{{ s.verdict_text }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+  {% if h.outcome and h.outcome.notes() %}
+  <ul class="notes">{% for n in h.outcome.notes() %}<li>{{ n }}</li>{% endfor %}</ul>
+  {% endif %}
+</article>
+{% endfor %}
+
+{% if speeds %}
+<h2>Mining speed, session by session</h2>
+<p class="muted">What the mining correction on the Preferences page is built from: your m³ per minute while mining (game logs) against the plan's estimate.</p>
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>Character</th><th>Session</th><th class="num">Estimate</th><th class="num">You</th><th class="num">Ratio</th></tr></thead>
+    <tbody>
+    {% for name, found in speeds %}{% for o in found %}
+      <tr><td>{{ name }}</td><td>{{ o.session_id }}</td><td class="num">{{ o.predicted|round|int }} m³/min</td>
+        <td class="num">{{ o.actual|round|int }} m³/min</td><td class="num">{{ share(o.ratio) }}</td></tr>
+    {% endfor %}{% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

@@ -253,6 +253,22 @@ moves it a quarter of the way, four sessions a little over half.
   don't yet record the per-unit price and per-jump time they assumed, so
   those need recording first.
 
+**History page.** Each played session, newest first, with its plan's steps
+set against the data:
+
+- **Mining:** ore of that type mined (game logs if read, else the ledger
+  difference), and m³ per minute against the estimate.
+- **Selling or hauling hangar ore:** units of that type sold, and the ISK
+  against the plan's.
+- **Courier contracts:** contract ISK in the session. Rewards often land
+  in a later session, so no sign of one reads "can't tell", not "failed".
+- **Skill reminders and project steps:** not measured.
+
+Each step's verdict is one of "happened", "no sign of it", "waiting for
+EVE's data" (not settled yet), "can't tell from the data" or "not
+measured". Below that, the mining-speed observations the correction is
+built from, session by session.
+
 From that it learns:
 
 1. **Corrections per activity.** "Predicted 8M an hour, made 6M." After a

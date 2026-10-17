@@ -22,6 +22,7 @@ from eve_assistant import (
     corrections,
     explain,
     goals,
+    history,
     outcomes,
     overview,
     planner,
@@ -426,6 +427,25 @@ def create_app(
         finally:
             conn.close()
         return back("/preferences", msg=f"{action}d")
+
+    @app.get("/history", response_class=HTMLResponse)
+    def history_page(request: Request):
+        conn = db()
+        try:
+            outcomes.update(conn)  # pick up anything that settled since
+            past = history.sessions_history(conn)
+            speeds = [
+                (r["name"], corrections.mining_observations(conn, r["character_id"]))
+                for r in conn.execute("SELECT character_id, name FROM characters ORDER BY name")
+            ]
+        finally:
+            conn.close()
+        return render(
+            request,
+            "history.html",
+            past=past,
+            speeds=[(name, found) for name, found in speeds if found],
+        )
 
     @app.get("/characters", response_class=HTMLResponse)
     def characters_page(request: Request):
