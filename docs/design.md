@@ -768,6 +768,13 @@ nothing:
 | Mining ledger, industry jobs, orders, skill queue | every 15 minutes | hourly |
 | Everything else (journal, assets, skills, ...) | hourly | hourly |
 | Market prices | every 6 hours | |
+| Static data build (CCP's latest) | daily | |
+
+CCP rebuilds the static data with most game deployments; once a day the
+background task notes the latest build, and every page shows a banner when
+it is newer than the loaded one (or nothing is loaded, or this version of
+the tool needs a reload), with the command to run. The 100 MB update itself
+stays a terminal command, not a page request.
 
 Game logs are read on every tick. A rate limit stops the tick and the next
 one waits as long as ESI asked. All ESI work (the background, the Refresh

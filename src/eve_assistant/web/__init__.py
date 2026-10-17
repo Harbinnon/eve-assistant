@@ -38,6 +38,7 @@ from eve_assistant import (
     preferences,
     projects,
     risk,
+    sde,
     session_flow,
     sessions,
     skills,
@@ -206,6 +207,11 @@ def create_app(
 
     def render(request: Request, name: str, **context) -> HTMLResponse:
         message = MESSAGES.get(request.query_params.get("msg", ""))
+        conn = db()
+        try:
+            static_data = sde.update_status(conn)
+        finally:
+            conn.close()
         return templates.TemplateResponse(
             request,
             name,
@@ -213,6 +219,7 @@ def create_app(
                 "form_token": form_token,
                 "message": message,
                 "auto": auto_status,
+                "static_data": static_data,
                 "page": name.split(".")[0],
                 **context,
             },  # fmt: skip

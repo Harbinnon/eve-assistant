@@ -11,6 +11,7 @@ import sqlite3
 import zipfile
 from collections.abc import Iterator
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import httpx
@@ -296,6 +297,72 @@ def require_current(db: sqlite3.Connection) -> None:
             "The static data needs reloading for this feature. "
             "Run `eve-assistant sde-update --force`."
         )
+
+
+# --- update reminder ---------------------------------------------------------
+
+# CCP rebuilds the static data with most game deployments. The background
+# refresh asks once a day which build is current and remembers it here, so
+# every page can say when an update is waiting without asking CCP each time.
+CHECK_EVERY = timedelta(hours=24)
+LATEST_SETTING = "sde_latest_seen"
+
+
+@dataclass(frozen=True)
+class UpdateStatus:
+    loaded: SdeBuild | None
+    latest: SdeBuild | None  # as of the last daily check; None before the first one
+    checked_at: str | None
+    reload_needed: bool  # this version of the tool reads more than was loaded
+
+    @property
+    def newer_available(self) -> bool:
+        return (
+            self.loaded is not None
+            and self.latest is not None
+            and self.latest.build_number > self.loaded.build_number
+        )
+
+    @property
+    def needs_update(self) -> bool:
+        return self.loaded is None or self.reload_needed or self.newer_available
+
+
+def update_status(db: sqlite3.Connection) -> UpdateStatus:
+    row = db.execute("SELECT value FROM settings WHERE key = ?", (LATEST_SETTING,)).fetchone()
+    seen = json.loads(row[0]) if row else None
+    latest = SdeBuild(seen["build_number"], seen["release_date"]) if seen else None
+    return UpdateStatus(
+        loaded=loaded_build(db),
+        latest=latest,
+        checked_at=seen["checked_at"] if seen else None,
+        reload_needed=needs_reload(db),
+    )
+
+
+def check_due(db: sqlite3.Connection, now: datetime | None = None) -> bool:
+    checked = update_status(db).checked_at
+    now = now or datetime.now(UTC)
+    return checked is None or now - datetime.fromisoformat(checked) >= CHECK_EVERY
+
+
+def check_for_update(
+    db: sqlite3.Connection, http: httpx.Client, now: datetime | None = None
+) -> SdeBuild:
+    """Ask CCP which build is current and remember it. Raises SdeError."""
+    latest = latest_build(http)
+    seen = {
+        "build_number": latest.build_number,
+        "release_date": latest.release_date,
+        "checked_at": (now or datetime.now(UTC)).isoformat(timespec="seconds"),
+    }
+    db.execute(
+        "INSERT INTO settings (key, value) VALUES (?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (LATEST_SETTING, json.dumps(seen)),
+    )
+    db.commit()
+    return latest
 
 
 def update(

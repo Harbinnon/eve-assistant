@@ -46,6 +46,7 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
+markers = ["real_static_data_check: run the daily static data check (mocked HTTP)"]
 
 [tool.coverage.run]
 source = ["eve_assistant"]
