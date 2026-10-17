@@ -904,6 +904,11 @@ character logs in once more.
 - **One process, one SQLite file**, in both modes.
 - **Service layer of plain read-only functions**; the dashboard, CLI and
   later the MCP server are thin layers over it.
+- **Planner activities are modules** (`activities/`: skills, projects,
+  selling, hauling, mining, couriers), each with one interface: its
+  candidates for a plan, and what it has learned from sessions. The planner
+  only rates, ranks and fits candidates into the time, and doesn't import
+  any activity's models (a test checks). A new activity is a new module.
 - **No user column.** Data is tagged at three levels: **character**
   (skills, assets, wallet, jobs, plans), **account** (Alpha or Omega, which
   characters share it), and **install** (cross-character goals, mutes,

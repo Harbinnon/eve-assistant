@@ -1,8 +1,8 @@
 """The session planner: "I have N minutes, what should this character do?"
 
-It gathers candidates from the activity models (ore in the hangar, a mining
-session sized to the time left, courier contracts), rates each with the risk
-matrix, and builds a plan:
+It gathers candidates from the activities (activities/: skills, projects,
+selling, mining, couriers; each a module with one interface), each rated
+with the risk matrix, and builds a plan:
 
 1. quick jobs where the character is docked (selling ore from the hangar,
    queueing skills),
@@ -16,7 +16,7 @@ compare them with what actually happened.
 
 import json
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from eve_assistant import (
     activities,
@@ -84,6 +84,151 @@ def _has_done(db: sqlite3.Connection, character_id: int, kind: str) -> bool:
     )
 
 
+@dataclass
+class _Fitting:
+    """The plan as it fills up: what is chosen, the time left, which stacks of
+    goods are already sold, and whether the one new activity is used."""
+
+    minutes: float
+    time_left: float
+    sold_stacks: set[tuple]
+    chosen: list[PlanItem] = field(default_factory=list)
+    new_used: bool = False
+
+    def take(self, item: PlanItem) -> None:
+        self.chosen.append(item)
+        self.time_left -= item.minutes
+        self.new_used = self.new_used or item.new_to_you
+
+
+def _stack_of(item: PlanItem) -> tuple:
+    return (item.inputs.get("station_id"), item.inputs["type_id"])
+
+
+def _resized(item: PlanItem, minutes: float) -> PlanItem:
+    """An item cut (or stretched) to the minutes it gets, ISK in proportion."""
+    share = minutes / item.minutes if item.minutes else 0
+    return PlanItem(**{**item.__dict__, "isk": item.isk * share, "minutes": minutes})
+
+
+def _with_new_flags(db, character_id, candidates: list[PlanItem]) -> list[PlanItem]:
+    return [
+        PlanItem(
+            **{
+                **c.__dict__,
+                "new_to_you": c.kind in ACTIVITY_KINDS and not _has_done(db, character_id, c.kind),
+            }
+        )
+        for c in candidates
+    ]
+
+
+def _set_aside(candidates, mutes, allow_risky) -> tuple[list[PlanItem], list[Alternative]]:
+    """Muted kinds, and Risky items unless allowed, become alternatives."""
+    usable, alternatives = [], []
+    for item in candidates:
+        if f"kind:{item.kind}" in mutes:
+            alternatives.append(Alternative(item, "muted"))
+        elif item.risk.rating == "red" and not allow_risky:
+            alternatives.append(Alternative(item, "red_risk"))
+        else:
+            usable.append(item)
+    return usable, alternatives
+
+
+def _promised_stacks(db, character_id) -> set[tuple]:
+    """Stacks already promised to an open haul project: not sold again."""
+    promised = set()
+    for project in projects.open_projects(db, character_id):
+        if project.kind == "haul":
+            station_text, type_text = project.key.split(":")[:2]
+            promised.add((int(station_text), int(type_text)))
+    return promised
+
+
+def _quick_jobs(fit: _Fitting, usable: list[PlanItem]) -> None:
+    """1. Quick jobs where the character is docked: skills, then selling here."""
+    for item in [i for i in usable if i.kind == "skill"]:
+        fit.take(item)
+    sells = sorted(
+        (
+            i
+            for i in usable
+            if i.kind == "sell_hangar"
+            and i.inputs.get("jumps") == 0
+            and i.inputs.get("travel_jumps", 0) == 0
+        ),
+        key=lambda i: -i.adjusted_isk,
+    )
+    for item in sells:
+        if _stack_of(item) in fit.sold_stacks:
+            continue
+        if item.minutes <= fit.time_left:
+            fit.take(item)
+            fit.sold_stacks.add(_stack_of(item))
+
+
+def _open_projects(fit: _Fitting, usable: list[PlanItem]) -> None:
+    """2. Open projects come before anything new."""
+    for item in sorted(
+        (i for i in usable if i.kind == "project_continue"), key=lambda i: -i.adjusted_isk
+    ):
+        if fit.time_left >= MIN_MINING_MINUTES:
+            fit.take(_resized(item, min(item.minutes, fit.time_left)))
+
+
+def _main_pool(fit: _Fitting, usable: list[PlanItem], open_count: int) -> list[PlanItem]:
+    def eligible(i: PlanItem) -> bool:
+        if i.kind in ("mining", "courier"):
+            return True
+        if i.kind == "project_start":
+            return open_count < projects.MAX_OPEN and not (
+                i.inputs.get("station_id") and _stack_of(i) in fit.sold_stacks
+            )
+        return (
+            i.kind == "sell_hangar"
+            and (i.inputs.get("jumps", 0) > 0 or i.inputs.get("travel_jumps", 0) > 0)
+            and _stack_of(i) not in fit.sold_stacks
+        )
+
+    return sorted((i for i in usable if eligible(i)), key=lambda i: -i.adjusted_isk)
+
+
+def _fits_main(fit: _Fitting, item: PlanItem) -> bool:
+    if item.kind not in ("mining", "project_start") and item.minutes > fit.time_left + 1e-9:
+        return False
+    if item.kind in ("mining", "project_start") and fit.time_left < MIN_MINING_MINUTES:
+        return False
+    return not (item.new_to_you and fit.new_used)
+
+
+def _main_activity(fit: _Fitting, pool: list[PlanItem]) -> PlanItem | None:
+    """3. One main activity for the remaining time, by ISK after expected losses.
+    Mining and project starts are sized to the time left."""
+    for item in pool:
+        if not _fits_main(fit, item):
+            continue
+        if item.kind in ("mining", "project_start"):
+            item = _resized(item, fit.time_left)
+        fit.take(item)
+        return item
+    return None
+
+
+def _why_not(item: PlanItem, fit: _Fitting, open_count: int) -> str:
+    if item.kind == "project_continue":
+        return "too_long"
+    if item.kind == "project_start" and open_count >= projects.MAX_OPEN:
+        return "too_many_projects"
+    if item.kind == "sell_hangar" and _stack_of(item) in fit.sold_stacks:
+        return "worse"
+    if item.minutes > fit.minutes:
+        return "too_long"
+    if item.new_to_you and fit.new_used:
+        return "new_limit"
+    return "worse"
+
+
 def build_plan(
     db: sqlite3.Connection,
     esi: EsiClient,
@@ -108,140 +253,28 @@ def build_plan(
 
     context = Context(db, esi, character_id, minutes, worth, highsec_only, ships, ore_names, notes)
     candidates = [item for activity in activities.ALL for item in activity.candidates(context)]
-    candidates = [
-        PlanItem(
-            **{
-                **c.__dict__,
-                "new_to_you": c.kind in ACTIVITY_KINDS and not _has_done(db, character_id, c.kind),
-            }
-        )
-        for c in candidates
-    ]
-
-    alternatives: list[Alternative] = []
-    usable: list[PlanItem] = []
-    for item in candidates:
-        if f"kind:{item.kind}" in mutes:
-            alternatives.append(Alternative(item, "muted"))
-        elif item.risk.rating == "red" and not allow_risky:
-            alternatives.append(Alternative(item, "red_risk"))
-        else:
-            usable.append(item)
-
-    chosen: list[PlanItem] = []
-    time_left = minutes
-    new_used = False
-
-    def take(item: PlanItem) -> None:
-        nonlocal time_left, new_used
-        chosen.append(item)
-        time_left -= item.minutes
-        new_used = new_used or item.new_to_you
-
-    # 1. quick jobs where the character is docked
-    for item in [i for i in usable if i.kind == "skill"]:
-        take(item)
-    sells = sorted(
-        (
-            i
-            for i in usable
-            if i.kind == "sell_hangar"
-            and i.inputs.get("jumps") == 0
-            and i.inputs.get("travel_jumps", 0) == 0
-        ),
-        key=lambda i: -i.adjusted_isk,
+    usable, alternatives = _set_aside(
+        _with_new_flags(db, character_id, candidates), mutes, allow_risky
     )
 
-    def stack(item: PlanItem) -> tuple:
-        return (item.inputs.get("station_id"), item.inputs["type_id"])
-
-    sold_stacks: set[tuple] = set()
-    # stacks already promised to an open haul project are not sold again
-    for project in projects.open_projects(db, character_id):
-        if project.kind == "haul":
-            station_text, type_text = project.key.split(":")[:2]
-            sold_stacks.add((int(station_text), int(type_text)))
-    for item in sells:
-        if stack(item) in sold_stacks:
-            continue
-        if item.minutes <= time_left:
-            take(item)
-            sold_stacks.add(stack(item))
-
-    # 2. open projects come before anything new
-    for item in sorted(
-        (i for i in usable if i.kind == "project_continue"), key=lambda i: -i.adjusted_isk
-    ):
-        if time_left >= MIN_MINING_MINUTES:
-            session = min(item.minutes, time_left)
-            share = session / item.minutes if item.minutes else 0
-            take(PlanItem(**{**item.__dict__, "minutes": session, "isk": item.isk * share}))
-
-    # 3. one main activity for the remaining time
+    fit = _Fitting(minutes, minutes, _promised_stacks(db, character_id))
+    _quick_jobs(fit, usable)
+    _open_projects(fit, usable)
     open_count = len(projects.open_projects(db, character_id))
-    main_pool = [
-        i
-        for i in usable
-        if i.kind in ("mining", "courier")
-        or (
-            i.kind == "project_start"
-            and open_count < projects.MAX_OPEN
-            and not (i.inputs.get("station_id") and stack(i) in sold_stacks)
-        )
-        or (
-            i.kind == "sell_hangar"
-            and (i.inputs.get("jumps", 0) > 0 or i.inputs.get("travel_jumps", 0) > 0)
-            and stack(i) not in sold_stacks
-        )
-    ]
-    main_pool.sort(key=lambda i: -i.adjusted_isk)
-    picked_main = None
-    for item in main_pool:
-        if item.kind not in ("mining", "project_start") and item.minutes > time_left + 1e-9:
-            continue
-        if item.kind == "mining" and time_left < MIN_MINING_MINUTES:
-            continue
-        if item.new_to_you and new_used:
-            continue
-        if item.kind == "project_start":
-            if time_left < MIN_MINING_MINUTES:
-                continue
-            share = time_left / item.minutes if item.minutes else 0
-            item = PlanItem(**{**item.__dict__, "isk": item.isk * share, "minutes": time_left})
-        elif item.kind == "mining":
-            # the mining estimate was sized for the whole session; rescale to what is left
-            share = time_left / item.minutes if item.minutes else 0
-            item = PlanItem(**{**item.__dict__, "isk": item.isk * share, "minutes": time_left,
-                               "risk": item.risk})  # fmt: skip
-        take(item)
-        picked_main = item
-        break
+    picked = _main_activity(fit, _main_pool(fit, usable, open_count))
 
     for item in usable:
-        if item in chosen or (picked_main and item.key == picked_main.key
-                              and item.kind == picked_main.kind):  # fmt: skip
+        if item in fit.chosen or (picked and item.key == picked.key and item.kind == picked.kind):
             continue
-        if item.kind == "project_continue":
-            why = "too_long"
-        elif item.kind == "project_start" and open_count >= projects.MAX_OPEN:
-            why = "too_many_projects"
-        elif item.kind == "sell_hangar" and stack(item) in sold_stacks:
-            why = "worse"
-        elif item.minutes > minutes:
-            why = "too_long"
-        elif item.new_to_you and new_used:
-            why = "new_limit"
-        else:
-            why = "worse"
-        alternatives.append(Alternative(item, why))
+        alternatives.append(Alternative(item, _why_not(item, fit, open_count)))
 
-    if not chosen:
+    if not fit.chosen:
         notes.append(Reason("nothing_fits"))
     notes.append(Reason("loss_chances_are_guesses"))
     return Plan(
         character_id=character_id,
         minutes_available=minutes,
-        items=tuple(chosen),
+        items=tuple(fit.chosen),
         alternatives=tuple(sorted(alternatives, key=lambda a: -a.item.adjusted_isk)),
         notes=tuple({n.code: n for n in notes}.values()),
         net_worth=worth,

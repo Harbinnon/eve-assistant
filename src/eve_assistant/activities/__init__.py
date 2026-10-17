@@ -14,3 +14,8 @@ from eve_assistant.activities import couriers, mining, projects, selling, skills
 
 # In the order candidates are gathered (ties keep this order).
 ALL = (skills, projects, selling, mining, couriers)
+
+
+def learned(db, character_id: int) -> list:
+    """Everything the activities have learned from this character's sessions."""
+    return [c for activity in ALL for c in activity.learned(db, character_id)]

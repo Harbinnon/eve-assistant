@@ -7,9 +7,9 @@ from pathlib import Path
 from eve_assistant import (
     __version__,
     accounts,
+    activities,
     auth,
     backups,
-    corrections,
     couriers,
     detection,
     explain,
@@ -725,8 +725,9 @@ def _cmd_learned(_args) -> int:
     with store.connect() as db:
         rows = db.execute("SELECT character_id, name FROM characters ORDER BY name").fetchall()
         for row in rows:
-            reason = corrections.correction(db, row["character_id"], "mining_rate").reason()
-            print(f"{row['name']}: {explain.describe(reason.code, reason.detail)}")
+            for correction in activities.learned(db, row["character_id"]):
+                reason = correction.reason()
+                print(f"{row['name']}: {explain.describe(reason.code, reason.detail)}")
         for reason in (pace.weekly_play(db).reason(), pace.finish_rate(db).reason()):
             print(explain.describe(reason.code, reason.detail))
     return 0

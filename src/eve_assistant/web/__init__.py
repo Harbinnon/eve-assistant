@@ -31,6 +31,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from eve_assistant import (
+    activities,
     backups,
     checklist,
     corrections,
@@ -812,9 +813,10 @@ def create_app(
             # Characters with the same text share one line ("not yet checked" thrice is noise).
             learned_by_text: dict[str, list[str]] = {}
             for r in conn.execute(CHARACTERS_BY_NAME):
-                reason = corrections.correction(conn, r["character_id"], "mining_rate").reason()
-                text = explain.describe(reason.code, reason.detail)
-                learned_by_text.setdefault(text, []).append(r["name"])
+                for correction in activities.learned(conn, r["character_id"]):
+                    reason = correction.reason()
+                    text = explain.describe(reason.code, reason.detail)
+                    learned_by_text.setdefault(text, []).append(r["name"])
             learned = [(", ".join(names), text) for text, names in learned_by_text.items()]
             finish = pace.finish_rate(conn)
         finally:
