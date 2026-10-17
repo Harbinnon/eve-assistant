@@ -133,11 +133,10 @@
 {% if not session_views %}
 <form class="stack card" method="post" action="/today/plan">
   <input type="hidden" name="token" value="{{ form_token }}">
-  <label for="character">Character
-    <select id="character" name="character">
-      {% for n in character_names %}<option {% if plan and n == plan.character_name %}selected{% endif %}>{{ n }}</option>{% endfor %}
-    </select>
-  </label>
+  {% if active %}
+  <input type="hidden" name="character" value="{{ active.name }}">
+  <p class="form-for">For <strong>{{ active.name }}</strong><span class="muted small-print">switch at the top</span></p>
+  {% endif %}
   <label for="minutes">Minutes
     <input id="minutes" name="minutes" type="number" min="5" max="600" step="5"
       value="{{ (plan.minutes_available|int) if plan else 60 }}" class="narrow" required>

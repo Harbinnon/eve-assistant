@@ -119,6 +119,9 @@ ERROR_TITLES = {
 NO_PAGE = "There's no page at this address."
 NO_BANNER = SimpleNamespace(needs_update=False)  # error pages skip the database
 
+# The active character (header switch), kept in a cookie like the theme.
+CHARACTER_COOKIE = "character"
+
 # Colour themes, kept in a cookie set by the form in every page's footer.
 THEMES = ("dark", "light", "system")
 # The cookie gets one of these constants, never the posted text itself.
@@ -313,12 +316,25 @@ def create_app(
     def db() -> sqlite3.Connection:
         return store.connect(db_path)
 
+    def active_character(request: Request, conn) -> tuple[int, str] | None:
+        """The header switch's character: the cookie's if it names one of
+        ours, else whoever is online, else the first; None without any."""
+        names = dict(conn.execute("SELECT character_id, name FROM characters").fetchall())
+        chosen = request.cookies.get(CHARACTER_COOKIE, "")
+        character_id = int(chosen) if chosen.isdigit() and int(chosen) in names else None
+        if character_id is None:
+            character_id = overview.default_character(conn)
+        return (character_id, names[character_id]) if character_id is not None else None
+
     def render(request: Request, name: str, **context) -> HTMLResponse:
         message = MESSAGES.get(request.query_params.get("msg", ""))
         conn = db()
         try:
             static_data = sde.update_status(conn)
             playing = bool(sessions.open_sessions(conn))
+            everyone = conn.execute("SELECT character_id, name FROM characters ORDER BY name")
+            everyone = [(r["character_id"], r["name"]) for r in everyone]
+            active = active_character(request, conn)
         finally:
             conn.close()
         page = name.split(".")[0]
@@ -334,6 +350,8 @@ def create_app(
                 "reload": RELOAD_SECONDS if playing and page in RELOADING_PAGES else None,
                 "theme": _theme(request),
                 "here": request.url.path,  # where the theme form returns to
+                "switch_characters": everyone,
+                "active": {"id": active[0], "name": active[1]} if active else None,
                 **context,
             },  # fmt: skip
         )
@@ -409,6 +427,37 @@ def create_app(
     def home():
         return back(TODAY)
 
+    @app.post("/character")
+    def choose_character(
+        request: Request,
+        token: str = Form(...),
+        character_id: str = Form(...),
+        return_to: str = Form(""),
+    ):
+        check_form(request, token)
+        conn = db()
+        try:
+            # Each known ID maps to itself, so the cookie never holds posted text.
+            known = {
+                str(r[0]): str(r[0]) for r in conn.execute("SELECT character_id FROM characters")
+            }
+        finally:
+            conn.close()
+        chosen = known.get(character_id)
+        if chosen is None:
+            raise HTTPException(400, "That character isn't logged in here.")
+        response = RedirectResponse(RETURN_PAGES.get(return_to, TODAY), status_code=303)
+        response.set_cookie(
+            CHARACTER_COOKIE,
+            chosen,
+            max_age=THEME_MAX_AGE,
+            path="/",
+            secure=True,
+            httponly=True,
+            samesite="strict",
+        )
+        return response
+
     @app.post("/theme")
     def choose_theme(
         request: Request, token: str = Form(...), theme: str = Form(...), return_to: str = Form("")
@@ -441,7 +490,8 @@ def create_app(
         conn = db()
         try:
             names = _names(conn)
-            latest = planner.latest_plan_id(conn)
+            active = active_character(request, conn)
+            latest = planner.latest_plan_id(conn, active[0] if active else None)
             recent = planner.load_plan(conn, latest) if latest else None
             open_projects = _open_projects(conn)
             playing = sessions.open_sessions(conn)
@@ -829,6 +879,9 @@ def create_app(
         conn = db()
         try:
             names = _names(conn)
+            if not character:
+                active = active_character(request, conn)
+                character = active[1] if active else ""
             requirement, error, clone_state = None, None, None
             if character and item:
                 try:

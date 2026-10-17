@@ -96,6 +96,16 @@ def summarize(db: sqlite3.Connection, character_id: int) -> CharacterSummary:
     )
 
 
+def default_character(db: sqlite3.Connection) -> int | None:
+    """The character to show when none was chosen: one that is online (by
+    name), else the first by name; None without characters."""
+    ids = [r[0] for r in db.execute("SELECT character_id FROM characters ORDER BY name")]
+    for character_id in ids:
+        if (snapshots.latest(db, character_id, "online") or {}).get("online"):
+            return character_id
+    return ids[0] if ids else None
+
+
 def all_characters(db: sqlite3.Connection) -> list[CharacterSummary]:
     ids = [r["character_id"] for r in db.execute("SELECT character_id FROM characters")]
     return sorted((summarize(db, cid) for cid in ids), key=lambda c: -c.total_sp)

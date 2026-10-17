@@ -787,3 +787,50 @@ def test_answering_a_step_returns_to_it(planning_client):
         follow_redirects=False,
     )
     assert response.headers["location"].endswith(f"?msg=not_now#item-{item_id}")
+
+
+# --- Active character switcher (roadmap 2.7) ----------------------------------
+
+
+def _second_character(db_path):
+    conn = store.connect(db_path)
+    snapshots.ensure_character(conn, 8, "Alpha Pilot")  # first by name, but offline
+    snapshots.record(conn, 8, "online", {"online": False})
+    conn.close()
+
+
+def test_the_online_character_is_active_by_default(db_path):
+    _second_character(db_path)
+    with TestClient(create_app(db_path), base_url=LOCAL) as test_client:
+        page = test_client.get("/today").text
+    assert '<option value="7" selected>Test Pilot</option>' in page
+    assert "For <strong>Test Pilot</strong>" in page
+
+
+def test_switching_character_follows_on_today_skills_and_goals(db_path):
+    _second_character(db_path)
+    app = create_app(db_path, make_plan=_fake_plan_maker(db_path))
+    with TestClient(app, base_url=LOCAL) as test_client:
+        token, _plan_url = _new_plan(test_client)  # a plan for Test Pilot
+        assert "Plan for Test Pilot" in test_client.get("/today").text
+        switched = test_client.post(
+            "/character",
+            data={"token": token, "character_id": "8", "return_to": "/skills"},
+            follow_redirects=False,
+        )
+        assert switched.headers["location"] == "/skills"
+        assert switched.headers["set-cookie"].startswith("character=8;")
+        test_client.cookies.set("character", "8")
+        today = test_client.get("/today").text
+        assert "For <strong>Alpha Pilot</strong>" in today
+        assert "Plan for Test Pilot" not in today  # Today shows the active character's plans
+        assert "For <strong>Alpha Pilot</strong>" in test_client.get("/skills").text
+        assert "<option selected>Alpha Pilot</option>" in test_client.get("/goals").text
+
+
+def test_only_known_characters_can_be_chosen(client):
+    token = _token(client.get("/today").text)
+    refused = client.post("/character", data={"token": token, "character_id": "999"})
+    assert refused.status_code == 400
+    client.cookies.set("character", "not-a-number")
+    assert '<option value="7" selected>Test Pilot</option>' in client.get("/today").text

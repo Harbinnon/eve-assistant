@@ -19,6 +19,17 @@
         <a href="/history" {% if page == 'history' %}aria-current="page"{% endif %}>History</a>
         <a href="/preferences" {% if page == 'preferences' %}aria-current="page"{% endif %}>Preferences</a>
       </nav>
+      {% if switch_characters %}
+      <form class="character-switch" method="post" action="/character">
+        <input type="hidden" name="token" value="{{ form_token }}">
+        <input type="hidden" name="return_to" value="{{ here }}">
+        <label for="active-character">Character</label>
+        <select id="active-character" name="character_id">
+          {% for character_id, name in switch_characters %}<option value="{{ character_id }}" {% if active and active.id == character_id %}selected{% endif %}>{{ name }}</option>{% endfor %}
+        </select>
+        <button class="small" type="submit">Switch</button>
+      </form>
+      {% endif %}
     </div>
   </header>
   <main class="wrap">

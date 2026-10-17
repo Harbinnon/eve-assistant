@@ -5,11 +5,10 @@
 <p class="lede">What a character needs to use a ship or module, in training order, with Alpha limits.</p>
 
 <form class="stack card" method="get" action="/skills">
-  <label for="character">Character
-    <select id="character" name="character">
-      {% for n in character_names %}<option {% if n == character %}selected{% endif %}>{{ n }}</option>{% endfor %}
-    </select>
-  </label>
+  {% if character %}
+  <input type="hidden" name="character" value="{{ character }}">
+  <p class="form-for">For <strong>{{ character }}</strong><span class="muted small-print">switch at the top</span></p>
+  {% endif %}
   <label for="item">Ship or module
     <input id="item" name="item" value="{{ item }}" required placeholder="Retriever">
   </label>

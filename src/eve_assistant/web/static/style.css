@@ -161,6 +161,15 @@ header.bar .wrap {
 .brand span { color: var(--action); }
 .brand:hover { color: var(--heading); }
 nav { display: flex; gap: 2px; flex-wrap: wrap; }
+.character-switch { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.character-switch label {
+  font: 600 11px/1 var(--display);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.character-switch select { padding: 5px 8px; font-size: 14px; }
+.form-for { display: flex; flex-direction: column; gap: 2px; margin: 0; align-self: center; }
 nav a {
   font: 600 13px/1 var(--display);
   letter-spacing: 0.09em;

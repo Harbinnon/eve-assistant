@@ -69,7 +69,7 @@
   <label for="character">Character
     <select id="character" name="character">
       <option value="">All characters (ISK only)</option>
-      {% for n in character_names %}<option>{{ n }}</option>{% endfor %}
+      {% for n in character_names %}<option {% if active and n == active.name %}selected{% endif %}>{{ n }}</option>{% endfor %}
     </select>
   </label>
   <button class="primary" type="submit">Add goal</button>
