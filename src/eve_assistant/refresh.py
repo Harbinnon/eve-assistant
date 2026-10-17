@@ -19,6 +19,7 @@ from eve_assistant import (
     goals,
     outcomes,
     planner,
+    sde,
     snapshots,
     store,
     structures,
@@ -220,6 +221,21 @@ def _prices_due(db, now: datetime) -> bool:
     return row[0] is None or now - datetime.fromisoformat(row[0]) >= PRICES_EVERY
 
 
+def _check_static_data(config: Config, db_path, now: datetime) -> list[str]:
+    """Once a day, note which static data build CCP has published."""
+    db = store.connect(db_path)
+    try:
+        if not sde.check_due(db, now):
+            return []
+        with auth.http_client(config) as http:
+            sde.check_for_update(db, http, now)
+    except sde.SdeError as exc:
+        return [str(exc)]
+    finally:
+        db.close()
+    return []
+
+
 @_one_at_a_time
 def auto_refresh_once(
     config: Config,
@@ -231,6 +247,7 @@ def auto_refresh_once(
     report = AutoReport()
     now = now or datetime.now(UTC)
     report.problems.extend(backups.run_if_due(config.backups_dir, db_path, now))
+    report.problems.extend(_check_static_data(config, db_path, now))
     characters = auth.list_characters(secrets)
     if not characters:
         return report

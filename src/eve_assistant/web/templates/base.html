@@ -21,6 +21,22 @@
     </div>
   </header>
   <main class="wrap">
+    {% if static_data.needs_update %}
+    <div class="banner" role="status">
+      {% if static_data.loaded is none %}
+        <strong>No static data loaded yet.</strong> Ships, items and the map aren't recognised until you run
+        <span class="mono">eve-assistant sde-update</span> (about 100 MB, a minute or two).
+      {% elif static_data.reload_needed %}
+        <strong>This version needs the static data reloaded.</strong> Run
+        <span class="mono">eve-assistant sde-update --force</span>; some features are limited until then.
+      {% else %}
+        <strong>CCP published new static data</strong> on {{ static_data.latest.release_date[:10] }}
+        (build {{ static_data.latest.build_number }}; you have {{ static_data.loaded.build_number }}).
+        New or changed ships and items aren't recognised until you run
+        <span class="mono">eve-assistant sde-update</span> (about 100 MB, a minute or two).
+      {% endif %}
+    </div>
+    {% endif %}
     {% if message %}<p class="notice" role="status">{{ message }}</p>{% endif %}
     {% block content %}{% endblock %}
   </main>

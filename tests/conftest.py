@@ -49,3 +49,14 @@ def config():
         contact="tests",
         mode="local",
     )
+
+
+@pytest.fixture(autouse=True)
+def no_static_data_check_over_the_network(request, monkeypatch):
+    """Background ticks check CCP for new static data once a day; tests never
+    reach the network. Tests of the check itself opt out with the marker."""
+    if request.node.get_closest_marker("real_static_data_check"):
+        return
+    from eve_assistant import refresh
+
+    monkeypatch.setattr(refresh, "_check_static_data", lambda *_args: [])

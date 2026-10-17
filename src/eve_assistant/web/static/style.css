@@ -206,3 +206,4 @@ footer { color: var(--muted); font-size: 12px; border-top: 1px solid var(--line)
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 .auto-status { margin: 0 0 6px; }
 .error-text { color: var(--bad); }
+.banner { background: var(--warn-bg); color: var(--warn); border-radius: 6px; padding: 10px 14px; margin: 0 0 18px; }
