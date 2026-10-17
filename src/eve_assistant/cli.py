@@ -23,6 +23,7 @@ from eve_assistant import (
     projects,
     refresh,
     sde,
+    session_flow,
     sessions,
     skills,
     snapshots,
@@ -537,43 +538,36 @@ def _print_problems(problems: list[str]) -> None:
 
 
 def _cmd_session_start(args) -> int:
-    with store.connect() as db:
+    with store.connect(store.DEFAULT_DB_PATH) as db:
         character_id = goals.resolve_character(db, args.character)
         plan_id = args.plan
         if plan_id is None and not args.no_plan:
             plan_id = planner.latest_plan_id(db, character_id)
-        if (existing := sessions.open_session(db, character_id)) is not None:
-            raise sessions.SessionError(
-                f"{existing.character_name} already has session {existing.session_id} running. "
-                "Finish or cancel it first."
-            )
-    now = store.utc_now()
-    problems = _snapshot_for_session(character_id)
-    with store.connect() as db:
-        session = sessions.start(db, character_id, plan_id, problems, now=now)
+    result = session_flow.begin(
+        store.DEFAULT_DB_PATH, _snapshot_for_session, character_id=character_id, plan_id=plan_id
+    )
+    session = result.session
     following = f", following plan {plan_id}" if plan_id else ""
     print(f"Session {session.session_id} started for {session.character_name}{following}.")
-    _print_problems(problems)
+    _print_problems(result.problems)
     print(f'When you stop: eve-assistant session finish "{session.character_name}"')
     return 0
 
 
 def _cmd_session_end(args) -> int:
-    with store.connect() as db:
+    with store.connect(store.DEFAULT_DB_PATH) as db:
         character_id = goals.resolve_character(db, args.character)
-        session = sessions.open_session(db, character_id)
-        if session is None:
-            raise sessions.SessionError("No session is running for that character.")
-    now = store.utc_now()
-    sessions.check_end(session, getattr(args, "minutes", None), args.how, now)
-    problems = _snapshot_for_session(character_id) if args.how == "finished" else []
-    with store.connect() as db:
-        ended = sessions.finish(
-            db, session.session_id, getattr(args, "minutes", None), args.how, problems, now=now
-        )
-        outcomes.update(db, ended.character_id)
+    session_id = session_flow.running_session_id(store.DEFAULT_DB_PATH, character_id)
+    result = session_flow.end(
+        store.DEFAULT_DB_PATH,
+        _snapshot_for_session,
+        session_id,
+        how=args.how,
+        minutes_played=getattr(args, "minutes", None),
+    )
+    ended = result.session
     print(f"Session {ended.session_id} {ended.how}: {ended.minutes():.0f} minutes.")
-    _print_problems(problems)
+    _print_problems(result.problems)
     return 0
 
 
