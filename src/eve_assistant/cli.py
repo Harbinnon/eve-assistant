@@ -10,6 +10,7 @@ from eve_assistant import (
     backups,
     corrections,
     couriers,
+    detection,
     explain,
     gamelogs,
     goals,
@@ -571,6 +572,34 @@ def _cmd_session_end(args) -> int:
     return 0
 
 
+def _cmd_detected(args) -> int:
+    with store.connect(store.DEFAULT_DB_PATH) as db:
+        found = detection.suggestions(db)
+    if args.action == "list":
+        if not found:
+            print("No sessions to record. Sessions are noticed while the dashboard runs.")
+            return 0
+        for number, d in enumerate(found, 1):
+            plan = f", plan {d.plan_id}" if d.plan_id else ""
+            print(
+                f"{number}: {d.character_name}, {d.login} to {d.logout}, {d.minutes:.0f} min{plan}"
+            )
+        print("Record one with: eve-assistant detected record <number>")
+        return 0
+    if args.number is None or not 1 <= args.number <= len(found):
+        raise sessions.SessionError("Give the number of a session from: eve-assistant detected")
+    chosen = found[args.number - 1]
+    if args.action == "record":
+        session = session_flow.record_detected(
+            store.DEFAULT_DB_PATH, chosen.character_id, chosen.login
+        )
+        print(f"Recorded as session {session.session_id}.")
+    else:
+        session_flow.dismiss_detected(store.DEFAULT_DB_PATH, chosen.character_id, chosen.login)
+        print("Won't be offered again.")
+    return 0
+
+
 def _cmd_sessions(_args) -> int:
     with store.connect() as db:
         found = sessions.recent(db)
@@ -850,6 +879,14 @@ def build_parser() -> argparse.ArgumentParser:
     restore_cmd.add_argument("file", help="the backup file")
     restore_cmd.add_argument("--confirm", action="store_true", help="really do it")
     restore_cmd.set_defaults(func=_cmd_restore)
+    detected_cmd = commands.add_parser(
+        "detected", help="sessions noticed from EVE's login times, to record or dismiss"
+    )
+    detected_cmd.add_argument(
+        "action", nargs="?", default="list", choices=("list", "record", "dismiss")
+    )
+    detected_cmd.add_argument("number", nargs="?", type=int)
+    detected_cmd.set_defaults(func=_cmd_detected)
     session_cmd = commands.add_parser("session", help="start or end a play session").add_subparsers(
         dest="session_command", required=True
     )

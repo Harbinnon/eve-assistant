@@ -192,6 +192,18 @@ can come later. Details:
 - Starting and ending go through one service module (`session_flow`) that
   the dashboard and CLI share: it checks first, then takes the snapshot, so
   a mistake never costs one.
+- **Sessions are also noticed without the buttons.** ESI's online status
+  carries the last login and last logout, and every change is kept in the
+  snapshots, so each finished session leaves a (login, logout) pair. Today
+  offers them ("Sessions EVE saw you play"): finished, at least 10 minutes,
+  within 14 days, not overlapping a recorded session, not dismissed, with
+  the plan made from 3 hours before login until logout. **Record it**
+  stores the session, noted as having no snapshots at its ends (the outcome
+  still comes from timestamped wallet entries and game logs; ore from the
+  ledger is often unknown); **Not a session** hides it for good. The server
+  works each one out again from the data rather than trusting the form. A
+  session is only noticed if the dashboard or a refresh ran between that
+  login and the next one.
 - ESI caches some data for up to an hour (wallet journal, assets), so the
   end snapshot may not show the whole session yet. Outcomes are worked
   out from timestamped entries once the data has caught up, not at the

@@ -72,6 +72,7 @@ eve-assistant session start <character> [--plan <id>|--no-plan]   start playing 
 eve-assistant session finish <character> [--minutes <played>]     stop playing (snapshot)
 eve-assistant session cancel <character>                          discard a session not played
 eve-assistant sessions                 list recent play sessions
+eve-assistant detected [record|dismiss <n>]  sessions noticed from EVE's login times
 eve-assistant outcomes                 what happened in recent sessions, against the plan
 eve-assistant gamelogs                 read mining cycles from EVE's game logs (optional)
 eve-assistant learned                  what the planner has learned from your sessions

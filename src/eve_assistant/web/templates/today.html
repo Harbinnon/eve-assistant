@@ -35,6 +35,25 @@
 
 {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
 
+{% if noticed %}
+<h2>Sessions EVE saw you play</h2>
+<p class="muted small-print">From EVE's login and logout times. Record them so the assistant can learn from them; nothing is recorded until you say so.</p>
+{% for d in noticed %}
+<article class="card session">
+  <p><strong>{{ d.character_name }}</strong> · {{ d.login|when }} to {{ d.logout[11:16] }} UTC · {{ d.minutes|round|int }} min
+    {% if d.plan_id %} · with <a href="/plans/{{ d.plan_id }}">plan {{ d.plan_id }}</a>{% endif %}</p>
+  {% for action, label, cls in [("record", "Record it", "small primary"), ("dismiss", "Not a session", "small")] %}
+  <form class="inline" method="post" action="/detected/{{ action }}">
+    <input type="hidden" name="token" value="{{ form_token }}">
+    <input type="hidden" name="character_id" value="{{ d.character_id }}">
+    <input type="hidden" name="login" value="{{ d.login }}">
+    <button class="{{ cls }}" type="submit">{{ label }}</button>
+  </form>
+  {% endfor %}
+</article>
+{% endfor %}
+{% endif %}
+
 {% if open_sessions %}
 <h2>Playing now</h2>
 {% for s in open_sessions %}
