@@ -18,6 +18,7 @@ def test_every_activity_has_the_interface():
         "manufacturing",
         "mining",
         "gas",
+        "missions",
         "couriers",
     ]
     for activity in activities.ALL:
@@ -42,6 +43,7 @@ def test_learning_is_collected_from_the_activities():
         "sale_price",
         "mining_rate",
         "gas_rate",
+        "mission_income",
         "minutes_per_jump",
     ]
     db.close()

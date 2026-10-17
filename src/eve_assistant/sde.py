@@ -298,8 +298,11 @@ def load(db: sqlite3.Connection, zip_path: Path) -> SdeBuild:
                 ),
             )
             db.executemany(
-                "INSERT INTO sde_npc_corporations VALUES (?, ?)",
-                ((r["_key"], r.get("factionID")) for r in _rows(archive, "npcCorporations.jsonl")),
+                "INSERT INTO sde_npc_corporations VALUES (?, ?, ?)",
+                (
+                    (r["_key"], r.get("factionID"), _english(r.get("name")))
+                    for r in _rows(archive, "npcCorporations.jsonl")
+                ),
             )
             _load_industry_and_agents(db, archive)
             _load_campaigns(db, archive)

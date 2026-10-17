@@ -23,6 +23,7 @@ LEARNED = {
     "sale_price": "Sale prices",
     "minutes_per_jump": "Travel time",
     "gas_rate": "Gas harvesting speed",
+    "mission_income": "Mission income",
 }
 # What a plan uses until a correction has sessions to learn from, and where it learns from.
 NOT_LEARNED = {
@@ -33,6 +34,10 @@ NOT_LEARNED = {
     "sale_price": (
         "so plans expect what buyers' orders pay now. It learns from what your market sales "
         "in recorded sessions actually got."
+    ),
+    "mission_income": (
+        "so this is a starting guess from one published figure. It learns from the "
+        "mission rewards in your wallet journal."
     ),
     "gas_rate": (
         "so this is the published figure. It learns from the gas in EVE's mining ledger, "
@@ -207,6 +212,28 @@ def describe(code: str, detail: dict | None = None) -> str:
         ),
         "ores_assumed": lambda: (
             f"No mining here on record; assumed common ores: {', '.join(d.get('ores', []))}."
+        ),
+        "mission_guess": lambda: (
+            f"Level {d.get('level')} distribution missions: about "
+            f"{numbers.isk(d.get('isk_per_hour'))} ISK and {d.get('lp_per_hour', 0):,.0f} LP an "
+            "hour, a starting guess (EVE doesn't publish mission pay; level 4 is about 400k ISK "
+            "and 750 LP a mission, EVE University, a third less a level below, three an hour)."
+        ),
+        "lp_value": lambda: (
+            f"About {d.get('lp', 0):,.0f} LP"
+            + (
+                f", worth about {d['isk_per_lp']:,.0f} ISK each at the "
+                f"{d.get('corporation') or 'agent corporation'} LP store (a typical good offer, "
+                "CCP average prices)"
+                if d.get("isk_per_lp")
+                else ", not valued (the LP store couldn't be priced)"
+            )
+            + (f"; you have {d['have']:,} LP with them" if d.get("have") else "")
+            + "."
+        ),
+        "mission_cargo": lambda: (
+            "Distribution missions need cargo space: a few m3 at level 1, up to thousands at "
+            "level 4. Some send you to lowsec; decline those if you don't go there."
         ),
         "campaign_objective": lambda: (
             f"Military campaign \u201c{d.get('campaign')}\u201d is running: "

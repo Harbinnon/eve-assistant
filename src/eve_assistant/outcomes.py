@@ -52,6 +52,8 @@ START_STALE = timedelta(minutes=15)
 # Mining after this long past the end isn't counted as the session's, and
 # the ledger part settles with whatever was seen by then.
 LEDGER_CAP = timedelta(hours=2)
+# Agent mission rewards in the wallet journal (the LP isn't in it).
+MISSION_REFS = ("agent_mission_reward", "agent_mission_time_bonus_reward")
 # Plans older than this before the session ended don't price its ore.
 PRICE_MAX_AGE = timedelta(days=7)
 
@@ -156,6 +158,8 @@ def _journal_group(entry: dict) -> str:
         return "taxes_fees"
     if ref.startswith("contract_"):
         return "contracts"
+    if ref in MISSION_REFS:
+        return "missions"
     return "other"
 
 
@@ -233,7 +237,7 @@ def _isk(db, character_id, start, end, now) -> tuple[dict, str | None, float | N
     in the session (None without sales)."""
     checked_at, journal = _payload_at(db, character_id, "wallet_journal", now)
     groups = dict.fromkeys(
-        ("market_sales", "market_purchases", "taxes_fees", "contracts", "other"), 0.0
+        ("market_sales", "market_purchases", "taxes_fees", "contracts", "missions", "other"), 0.0
     )
     sales = tax = 0.0
     for entry in journal or []:

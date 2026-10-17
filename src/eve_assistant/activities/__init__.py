@@ -15,13 +15,14 @@ from eve_assistant.activities import (
     gas,
     manufacturing,
     mining,
+    missions,
     projects,
     selling,
     skills,
 )
 
 # In the order candidates are gathered (ties keep this order).
-ALL = (skills, projects, selling, manufacturing, mining, gas, couriers)
+ALL = (skills, projects, selling, manufacturing, mining, gas, missions, couriers)
 
 
 def learned(db, character_id: int) -> list:

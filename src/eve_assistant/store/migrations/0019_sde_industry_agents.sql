@@ -25,6 +25,9 @@ CREATE TABLE sde_blueprint_skills (
     PRIMARY KEY (blueprint_type_id, skill_id)
 ) WITHOUT ROWID;
 
+-- NPC corporations' names, for agents and LP stores.
+ALTER TABLE sde_npc_corporations ADD COLUMN name TEXT;
+
 -- NPC agents (CCP's characters, not players): where they are and what they offer.
 CREATE TABLE sde_agents (
     agent_id       INTEGER PRIMARY KEY,

@@ -12,7 +12,9 @@ def db():
     conn = store.connect(":memory:")
     snapshots.ensure_character(conn, OWNER, "Hauler")
     snapshots.ensure_character(conn, ALT, "Alt")
-    conn.execute("INSERT INTO sde_npc_corporations VALUES (?, NULL)", (NPC,))
+    conn.execute(
+        "INSERT INTO sde_npc_corporations (corporation_id, faction_id) VALUES (?, NULL)", (NPC,)
+    )
     conn.commit()
     yield conn
     conn.close()

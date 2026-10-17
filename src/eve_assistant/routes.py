@@ -103,6 +103,30 @@ def _shortest(db, origin: int, destination: int, allowed: set | None) -> list | 
     return None
 
 
+def within(
+    db: sqlite3.Connection, origin: int, max_jumps: int, highsec_only: bool = False
+) -> dict[int, int]:
+    """Every system within max_jumps of origin, with its distance in jumps."""
+    allowed = None
+    if highsec_only:
+        allowed = {
+            row[0]
+            for row in db.execute(
+                "SELECT system_id FROM sde_solar_systems WHERE security_status >= ?", (HIGHSEC,)
+            )
+        }
+    found = {origin: 0}
+    frontier = [origin]
+    for jumps in range(1, max_jumps + 1):
+        frontier = [
+            there
+            for here in frontier
+            for there in _neighbours(db, here, allowed)
+            if there not in found and not found.update({there: jumps})
+        ]
+    return found
+
+
 def jump_count(
     db: sqlite3.Connection,
     origin: int,

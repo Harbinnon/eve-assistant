@@ -53,6 +53,7 @@ KINDS = (
         "/characters/{id}/freelance-jobs",
         scope="esi-characters.read_freelance_jobs.v1",
     ),
+    Kind("loyalty", "/characters/{id}/loyalty/points", scope="esi-characters.read_loyalty.v1"),
     # IDs and hashes only; losses.py keeps the character's own losses from them.
     Kind(
         "killmails",

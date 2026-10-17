@@ -73,7 +73,10 @@ def db():
         "INSERT INTO sde_npc_stations VALUES (?, ?, ?, 1, 0.5, 0.05)",
         [(HOME_STATION, HOME, 1000001), (JITA.station_id, JITA.system_id, 1000035)],
     )
-    conn.executemany("INSERT INTO sde_npc_corporations VALUES (?, ?)", [(1000001, 500001)])
+    conn.executemany(
+        "INSERT INTO sde_npc_corporations (corporation_id, faction_id) VALUES (?, ?)",
+        [(1000001, 500001)],
+    )
     conn.executemany(
         "INSERT INTO sde_types (type_id, name, group_id, published, volume, portion_size) "
         "VALUES (?, ?, 1, 1, ?, ?)",
