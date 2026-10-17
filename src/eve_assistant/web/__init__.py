@@ -12,6 +12,7 @@ background every minute while it is open (it fetches only what is due).
 import asyncio
 import contextlib
 import logging
+import math
 import secrets
 import sqlite3
 from collections.abc import Callable
@@ -128,15 +129,25 @@ def _when(value) -> str:
     return f"{value[:10]} {value[11:16]} UTC"
 
 
+def _security_tenths(value: float) -> int:
+    """Security as EVE shows it, in tenths: the nearest tenth, halves up,
+    except that anything above 0.0 and below 0.05 shows as 0.1."""
+    if 0 < value < 0.05:
+        return 1
+    return math.floor(value * 10 + 0.5)
+
+
+def _security(value) -> str:
+    """A system's security as EVE shows it, e.g. '0.5'."""
+    return "?" if value is None else f"{_security_tenths(value) / 10:.1f}"
+
+
 def _security_class(value) -> str:
+    """CSS classes for a system's security: 'sec' plus its tenth, 'sec-10'
+    (1.0) down to 'sec-00' (0.0 and below), for EVE's colour for it."""
     if value is None:
-        return "sec-unknown"
-    rounded = round(value, 1)
-    if rounded >= 0.5:
-        return "sec-high"
-    if rounded > 0.0:
-        return "sec-low"
-    return "sec-null"
+        return "sec"
+    return f"sec sec-{max(0, min(10, _security_tenths(value))):02d}"
 
 
 def create_app(
@@ -195,6 +206,7 @@ def create_app(
     templates.env.filters["isk"] = _isk
     templates.env.filters["duration"] = skills.format_minutes
     templates.env.filters["security_class"] = _security_class
+    templates.env.filters["security"] = _security
     templates.env.filters["when"] = _when
     templates.env.globals["describe"] = skills.describe
     templates.env.globals["explain"] = explain.describe

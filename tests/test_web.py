@@ -482,3 +482,18 @@ def test_forms_accept_the_dashboards_own_origin_as_a_browser_sends_it(planning_c
     for origin in ("null", "https://evil.example", "http://127.0.0.1:9999"):
         refused = planning_client.post("/today/plan", data=form, headers={"origin": origin})
         assert refused.status_code == 403
+
+
+@pytest.mark.parametrize(
+    ("security", "shown", "classes"),
+    [(1.0, "1.0", "sec sec-10"), (0.94, "0.9", "sec sec-09"),
+     (0.45, "0.5", "sec sec-05"),  # halves round up, as in EVE: highsec
+     (0.449, "0.4", "sec sec-04"),
+     (0.04, "0.1", "sec sec-01"),  # EVE shows anything above 0.0 as at least 0.1
+     (0.0, "0.0", "sec sec-00"), (-0.62, "-0.6", "sec sec-00"), (None, "?", "sec")],
+)  # fmt: skip
+def test_security_is_shown_and_coloured_as_eve_does(security, shown, classes):
+    from eve_assistant.web import _security, _security_class
+
+    assert _security(security) == shown
+    assert _security_class(security) == classes
