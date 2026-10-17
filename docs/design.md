@@ -233,6 +233,26 @@ refresh and session snapshot reads new lines first:
   On the owner's real logs the per-type totals matched the mining ledger
   exactly.
 
+**Corrections** (built so far: mining speed). Each session whose plan had
+a mining step the player didn't decline, with at least ten minutes of
+mining in the game logs, gives a ratio: m³ per minute while actually
+mining, against the plan's static-data estimate. The factor applied to new
+plans starts at 1 and moves towards the average ratio as sessions agree:
+`1 + (average − 1) × n / (n + 3)`, kept between 0.5 and 1.5. So one session
+moves it a quarter of the way, four sessions a little over half.
+
+- Plans record the **uncorrected** estimate, and the correction as a
+  separate reason ("adjusted ×0.86 from 4 of your sessions"). Each new
+  session is compared with the static data, never with an already
+  corrected figure, so the correction can't feed on itself.
+- Without game logs the mining correction stays at 1 and the plan says it
+  is the published figure, with how to turn the logs on.
+- The Preferences page and `eve-assistant learned` show what has been
+  learned per character.
+- Still to come: sale prices actually reached, and travel time. Plans
+  don't yet record the per-unit price and per-jump time they assumed, so
+  those need recording first.
+
 From that it learns:
 
 1. **Corrections per activity.** "Predicted 8M an hour, made 6M." After a

@@ -20,6 +20,7 @@ import sqlite3
 from dataclasses import dataclass, field
 
 from eve_assistant import (
+    corrections,
     couriers,
     fleet,
     mining,
@@ -480,6 +481,7 @@ def mining_candidates(
         return []
     implants = snapshots.latest(db, character_id, "implants") or []
     location = snapshots.latest(db, character_id, "location") or {}
+    learned = corrections.correction(db, character_id, "mining_rate")
     items = []
     any_miner = False
     for ship in ships:
@@ -505,13 +507,16 @@ def mining_candidates(
         here = _system_info(db, system_id)
         time_left = minutes - board.minutes
         mining_minutes = max(0.0, time_left - ore.MINUTES_TO_SELL)
-        hold_minutes = estimate.minutes_to_fill_hold
+        # The estimate is from the static data; the correction scales it to how
+        # fast this player really mines. The raw figure is what gets recorded.
+        rate = estimate.m3_per_minute * learned.factor
+        hold_minutes = estimate.hold_m3 / rate if estimate.hold_m3 else None
         if hold_minutes:
             trips = math.ceil(mining_minutes / (hold_minutes + MINUTES_PER_HOLD_TRIP))
             mining_minutes = max(0.0, mining_minutes - trips * MINUTES_PER_HOLD_TRIP)
         if mining_minutes < MIN_MINING_MINUTES:
             continue
-        volume = estimate.m3_per_minute * mining_minutes
+        volume = rate * mining_minutes
         securities = [here["security_status"]] if here else []
         if board.jumps:
             route_low = routes.lowest_security(db, board.path)
@@ -554,6 +559,7 @@ def mining_candidates(
                             "mining_estimate",
                             {"m3_per_minute": estimate.m3_per_minute, "ship": estimate.ship_name},
                         ),
+                        learned.reason(),
                         *estimate.reasons,
                     ),
                     inputs={

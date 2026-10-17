@@ -277,3 +277,28 @@ def test_ore_stored_in_another_station_is_offered_with_travel(db):
     assert best.inputs["travel_jumps"] == 1
     assert best.minutes > 2  # travel time is included
     assert "ore_stored_elsewhere" in {r.code for r in best.reasons}
+
+
+@respx.mock
+def test_mining_uses_the_learned_speed_but_records_the_raw_estimate(db, monkeypatch):
+    from eve_assistant import corrections
+
+    _mock_market_and_contracts()
+    with httpx.Client() as http:
+        plain = planner.build_plan(db, EsiClient(http, db, base_url=BASE), 7, 60).items[-1]
+    codes = [r.code for r in plain.reasons]
+    assert "not_learned_yet" in codes
+
+    monkeypatch.setattr(
+        planner.corrections,
+        "correction",
+        lambda *_args: corrections.Correction("mining_rate", 0.5, 4, 0.4),
+    )
+    with httpx.Client() as http:
+        slower = planner.build_plan(db, EsiClient(http, db, base_url=BASE), 7, 60).items[-1]
+    raw = [r.detail["m3_per_minute"] for r in (plain.reasons[0], slower.reasons[0])]
+    assert raw[0] == raw[1]  # what gets recorded is the uncorrected estimate
+    assert slower.inputs["quantity"] < plain.inputs["quantity"] * 0.6
+    learned = next(r for r in slower.reasons if r.code == "learned_correction")
+    assert learned.detail["factor"] == 0.5
+    assert learned.detail["sessions"] == 4

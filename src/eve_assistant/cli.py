@@ -7,7 +7,9 @@ from eve_assistant import (
     __version__,
     accounts,
     auth,
+    corrections,
     couriers,
+    explain,
     gamelogs,
     goals,
     market,
@@ -615,6 +617,15 @@ def _cmd_outcomes(_args) -> int:
     return 0
 
 
+def _cmd_learned(_args) -> int:
+    with store.connect() as db:
+        rows = db.execute("SELECT character_id, name FROM characters ORDER BY name").fetchall()
+        for row in rows:
+            reason = corrections.correction(db, row["character_id"], "mining_rate").reason()
+            print(f"{row['name']}: {explain.describe(reason.code, reason.detail)}")
+    return 0
+
+
 def _cmd_gamelogs(_args) -> int:
     config = load_config()
     if config.gamelogs_dir is None:
@@ -784,6 +795,9 @@ def build_parser() -> argparse.ArgumentParser:
     commands.add_parser(
         "gamelogs", help="read mining cycles from EVE's game logs now"
     ).set_defaults(func=_cmd_gamelogs)
+    commands.add_parser(
+        "learned", help="what the planner has learned from your sessions"
+    ).set_defaults(func=_cmd_learned)
     session_cmd = commands.add_parser("session", help="start or end a play session").add_subparsers(
         dest="session_command", required=True
     )

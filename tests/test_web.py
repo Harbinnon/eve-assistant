@@ -247,6 +247,8 @@ def test_responding_records_and_mute_shows_in_preferences(planning_client):
     assert "Muted." in muted.text
     prefs = planning_client.get("/preferences").text
     assert "kind:mining" in prefs
+    assert "What it has learned" in prefs
+    assert "Mining speed: not yet checked" in prefs
     assert "Unmute" in prefs
 
     unmuted = planning_client.post(

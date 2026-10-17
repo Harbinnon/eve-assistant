@@ -73,6 +73,7 @@ eve-assistant session cancel <character>                          discard a sess
 eve-assistant sessions                 list recent play sessions
 eve-assistant outcomes                 what happened in recent sessions, against the plan
 eve-assistant gamelogs                 read mining cycles from EVE's game logs (optional)
+eve-assistant learned                  what the planner has learned from your sessions
 eve-assistant serve [--port 8700]      run the dashboard at http://127.0.0.1:8700
 ```
 
