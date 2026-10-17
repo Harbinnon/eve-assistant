@@ -29,7 +29,8 @@ def test_authorize_url_carries_pkce_and_scopes():
     url = sso.authorize_url(CLIENT_ID, "http://localhost:8765/callback", SCOPES, "st", "ch")
     parts = urlsplit(url)
     query = parse_qs(parts.query)
-    assert f"{parts.scheme}://{parts.netloc}{parts.path}" == sso.AUTHORIZE_URL
+    endpoint = f"{parts.scheme}://{parts.netloc}{parts.path}"
+    assert endpoint == sso.AUTHORIZE_URL
     assert query["response_type"] == ["code"]
     assert query["client_id"] == [CLIENT_ID]
     assert query["code_challenge"] == ["ch"]
