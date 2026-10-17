@@ -90,5 +90,5 @@ def candidates(ctx: Context) -> list[PlanItem]:
     return manufacturing_candidates(ctx.db, ctx.character_id, ctx.net_worth, ctx.notes)
 
 
-def learned(db: sqlite3.Connection, character_id: int) -> list:
+def learned(_db: sqlite3.Connection, _character_id: int) -> list:
     return []  # sale prices are learned by selling (selling.learned)

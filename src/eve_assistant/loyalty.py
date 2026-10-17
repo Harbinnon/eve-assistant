@@ -48,10 +48,12 @@ def store_value(
     if row and datetime.fromisoformat(stamp) - datetime.fromisoformat(row["fetched_at"]) < EVERY:
         return row["isk_per_lp"]
     offers = esi.get(f"/loyalty/stores/{corporation_id}/offers").data
-    valued = sorted(
-        ((value, offer) for offer in offers if (value := _offer_value(db, offer)) is not None),
-        key=lambda v: -v[0],
-    )
+    valued = []
+    for offer in offers:
+        value = _offer_value(db, offer)
+        if value is not None:
+            valued.append((value, offer))
+    valued.sort(key=lambda v: -v[0])
     top = valued[:TOP_OFFERS]
     value = median(v for v, _ in top) if top else None
     example = top[len(top) // 2][1] if top else None

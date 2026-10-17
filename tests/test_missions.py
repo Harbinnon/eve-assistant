@@ -99,7 +99,7 @@ def test_lp_is_worth_the_median_of_the_best_offers(db):
 
 def test_missions_at_the_nearest_agents_your_standing_opens(db):
     esi = FakeEsi([{"type_id": ITEM, "quantity": 1, "lp_cost": 1000, "isk_cost": 0}])
-    items = missions.mission_candidates(db, esi, 7, 60, 1e9, True, [])
+    items = missions.mission_candidates(db, esi, 7, 60, 1e9, True)
     assert [i.inputs["level"] for i in items] == [2, 1]  # level 3 needs standing 3
     two = items[0]
     assert two.title.startswith("Distribution missions for Agent Two (level 2, 1 jump away)")

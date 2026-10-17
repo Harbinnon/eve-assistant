@@ -107,6 +107,43 @@ def _less_after_losses(d: dict) -> str:
     )
 
 
+def _lp_value(d: dict) -> str:
+    if d.get("isk_per_lp"):
+        worth = (
+            f", worth about {d['isk_per_lp']:,.0f} ISK each at the "
+            f"{d.get('corporation') or 'agent corporation'} LP store (a typical good offer, "
+            "CCP average prices)"
+        )
+    else:
+        worth = ", not valued (the LP store couldn't be priced)"
+    have = f"; you have {d['have']:,} LP with them" if d.get("have") else ""
+    return f"About {d.get('lp', 0):,.0f} LP{worth}{have}."
+
+
+def _campaign_objective(d: dict) -> str:
+    where = f", in {d['systems']} systems" if d.get("systems") else ""
+    return (
+        f"Military campaign “{d.get('campaign')}” is running: "
+        f"“{d.get('title')}” pays {numbers.isk(d.get('isk'))} ISK and "
+        f"{d.get('lp', 0):,.0f} LP each time, plus standing ({d.get('activity')}{where}). "
+        "See the campaign in game for what counts."
+    )
+
+
+def _manufacture_costs(d: dict) -> str:
+    runs = d.get("runs", 1)
+    cost = d.get("materials", 0) + d.get("job_fee", 0)
+    on_cost = f", {d['profit'] / cost:.0%} on what it costs" if cost > 0 else ""
+    to_buy = f"; to buy first: {', '.join(d['to_buy'])}" if d.get("to_buy") else ""
+    return (
+        f"Materials {numbers.isk(d.get('materials'))} ISK and job fee "
+        f"{numbers.isk(d.get('job_fee'))} ISK against {numbers.isk(d.get('value'))} ISK "
+        f"when sold (after tax): {numbers.isk(d.get('profit'))} ISK profit over "
+        f"{runs} run{'s' if runs != 1 else ''}{on_cost}. Prices are CCP averages, not hub "
+        f"quotes{to_buy}."
+    )
+
+
 def describe(code: str, detail: dict | None = None) -> str:
     d = detail or {}
     texts = {
@@ -233,42 +270,12 @@ def describe(code: str, detail: dict | None = None) -> str:
             "hour, a starting guess (EVE doesn't publish mission pay; level 4 is about 400k ISK "
             "and 750 LP a mission, EVE University, a third less a level below, three an hour)."
         ),
-        "lp_value": lambda: (
-            f"About {d.get('lp', 0):,.0f} LP"
-            + (
-                f", worth about {d['isk_per_lp']:,.0f} ISK each at the "
-                f"{d.get('corporation') or 'agent corporation'} LP store (a typical good offer, "
-                "CCP average prices)"
-                if d.get("isk_per_lp")
-                else ", not valued (the LP store couldn't be priced)"
-            )
-            + (f"; you have {d['have']:,} LP with them" if d.get("have") else "")
-            + "."
-        ),
+        "lp_value": lambda: _lp_value(d),
+        "campaign_objective": lambda: _campaign_objective(d),
+        "manufacture_costs": lambda: _manufacture_costs(d),
         "mission_cargo": lambda: (
             "Distribution missions need cargo space: a few m3 at level 1, up to thousands at "
             "level 4. Some send you to lowsec; decline those if you don't go there."
-        ),
-        "campaign_objective": lambda: (
-            f"Military campaign \u201c{d.get('campaign')}\u201d is running: "
-            f"\u201c{d.get('title')}\u201d pays {numbers.isk(d.get('isk'))} ISK and "
-            f"{d.get('lp', 0):,.0f} LP each time, plus standing ({d.get('activity')}"
-            + (f", in {d['systems']} systems" if d.get("systems") else "")
-            + "). See the campaign in game for what counts."
-        ),
-        "manufacture_costs": lambda: (
-            f"Materials {numbers.isk(d.get('materials'))} ISK and job fee "
-            f"{numbers.isk(d.get('job_fee'))} ISK against {numbers.isk(d.get('value'))} ISK "
-            f"when sold (after tax): {numbers.isk(d.get('profit'))} ISK profit over "
-            f"{d.get('runs', 1)} run{'s' if d.get('runs', 1) != 1 else ''}"
-            + (
-                f", {d['profit'] / (d['materials'] + d['job_fee']):.0%} on what it costs"
-                if d.get("materials", 0) + d.get("job_fee", 0) > 0
-                else ""
-            )
-            + ". Prices are CCP averages, not hub quotes"
-            + (f"; to buy first: {', '.join(d['to_buy'])}" if d.get("to_buy") else "")
-            + "."
         ),
         "job_slots_full": lambda: (
             f"No build suggested: all {d.get('slots')} of your job slots are busy."

@@ -130,15 +130,19 @@ def _time_factor(db: sqlite3.Connection, character: skills.CharacterSkills) -> f
     return factor
 
 
+def _level(character: skills.CharacterSkills, skill_id: int) -> int:
+    """The level that counts: the active one for an Alpha, the trained one for Omega."""
+    trained = character.skills.get(skill_id)
+    if trained is None:
+        return 0
+    return trained.active_level if character.is_alpha else trained.trained_level
+
+
 def _can_build(db: sqlite3.Connection, character: skills.CharacterSkills, bp_type: int) -> bool:
     for row in db.execute(
         "SELECT skill_id, level FROM sde_blueprint_skills WHERE blueprint_type_id = ?", (bp_type,)
     ):
-        trained = character.skills.get(row["skill_id"])
-        level = 0 if trained is None else (
-            trained.active_level if character.is_alpha else trained.trained_level
-        )  # fmt: skip
-        if level < row["level"]:
+        if _level(character, row["skill_id"]) < row["level"]:
             return False
     return True
 
