@@ -127,7 +127,7 @@ def analyse(
     character = skills.load_character_skills(db, character_id)
     standings = fees.load_standings(db, character_id)
     here = _station(db, station_id)
-    owner_corp, owner_faction = fees.station_owner(db, station_id)
+    owner_corp, _ = fees.station_owner(db, station_id)
 
     item = db.execute(
         "SELECT name, volume, portion_size FROM sde_types WHERE type_id = ?", (type_id,)

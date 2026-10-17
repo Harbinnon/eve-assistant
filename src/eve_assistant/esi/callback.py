@@ -24,7 +24,7 @@ class _Result:
 
 def _handler_for(path: str, state: str, result: _Result, done: threading.Event):
     class Handler(BaseHTTPRequestHandler):
-        def do_GET(self):  # noqa: N802 - name required by BaseHTTPRequestHandler
+        def do_GET(self):  # noqa: N802  # name required by BaseHTTPRequestHandler
             url = urlsplit(self.path)
             if url.path != path:
                 self.send_error(404)
@@ -50,7 +50,7 @@ def _handler_for(path: str, state: str, result: _Result, done: threading.Event):
             self.wfile.write(body)
             done.set()
 
-        def log_message(self, format, *args):  # noqa: A002 - silence default request logging
+        def log_message(self, format, *args):  # noqa: A002  # silence default request logging
             return
 
     return Handler
@@ -73,5 +73,5 @@ def wait_for_code(callback_url: str, state: str, timeout: float = 300) -> str:
         server.server_close()
     if result.error:
         raise SSOError(result.error)
-    assert result.code is not None  # noqa: S101 - set whenever error is not
+    assert result.code is not None  # noqa: S101  # set whenever error is not
     return result.code

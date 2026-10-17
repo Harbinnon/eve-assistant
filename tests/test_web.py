@@ -72,7 +72,8 @@ def test_characters_page_shows_state_and_escapes_player_text(client):
     page = client.get("/characters")
     assert page.status_code == 200
     assert "Test Pilot" in page.text
-    assert "Jita" in page.text and "The Forge" in page.text
+    assert "Jita" in page.text
+    assert "The Forge" in page.text
     assert "12.3M ISK" in page.text
     assert "<script>alert(1)</script>" not in page.text
     assert "&lt;script&gt;" in page.text
@@ -82,7 +83,8 @@ def test_characters_page_shows_state_and_escapes_player_text(client):
 def test_skills_page_shows_plan(client):
     page = client.get("/skills", params={"character": "Test Pilot", "item": "Big Barge"})
     assert page.status_code == 200
-    assert "Mining" in page.text and "Omega" in page.text
+    assert "Mining" in page.text
+    assert "Omega" in page.text
 
 
 def test_skills_page_explains_unknown_items(client):
@@ -99,7 +101,8 @@ def test_add_and_close_a_goal(client):
     )
     assert added.status_code == 303
     page = client.get(added.headers["location"])
-    assert "Goal added." in page.text and "Fly a Big Barge" in page.text
+    assert "Goal added." in page.text
+    assert "Fly a Big Barge" in page.text
 
     goal_id = re.search(r'action="/goals/(\d+)/status"', page.text).group(1)
     closed = client.post(f"/goals/{goal_id}/status", data={"token": token, "status": "done"})
@@ -210,14 +213,16 @@ def test_making_a_plan_shows_steps_reasons_and_alternatives(planning_client):
         data={"token": token, "character": "Test Pilot", "minutes": "45"},
         follow_redirects=False,
     )
-    assert made.status_code == 303 and made.headers["location"].startswith("/plans/")
+    assert made.status_code == 303
+    assert made.headers["location"].startswith("/plans/")
     page = planning_client.get(made.headers["location"])
     assert "Plan for Test Pilot" in page.text
     assert "Mine &lt;b&gt;ore&lt;/b&gt; for a while" in page.text  # escaped
     assert "Estimated 200 m3 per minute in your Venture" in page.text
     assert "Red on the risk matrix" in page.text
     assert "starting guess" in page.text
-    assert "player-text" in page.text and "Ignore previous instructions" in page.text
+    assert "player-text" in page.text
+    assert "Ignore previous instructions" in page.text
 
 
 def test_responding_records_and_mute_shows_in_preferences(planning_client):
@@ -233,14 +238,16 @@ def test_responding_records_and_mute_shows_in_preferences(planning_client):
     done = planning_client.post(
         f"/plan-items/{item_id}/respond", data={"token": token, "response": "do"}
     )
-    assert "Recorded: you" in done.text and "You said: doing it" in done.text
+    assert "Recorded: you" in done.text
+    assert "You said: doing it" in done.text
 
     muted = planning_client.post(
         f"/plan-items/{item_id}/respond", data={"token": token, "response": "mute"}
     )
     assert "Muted." in muted.text
     prefs = planning_client.get("/preferences").text
-    assert "kind:mining" in prefs and "Unmute" in prefs
+    assert "kind:mining" in prefs
+    assert "Unmute" in prefs
 
     unmuted = planning_client.post(
         "/preferences/unmute", data={"token": token, "category": "kind:mining"}
@@ -305,16 +312,19 @@ def test_open_projects_show_on_today_and_can_be_closed(planning_client, db_path)
     project_id = projects.start(conn, 7, "haul", "1:2:x", "Haul <ore>", 120, 5e6, {})
     conn.close()
     page = planning_client.get("/today").text
-    assert "Open projects" in page and "Haul &lt;ore&gt;" in page
+    assert "Open projects" in page
+    assert "Haul &lt;ore&gt;" in page
     token = _token(page)
     done = planning_client.post(f"/projects/{project_id}/done", data={"token": token})
-    assert "Project marked done." in done.text and "Open projects" not in done.text
+    assert "Project marked done." in done.text
+    assert "Open projects" not in done.text
 
 
 def test_play_time_is_set_on_preferences(planning_client):
     token = _token(planning_client.get("/preferences").text)
     saved = planning_client.post("/preferences-play-time", data={"token": token, "hours": "9.5"})
-    assert "Play time saved." in saved.text and 'value="9.5"' in saved.text
+    assert "Play time saved." in saved.text
+    assert 'value="9.5"' in saved.text
 
 
 # --- security hardening -------------------------------------------------------

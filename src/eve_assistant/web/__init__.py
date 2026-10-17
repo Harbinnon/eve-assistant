@@ -232,7 +232,7 @@ def create_app(
             conn.close()
         try:
             plan_id = make_plan(character_id, minutes, allow_lowsec, allow_risky)
-        except Exception as exc:  # noqa: BLE001 - shown to the person, never swallowed silently
+        except Exception as exc:  # noqa: BLE001  # shown to the person, never swallowed silently
             return today_page(request, error=f"Could not build a plan: {exc}")
         return back(f"/plans/{plan_id}")
 
@@ -357,7 +357,7 @@ def create_app(
                     statuses.append(goals.evaluate(conn, goal))
                 except SkillsError as exc:
                     problems.append(f"{goal.label}: {exc}")
-            names = [r["name"] for r in conn.execute("SELECT name FROM characters ORDER BY name")]
+            names = _names(conn)
         finally:
             conn.close()
         return render(
@@ -424,7 +424,7 @@ def create_app(
     def skills_page(request: Request, character: str = "", item: str = ""):
         conn = db()
         try:
-            names = [r["name"] for r in conn.execute("SELECT name FROM characters ORDER BY name")]
+            names = _names(conn)
             requirement, error, clone_state = None, None, None
             if character and item:
                 try:

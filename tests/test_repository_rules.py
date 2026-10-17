@@ -16,7 +16,7 @@ def test_package_imports():
 def test_dependencies_are_pinned_exactly():
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     project = pyproject["project"]
-    specs = list(project["dependencies"])
+    specs = [*project["dependencies"], *pyproject["build-system"]["requires"]]
     for group in project.get("optional-dependencies", {}).values():
         specs.extend(group)
     unpinned = [spec for spec in specs if "==" not in spec]
@@ -31,7 +31,7 @@ def test_personal_paths_are_ignored():
 
 def test_no_personal_files_are_tracked():
     tracked = subprocess.run(
-        ["git", "ls-files"],  # noqa: S607 - git is expected on PATH in dev and CI
+        ["git", "ls-files"],  # noqa: S607  # git is expected on PATH in dev and CI
         cwd=ROOT,
         capture_output=True,
         text=True,
@@ -48,7 +48,11 @@ def test_dependabot_watches_exactly_the_direct_libraries():
     project = pyproject["project"]
     direct = {
         re.split(r"[=<>\[]", spec)[0].lower()
-        for spec in [*project["dependencies"], *project["optional-dependencies"]["dev"]]
+        for spec in [
+            *project["dependencies"],
+            *project["optional-dependencies"]["dev"],
+            *pyproject["build-system"]["requires"],
+        ]
     }
     config = (ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8")
     allowed = {name.lower() for name in re.findall(r'dependency-name:\s*"([^"]+)"', config)}

@@ -155,7 +155,7 @@ def load(db: sqlite3.Connection, zip_path: Path) -> SdeBuild:
                 "sde_npc_corporations",
                 "sde_dogma_attributes",
             ):
-                db.execute(f"DELETE FROM {table}")  # noqa: S608 - fixed table names
+                db.execute(f"DELETE FROM {table}")  # noqa: S608  # fixed table names
 
             db.executemany(
                 "INSERT INTO sde_categories VALUES (?, ?, ?)",

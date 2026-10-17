@@ -381,6 +381,9 @@ def _cmd_couriers(args) -> int:
     return 0
 
 
+CHARACTER_HELP = "character name or ID"
+LOWSEC_HELP = "allow lowsec routes"
+
 WHY_NOT = {
     "worse": "less ISK after expected losses",
     "too_long": "does not fit in the time",
@@ -575,20 +578,20 @@ def build_parser() -> argparse.ArgumentParser:
     state.set_defaults(func=_cmd_account_state)
 
     skills_cmd = commands.add_parser("skills", help="what a character needs to use an item")
-    skills_cmd.add_argument("character", help="character name or ID")
+    skills_cmd.add_argument("character", help=CHARACTER_HELP)
     skills_cmd.add_argument("item", help='item name, e.g. "Retriever"')
     skills_cmd.set_defaults(func=_cmd_skills)
 
     ore_cmd = commands.add_parser("ore", help="compare selling, refining and hauling ore")
-    ore_cmd.add_argument("character", help="character name or ID")
+    ore_cmd.add_argument("character", help=CHARACTER_HELP)
     ore_cmd.add_argument("ore", help='ore name, e.g. "Veldspar"')
     ore_cmd.add_argument("quantity", type=int)
     ore_cmd.add_argument("--station", help="hub name or station ID (default: where docked)")
-    ore_cmd.add_argument("--allow-lowsec", action="store_true", help="allow lowsec routes")
+    ore_cmd.add_argument("--allow-lowsec", action="store_true", help=LOWSEC_HELP)
     ore_cmd.set_defaults(func=_cmd_ore)
 
     mining_cmd = commands.add_parser("mining", help="estimate ore mining yield")
-    mining_cmd.add_argument("character", help="character name or ID")
+    mining_cmd.add_argument("character", help=CHARACTER_HELP)
     mining_cmd.add_argument(
         "--ship", help='compare a ship instead of the current one, e.g. "Venture"'
     )
@@ -600,20 +603,20 @@ def build_parser() -> argparse.ArgumentParser:
     mining_cmd.set_defaults(func=_cmd_mining)
 
     couriers_cmd = commands.add_parser("couriers", help="find courier contracts worth taking")
-    couriers_cmd.add_argument("character", help="character name or ID")
+    couriers_cmd.add_argument("character", help=CHARACTER_HELP)
     couriers_cmd.add_argument("--region", action="append", help="region name (repeat)")
     couriers_cmd.add_argument(
         "--minutes", type=float, help="only jobs that fit in this many minutes"
     )
-    couriers_cmd.add_argument("--allow-lowsec", action="store_true", help="allow lowsec routes")
+    couriers_cmd.add_argument("--allow-lowsec", action="store_true", help=LOWSEC_HELP)
     couriers_cmd.add_argument("--limit", type=int, default=10)
     couriers_cmd.add_argument("--ship", help='plan as if you had this ship, e.g. "Tayra"')
     couriers_cmd.set_defaults(func=_cmd_couriers)
 
     plan_cmd = commands.add_parser("plan", help="plan what to do with the time you have")
-    plan_cmd.add_argument("character", help="character name or ID")
+    plan_cmd.add_argument("character", help=CHARACTER_HELP)
     plan_cmd.add_argument("minutes", type=float, help="minutes you have to play")
-    plan_cmd.add_argument("--allow-lowsec", action="store_true", help="allow lowsec routes")
+    plan_cmd.add_argument("--allow-lowsec", action="store_true", help=LOWSEC_HELP)
     plan_cmd.add_argument("--risky", action="store_true", help="include red-rated options")
     plan_cmd.add_argument("--ore", action="append", help="ore to consider mining (repeat)")
     plan_cmd.add_argument("--alternatives", type=int, default=5, help="how many to list")
@@ -656,7 +659,7 @@ def build_parser() -> argparse.ArgumentParser:
     add.add_argument("kind", choices=("ship", "skill", "isk"))
     add.add_argument("target", help="ship or skill name, or an ISK amount")
     add.add_argument("level", nargs="?", type=int, help="skill level (skill goals)")
-    add.add_argument("--character", help="character name or ID")
+    add.add_argument("--character", help=CHARACTER_HELP)
     add.set_defaults(func=_cmd_goal_add)
     for status in ("done", "dropped"):
         close = goal.add_parser(status, help=f"mark a goal {status}")

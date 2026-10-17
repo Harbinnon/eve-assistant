@@ -101,8 +101,9 @@ def test_refreshed_token_for_another_character_is_refused(config, mocked_sso, ma
 
 
 def test_unknown_character_needs_login(config):
+    store = MemoryStore()
     with httpx.Client() as client, pytest.raises(sso.SSOError, match="not logged in"):
-        auth.access_token(config, MemoryStore(), client, 1)
+        auth.access_token(config, store, client, 1)
 
 
 def test_list_and_logout():

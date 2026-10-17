@@ -1,6 +1,7 @@
 # Dependabot opens pull requests for outdated or vulnerable dependencies.
 #
-# Only the libraries chosen directly in pyproject.toml are watched (the
+# Only the libraries chosen directly in pyproject.toml, including the
+# setuptools build backend, are watched (the
 # "allow" list, kept in sync with pyproject.toml by a test). Indirect
 # libraries are pinned as a matched set in constraints.txt and updated
 # deliberately by regenerating that file; bumping them one at a time breaks
@@ -33,6 +34,7 @@ updates:
       - dependency-name: "respx"
       - dependency-name: "pip-audit"
       - dependency-name: "pytest-cov"
+      - dependency-name: "setuptools"
 
   - package-ecosystem: "github-actions"
     directory: "/"

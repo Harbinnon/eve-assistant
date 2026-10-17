@@ -205,8 +205,10 @@ def test_plans_are_recorded_and_cannot_be_changed(db):
 
 
 def test_bad_inputs(db):
-    with httpx.Client() as http, pytest.raises(planner.PlanError):
-        planner.build_plan(db, EsiClient(http, db, base_url=BASE), 7, 0)
+    with httpx.Client() as http:
+        esi = EsiClient(http, db, base_url=BASE)
+        with pytest.raises(planner.PlanError):
+            planner.build_plan(db, esi, 7, 0)
     with pytest.raises(planner.PlanError):
         planner.respond(db, 999, "do")
     with pytest.raises(preferences.PreferenceError):

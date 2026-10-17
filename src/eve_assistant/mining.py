@@ -7,6 +7,7 @@ penalties. The estimate is rough by design; the mining ledger corrects it
 once real sessions are recorded (phase 3).
 """
 
+import math
 import sqlite3
 from dataclasses import dataclass, field
 
@@ -111,7 +112,7 @@ def estimate(
     reasons: list[Reason] = []
     yield_factor = ship.get(SHIP_MULTIPLIER, 1.0)
     multipliers: dict[str, float] = {}
-    if yield_factor != 1.0:
+    if not math.isclose(yield_factor, 1.0):
         multipliers["ship"] = yield_factor
 
     for name in MINING_SKILLS:

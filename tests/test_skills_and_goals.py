@@ -97,7 +97,8 @@ def test_training_time_uses_attributes_and_partial_progress(db):
 def test_alpha_capped_goal_needs_omega(db):
     cid = _character(db, {MINING: (4, 4, 45255)})
     req = skills.plan(db, skills.load_character_skills(db, cid), BARGE_SHIP)
-    assert req.needs_omega and req.minutes_as_alpha is None
+    assert req.needs_omega
+    assert req.minutes_as_alpha is None
     assert {r.detail["skill"] for r in req.reasons if r.code == "alpha_cap"} == {"Geology", "Barge"}
     assert [s.skill_id for s in req.steps if not s.allowed_for_alpha] == [GEOLOGY] * 3 + [
         BARGE_SKILL
@@ -110,7 +111,8 @@ def test_trained_but_alpha_locked(db):
         {MINING: (4, 4, 45255), GEOLOGY: (3, 0, 8000), BARGE_SKILL: (1, 0, 250)},
     )
     req = skills.plan(db, skills.load_character_skills(db, cid), BARGE_SHIP)
-    assert not req.usable_now and req.usable_with_omega_now
+    assert not req.usable_now
+    assert req.usable_with_omega_now
     assert req.steps == ()
     assert "trained_but_alpha_locked" in {r.code for r in req.reasons}
 
@@ -122,7 +124,8 @@ def test_trained_but_alpha_locked(db):
 def test_alpha_over_five_million_sp_cannot_train(db):
     cid = _character(db, {}, total_sp=6_000_000)
     req = skills.plan(db, skills.load_character_skills(db, cid), FRIGATE)
-    assert req.minutes_as_alpha is None and req.needs_omega
+    assert req.minutes_as_alpha is None
+    assert req.needs_omega
     assert "alpha_sp_limit" in {r.code for r in req.reasons}
 
 
@@ -138,7 +141,8 @@ def test_ship_goal_combines_skills_and_isk(db):
     goal_id = goals.add_goal(db, "fly_ship", cid, type_id=BARGE_SHIP)
     (goal,) = goals.active_goals(db)
     status = goals.evaluate(db, goal)
-    assert goal.goal_id == goal_id and goal.label == "Fly a Big Barge"
+    assert goal.goal_id == goal_id
+    assert goal.label == "Fly a Big Barge"
     assert status.isk_needed == 15_000_000
     assert status.requirement.needs_omega
     assert "clone_state_unknown" in {r.code for r in status.reasons}
@@ -149,7 +153,8 @@ def test_isk_goal_without_character_sums_wallets(db):
     _character(db, {}, wallet=2_000.0, character_id=8)
     goals.add_goal(db, "isk", None, isk=10_000)
     status = goals.evaluate(db, goals.active_goals(db)[0])
-    assert status.wallet == 3_000 and status.isk_needed == 7_000
+    assert status.wallet == 3_000
+    assert status.isk_needed == 7_000
 
 
 def test_goal_rules(db):
