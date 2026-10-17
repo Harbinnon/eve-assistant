@@ -194,6 +194,29 @@ can come later. Details:
   out from timestamped entries once the data has caught up, not at the
   moment "I'm done" is pressed.
 
+**Outcomes** are worked out from data EVE already keeps:
+
+- **ISK:** wallet journal entries dated inside the session (plus two
+  minutes for clock differences), grouped as market sales, purchases
+  (including buy-order escrow), taxes and fees, contracts, and other.
+- **Trades:** wallet transactions inside the session, per item.
+- **Ore mined:** the mining ledger only totals per day, so the session's
+  share is the ledger after the session minus the ledger at its start.
+  Without a ledger snapshot at the start, ore mined is reported as unknown
+  rather than guessed. Mining is counted up to two hours after the end, or
+  to the next session's start if sooner.
+- Ore is valued at EVE's average prices at the time of working out.
+- Only amounts, dates, item types and reference types are copied into an
+  outcome: never counterparties (other players' IDs) or journal
+  descriptions and reasons, which can be player-written.
+
+An outcome is **provisional** until data fetched after ESI's cache time has
+been seen (an hour for the journal, ten minutes for the ledger), then
+**settled**. It is recomputed after every refresh while provisional, each
+change adding an append-only row; settled outcomes are never recomputed.
+The Today page lists recent sessions with planned and actual figures; the
+per-step comparison is the History page's job.
+
 From that it learns:
 
 1. **Corrections per activity.** "Predicted 8M an hour, made 6M." After a
@@ -499,8 +522,8 @@ login (§4.1–4.2), whatever the code licence says.
 - **Dashboard:** listens on `127.0.0.1` only and refuses hosted mode until
   a login exists; every form carries a per-process token and cross-site
   posts are rejected; templates escape all output; no third-party scripts.
-- **Data:** parameterised SQL; plans, plan items, responses, play sessions
-  and snapshots are append-only, enforced by database triggers.
+- **Data:** parameterised SQL; plans, plan items, responses, play sessions,
+  session outcomes and snapshots are append-only, enforced by database triggers.
 - **Supply chain:** every dependency pinned exactly (direct and indirect,
   `constraints.txt`), versions at least two weeks old; GitHub Actions
   pinned to commit SHAs; CI runs with read-only permissions.

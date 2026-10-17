@@ -21,6 +21,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from eve_assistant import (
     explain,
     goals,
+    outcomes,
     overview,
     planner,
     preferences,
@@ -189,6 +190,7 @@ def create_app(
             recent = planner.load_plan(conn, latest) if latest else None
             open_projects = _open_projects(conn)
             playing = sessions.open_sessions(conn)
+            results = outcomes.recent(conn, 5)
         finally:
             conn.close()
         return render(
@@ -196,6 +198,7 @@ def create_app(
             "today.html",
             character_names=names,
             plan=recent,
+            results=results,
             error=error,
             can_plan=make_plan is not None,
             open_projects=open_projects,
@@ -256,6 +259,7 @@ def create_app(
             names = _names(conn)
             open_projects = _open_projects(conn)
             playing = sessions.open_sessions(conn)
+            results = outcomes.recent(conn, 5)
         finally:
             conn.close()
         return render(
@@ -263,6 +267,7 @@ def create_app(
             "today.html",
             character_names=names,
             plan=stored,
+            results=results,
             error=None,
             can_plan=make_plan is not None,
             open_projects=open_projects,
@@ -341,6 +346,7 @@ def create_app(
         conn = db()
         try:
             ended = sessions.finish(conn, session_id, played, ending, problems, now=now)
+            outcomes.update(conn, ended.character_id)
         except sessions.SessionError as exc:
             return today_page(request, error=str(exc))
         finally:
