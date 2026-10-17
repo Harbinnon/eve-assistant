@@ -55,7 +55,7 @@ PyYAML==6.0.3
 requests==2.34.2
 respx==0.23.1
 rich==15.0.0
-ruff==0.16.9
+ruff==0.16.10
 sortedcontainers==2.4.0
 starlette==1.7.0
 tomli==2.3.1
