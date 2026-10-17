@@ -91,7 +91,10 @@ def read_game_logs(config: Config, db) -> list[str]:
     if config.gamelogs_dir is None or config.mode != "local":
         return []
     if not config.gamelogs_dir.is_dir():
-        return [f"Game log folder not found: {config.gamelogs_dir} (set in config/local.toml)."]
+        return [
+            f"EVE's game log folder wasn't found at {config.gamelogs_dir} "
+            "(see First run in the README)."
+        ]
     gamelogs.import_folder(db, config.gamelogs_dir)
     return []
 

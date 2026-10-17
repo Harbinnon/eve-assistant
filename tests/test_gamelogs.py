@@ -153,7 +153,7 @@ def test_config_and_refresh_hooks(db, tmp_path):
     off = Config("abc", "http://localhost", None, "local")
     assert refresh.read_game_logs(off, db) == []
     missing = Config("abc", "http://localhost", None, "local", gamelogs_dir=tmp_path / "nope")
-    assert "Game log folder not found" in refresh.read_game_logs(missing, db)[0]
+    assert "game log folder wasn't found" in refresh.read_game_logs(missing, db)[0]
     (tmp_path / "20261017_180000_7.txt").write_text(LOG, encoding="utf-8", newline="")
     present = Config("abc", "http://localhost", None, "local", gamelogs_dir=tmp_path)
     assert refresh.read_game_logs(present, db) == []

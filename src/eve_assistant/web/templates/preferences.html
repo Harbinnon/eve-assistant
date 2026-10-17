@@ -11,7 +11,7 @@
     {% for category, label in categories.items() %}
       {% set muted = category in active %}
       <tr>
-        <td>{{ label|capitalize }} <span class="mono muted">{{ category }}</span></td>
+        <td>{{ label|capitalize }}</td>
         <td>{% if muted %}<span class="pill amber">muted</span>{% else %}<span class="pill green">suggested</span>{% endif %}</td>
         <td>
           <form class="inline" method="post" action="/preferences/{{ 'unmute' if muted else 'mute' }}">
@@ -41,8 +41,8 @@ goal dates. Your setting is the starting point; recorded sessions take over as w
 
 <h2>Backups</h2>
 <p class="lede">A copy of your history is saved once a day while the dashboard runs. It can't be
-downloaded from EVE again, so keep the folder somewhere safe; another drive or a synced folder is
-best (set <span class="mono">[backups] folder</span> in config/local.toml).</p>
+downloaded from EVE again, so keep the folder somewhere safe: another drive or a synced folder is
+best. The README's Backups section says how to move it.</p>
 {% if backups_kept %}
 <p>Last backup {{ backups_kept[0].taken_at.isoformat()|when }} · {{ backups_kept|length }} kept in
   <span class="mono">{{ backups_folder }}</span></p>
@@ -58,20 +58,23 @@ or run <span class="mono">eve-assistant backup</span>.</p>
 </ul>
 {% if learned %}
 <ul>
-  {% for name, c in learned %}<li><strong>{{ name }}</strong>: {{ explain(c.reason().code, c.reason().detail) }}</li>{% endfor %}
+  {% for names, text in learned %}<li><strong>{{ names }}</strong>: {{ text }}</li>{% endfor %}
 </ul>
 {% else %}<p class="muted">No characters yet.</p>{% endif %}
 
 <h2>Risk matrix</h2>
-<p class="lede">Each suggestion is rated by how likely a loss is against how much of your net worth is at stake.
-Red options are left out unless you tick “include risky options”. The starting lines will move as the tool learns
-what you accept.</p>
+<p class="lede">Each suggestion is rated by how likely a loss is where it takes you (rows) against how much
+of your net worth it puts at stake (columns). Risky options are left out unless you tick “Include risky
+options”. The starting lines will move as the tool learns what you accept.</p>
 <div class="table-wrap">
   <table>
-    <thead><tr><th>Chance of loss</th><th>under 2%</th><th>2–10%</th><th>10–25%</th><th>over 25%</th></tr></thead>
+    <thead>
+      <tr><th rowspan="2" scope="col">Chance of loss</th><th colspan="4" scope="colgroup">Share of your net worth at stake</th></tr>
+      <tr><th scope="col">under 2%</th><th scope="col">2–10%</th><th scope="col">10–25%</th><th scope="col">over 25%</th></tr>
+    </thead>
     <tbody>
     {% for band, cells in risk_matrix.items() %}
-      <tr><td>{{ band_labels[band] }}</td>{% for cell in cells %}<td><span class="pill {{ cell }}">{{ cell }}</span></td>{% endfor %}</tr>
+      <tr><th scope="row">{{ band_labels[band] }}</th>{% for cell in cells %}<td><span class="pill risk {{ cell }}">{{ risk_labels[cell] }}</span></td>{% endfor %}</tr>
     {% endfor %}
     </tbody>
   </table>

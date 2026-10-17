@@ -34,7 +34,7 @@
   {% for r in s.reasons %}
     {% if r.code == "no_price" %}<p class="muted">No market price yet: press Refresh on the Characters page.</p>
     {% elif r.code == "clone_state_unknown" %}<p class="muted">Account clone state not set; assumed Alpha.</p>
-    {% elif r.code == "goal_date_needs_sessions" %}<p class="muted">A date comes after two settled sessions for this character (Start this plan, then I'm done).</p>{% endif %}
+    {% elif r.code == "goal_date_needs_sessions" %}<p class="muted">A date comes once two of this character's recorded sessions are final (press Start this plan, then I'm done).</p>{% endif %}
   {% endfor %}
   <div class="actions">
     {% for status, label in [("done", "Mark done"), ("dropped", "Drop")] %}

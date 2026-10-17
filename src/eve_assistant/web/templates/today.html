@@ -23,7 +23,7 @@
       <input type="hidden" name="token" value="{{ form_token }}">
       <input type="hidden" name="response" value="{{ value }}">
       <button class="small{% if value == 'do' %} primary{% endif %}" type="submit"
-        {% if value == 'mute' %}title="Stop suggesting {{ item.kind|replace('_', ' ') }}"{% endif %}>{{ label }}</button>
+        {% if value == 'mute' %}title="Stop suggesting {{ category_labels.get('kind:' ~ item.kind, 'this kind of step') }}"{% endif %}>{{ label }}</button>
     </form>
     {% endfor %}
   </div>
@@ -111,7 +111,7 @@
         <td class="num">{% if o %}{{ o.net_isk|isk }}{% else %}–{% endif %}</td>
         <td class="num">{% if o and o.details.mined is not none %}{{ o.details.mined_m3|round|int }} m³{% if o.mined_value %} · ~{{ o.mined_value|isk }}{% endif %}{% else %}–{% endif %}
           {% if o and o.log_mining and o.log_mining.m3_per_active_minute %}<br><span class="muted small-print">logs: {{ o.log_mining.m3_per_active_minute|round|int }} m³/min while mining</span>{% endif %}</td>
-        <td>{% if not o %}not worked out yet{% elif o.settled %}settled{% else %}provisional{% endif %}
+        <td>{% if not o %}not worked out yet{% elif o.settled %}final{% else %}may still change{% endif %}
           {% if o and o.notes() %}<details class="why"><summary>Notes</summary><ul>{% for n in o.notes() %}<li>{{ n }}</li>{% endfor %}</ul></details>{% endif %}</td>
       </tr>
     {% endfor %}
@@ -161,7 +161,7 @@
   <input type="hidden" name="token" value="{{ form_token }}">
   <input type="hidden" name="plan_id" value="{{ plan.plan_id }}">
   <button class="primary" type="submit">Start this plan</button>
-  <span class="muted small-print">Takes a snapshot now and another when you press “I'm done”, so the assistant can compare the plan with what happened.</span>
+  <span class="muted small-print">Reads your wallet, hangar and mining ledger from EVE now and again when you press “I'm done”, so the plan can be compared with what happened.</span>
 </form>
 {% endif %}
 
@@ -184,7 +184,7 @@
           {% if item.details.new_to_you %}<span class="pill new">new to you</span>{% endif %}</div>
         <div class="figures">
           <strong>{{ item.isk|isk }} ISK</strong> · {{ item.minutes|round|int }} min ·
-          <span class="pill {{ item.risk_rating }}">{{ item.risk_rating }}</span>
+          <span class="pill risk {{ item.risk_rating }}">{{ risk_labels[item.risk_rating] }}</span>
           {% if item.expected_loss > 0 %} · expected loss {{ item.expected_loss|isk }}{% endif %}
         </div>
         {{ why(item) }}
@@ -210,7 +210,7 @@
         <td>{{ alt.title }}{{ why(alt) }}</td>
         <td class="num">{{ alt.isk|isk }}</td>
         <td class="num">{{ alt.minutes|round|int }}</td>
-        <td><span class="pill {{ alt.risk_rating }}">{{ alt.risk_rating }}</span></td>
+        <td><span class="pill risk {{ alt.risk_rating }}">{{ risk_labels[alt.risk_rating] }}</span></td>
         <td class="alt-why">{{ why_not.get(alt.details.why_not, alt.details.why_not) }}</td>
       </tr>
     {% endfor %}
