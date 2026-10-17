@@ -6,7 +6,7 @@ Shared by `eve-assistant snapshot` and the dashboard's Refresh button.
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from eve_assistant import auth, goals, outcomes, planner, snapshots, store, structures
+from eve_assistant import auth, gamelogs, goals, outcomes, planner, snapshots, store, structures
 from eve_assistant.config import Config
 from eve_assistant.esi.client import EsiClient, EsiError, EsiRateLimited
 from eve_assistant.esi.sso import SSOError
@@ -30,6 +30,7 @@ def refresh_all(
         return report
     db = store.connect(db_path)
     try:
+        report.problems.extend(read_game_logs(config, db))
         with auth.http_client(config) as client:
             tokens = auth.AccessTokens(config, secrets, client)
             esi = EsiClient(client, db, token_for=tokens.get)
@@ -52,6 +53,17 @@ def refresh_all(
     finally:
         db.close()
     return report
+
+
+def read_game_logs(config: Config, db) -> list[str]:
+    """Import new mining lines from EVE's game logs, if a folder is configured.
+    Done before snapshots, so the outcomes worked out after them include it."""
+    if config.gamelogs_dir is None or config.mode != "local":
+        return []
+    if not config.gamelogs_dir.is_dir():
+        return [f"Game log folder not found: {config.gamelogs_dir} (set in config/local.toml)."]
+    gamelogs.import_folder(db, config.gamelogs_dir)
+    return []
 
 
 def _rate_limited(exc: EsiRateLimited) -> str:
@@ -88,14 +100,15 @@ def snapshot_character(
             "SELECT name FROM characters WHERE character_id = ?", (character_id,)
         ).fetchone()
         name = row["name"] if row else str(character_id)
+        log_problems = read_game_logs(config, db)
         with auth.http_client(config) as client:
             esi = EsiClient(client, db, token_for=auth.AccessTokens(config, secrets, client).get)
             try:
-                return _snapshot_one(db, esi, character_id, name)[1]
+                return log_problems + _snapshot_one(db, esi, character_id, name)[1]
             except EsiRateLimited as exc:
-                return [_rate_limited(exc)]
+                return [*log_problems, _rate_limited(exc)]
             except (SSOError, EsiError) as exc:
-                return [f"{name}: {exc}"]
+                return [*log_problems, f"{name}: {exc}"]
     finally:
         db.close()
 

@@ -26,7 +26,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from eve_assistant import sessions
+from eve_assistant import gamelogs, sessions
 from eve_assistant.sessions import PlaySession
 from eve_assistant.store import utc_now
 
@@ -72,6 +72,10 @@ class Outcome:
     @property
     def mined_value(self) -> float | None:
         return self.details["mined_value"]
+
+    @property
+    def log_mining(self) -> dict | None:
+        return self.details.get("log_mining")
 
     @property
     def planned_isk(self) -> float | None:
@@ -304,6 +308,8 @@ def compute(
         "sold": sold,
         "bought": bought,
         **mining,
+        # Per-cycle mining from EVE's game logs, when they are read (local mode).
+        "log_mining": gamelogs.session_mining(db, session.character_id, _stamp(start), _stamp(end)),
         "plan": _plan(db, session.plan_id),
         "data": {
             "journal_snapshot_at": journal_at,
