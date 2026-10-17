@@ -27,6 +27,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from eve_assistant import (
     backups,
     corrections,
+    detection,
     explain,
     goals,
     history,
@@ -104,6 +105,8 @@ MESSAGES = {
     "session_started": "Session started. Press “I’m done” when you stop.",
     "session_finished": "Session recorded.",
     "session_cancelled": "Session cancelled.",
+    "detected_recorded": "Session recorded. Its outcome is worked out from EVE's data.",
+    "detected_dismissed": "Got it, that one won't be offered again.",
 }
 
 
@@ -242,6 +245,7 @@ def create_app(
             open_projects = _open_projects(conn)
             playing = sessions.open_sessions(conn)
             results = outcomes.recent(conn, 5)
+            noticed = detection.suggestions(conn)
         finally:
             conn.close()
         return render(
@@ -254,6 +258,7 @@ def create_app(
             can_plan=make_plan is not None,
             open_projects=open_projects,
             open_sessions=playing,
+            noticed=noticed,
         )
 
     def _open_projects(conn) -> list[tuple[str, projects.Project]]:
@@ -311,6 +316,7 @@ def create_app(
             open_projects = _open_projects(conn)
             playing = sessions.open_sessions(conn)
             results = outcomes.recent(conn, 5)
+            noticed = detection.suggestions(conn)
         finally:
             conn.close()
         return render(
@@ -323,6 +329,7 @@ def create_app(
             can_plan=make_plan is not None,
             open_projects=open_projects,
             open_sessions=playing,
+            noticed=noticed,
         )
 
     def _after_session(request: Request, result: session_flow.Result, msg: str):
@@ -369,6 +376,28 @@ def create_app(
         except sessions.SessionError as exc:
             return today_page(request, error=str(exc))
         return _after_session(request, result, f"session_{result.session.how}")
+
+    @app.post("/detected/{action}")
+    def detected_session(
+        request: Request,
+        action: str,
+        token: str = Form(...),
+        character_id: int = Form(...),
+        login: str = Form(...),
+    ):
+        check_form(request, token)
+        if action not in ("record", "dismiss"):
+            raise HTTPException(404, "Unknown action.")
+        try:
+            if action == "record":
+                session_flow.record_detected(db_path, character_id, login)
+            else:
+                session_flow.dismiss_detected(db_path, character_id, login)
+        except sessions.SessionNotFound as exc:
+            return today_page(request, error=str(exc))
+        except sessions.SessionError as exc:
+            return today_page(request, error=str(exc))
+        return back(TODAY, msg="detected_recorded" if action == "record" else "detected_dismissed")
 
     @app.post("/plan-items/{item_id}/respond")
     def respond(request: Request, item_id: int, token: str = Form(...), response: str = Form(...)):

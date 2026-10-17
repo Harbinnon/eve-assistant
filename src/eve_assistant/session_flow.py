@@ -18,7 +18,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from eve_assistant import outcomes, sessions, store
+from eve_assistant import detection, outcomes, sessions, store
 from eve_assistant.sessions import PlaySession
 
 # Snapshots one character (needs ESI); returns problem lines, empty when all went well.
@@ -113,3 +113,26 @@ def running_session_id(db_path: Path | str, character_id: int) -> int:
     if session is None:
         raise sessions.SessionError("No session is running for that character.")
     return session.session_id
+
+
+def record_detected(db_path: Path | str, character_id: int, login: str) -> PlaySession:
+    """Record a session noticed from EVE's login times, after the player said
+    yes, with the plan made just before it; then work out its outcome."""
+    db = _connect(db_path)
+    try:
+        found = detection.find(db, character_id, login)
+        session = sessions.record_past(
+            db, found.character_id, found.login, found.logout, found.plan_id, detection.NOTE
+        )
+        outcomes.update(db, found.character_id)
+    finally:
+        db.close()
+    return session
+
+
+def dismiss_detected(db_path: Path | str, character_id: int, login: str) -> None:
+    db = _connect(db_path)
+    try:
+        detection.dismiss(db, character_id, login)
+    finally:
+        db.close()

@@ -152,6 +152,44 @@ def start(
     return get(db, cursor.lastrowid)
 
 
+def record_past(
+    db: sqlite3.Connection,
+    character_id: int,
+    started_at: str,
+    ended_at: str,
+    plan_id: int | None,
+    note: str,
+    now: str | None = None,
+) -> PlaySession:
+    """Record a session that already happened (noticed from EVE's login times)
+    in one go. No snapshots were taken at its ends; `note` says so."""
+    known = db.execute("SELECT 1 FROM characters WHERE character_id = ?", (character_id,))
+    if known.fetchone() is None:
+        raise SessionNotFound(f"Unknown character {character_id}.")
+    start, end = _parse(started_at), _parse(ended_at)
+    if end <= start:
+        raise SessionError("A session has to end after it starts.")
+    now = now or utc_now()
+    for other in recent(db, 500):
+        if other.character_id != character_id:
+            continue
+        other_end = _parse(other.ended_at or now)
+        if _parse(other.started_at) < end and start < other_end:
+            raise SessionError(f"That overlaps session {other.session_id}, already recorded.")
+    cursor = db.execute(
+        "INSERT INTO play_sessions (character_id, plan_id, started_at, start_problems) "
+        "VALUES (?, ?, ?, ?)",
+        (character_id, plan_id, _stamp(start), json.dumps([note])),
+    )
+    db.execute(
+        "INSERT INTO play_session_ends (session_id, ended_at, recorded_at, how, end_problems) "
+        "VALUES (?, ?, ?, 'finished', ?)",
+        (cursor.lastrowid, _stamp(end), now, json.dumps([note])),
+    )
+    db.commit()
+    return get(db, cursor.lastrowid)
+
+
 def check_end(
     session: PlaySession,
     minutes_played: float | None,
