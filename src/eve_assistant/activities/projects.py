@@ -74,7 +74,11 @@ def project_item(
                 "total_minutes": total_minutes,
                 "isk": isk,
                 "deadline_days": deadline_days,
-                "risk": {"band": rating.band, "exposure": rating.exposure},
+                "risk": {
+                    "band": rating.band,
+                    "exposure": rating.exposure,
+                    "payout": rating.payout,
+                },
             },
         },
     )
@@ -90,7 +94,12 @@ def project_candidates(db, character_id, minutes, net_worth, notes) -> list[Plan
             continue
         session = min(minutes, project.minutes_left)
         stored = project.details.get("risk", {})
-        rating = risk.rate(stored.get("band", "low"), stored.get("exposure", 0.0), net_worth)
+        rating = risk.rate(
+            stored.get("band", "low"),
+            stored.get("exposure", 0.0),
+            net_worth,
+            stored.get("payout", 0.0),
+        )
         reasons = [
             Reason(
                 "project_progress", {"done": project.minutes_done, "total": project.total_minutes}

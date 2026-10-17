@@ -157,6 +157,30 @@ def test_plan_sells_hangar_ore_then_mines(db):
 
 
 @respx.mock
+def test_live_signals_set_the_band_and_insurance_lowers_the_expected_loss(db):
+    from datetime import UTC, datetime
+
+    from eve_assistant import signals
+
+    _mock_market_and_contracts()
+    with httpx.Client() as http:
+        stale = planner.build_plan(db, EsiClient(http, db, base_url=BASE), 7, 60)
+    assert "no_live_signals" in {n.code for n in stale.notes}
+    stale_mining = stale.items[-1]
+
+    signals._mark(db, signals.SETTING, datetime.now(UTC))  # read just now, no kills anywhere
+    db.execute("INSERT INTO insurance_prices VALUES (?, 'Platinum', 1, 50000)", (FRIGATE,))
+    with httpx.Client() as http:
+        live = planner.build_plan(db, EsiClient(http, db, base_url=BASE), 7, 60)
+    assert "no_live_signals" not in {n.code for n in live.notes}
+    mining = live.items[-1]
+    assert mining.risk.band == "very_low"  # quiet highsec
+    assert "no_recent_kills" in {r.code for r in mining.reasons}
+    assert mining.risk.payout == 20_000.0  # 40% of the Platinum payout, uninsured
+    assert stale_mining.risk.band == "low"
+
+
+@respx.mock
 def test_muted_categories_become_alternatives(db):
     preferences.mute(db, "kind:mining")
     _mock_market_and_contracts()

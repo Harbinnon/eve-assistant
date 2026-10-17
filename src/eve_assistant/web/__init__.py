@@ -40,6 +40,7 @@ from eve_assistant import (
     goals,
     history,
     images,
+    losses,
     numbers,
     omega,
     outcomes,
@@ -74,6 +75,7 @@ SETTINGS = "/settings"
 CHARACTERS = "/characters"
 # Every character, by name: the switch, History and the learning lines.
 CHARACTERS_BY_NAME = "SELECT character_id, name FROM characters ORDER BY name"
+CHARACTER_NAMES = "SELECT character_id, name FROM characters"
 UNKNOWN_ACTION = "Unknown action."
 COMMIT_WITH_THE_PLAN = (
     "Steps aren't taken on one by one: press “Start this plan” to start the whole "
@@ -153,10 +155,10 @@ RETURN_PAGES = {page: page for page in (TODAY, CHARACTERS, GOALS, "/skills", "/h
 
 BAND_LABELS = {
     "none": "No player risk (Exordium)",
-    "very_low": "Very low",
-    "low": "Low (highsec)",
-    "medium": "Medium (lowsec)",
-    "high": "High (nullsec, unknown)",
+    "very_low": "Very low (quiet highsec)",
+    "low": "Low (busy highsec, quiet lowsec)",
+    "medium": "Medium (active lowsec, gank hotspots, incursions)",
+    "high": "High (camped lowsec, nullsec, unknown)",
 }
 
 MESSAGES = {
@@ -184,11 +186,40 @@ def _isk(value) -> str:
     return numbers.isk(value)
 
 
+def _share(value: float) -> str:
+    """0.02 -> '2%', 0.0283 -> '2.83%'."""
+    return f"{value * 100:.3g}%"
+
+
 def _when(value) -> str:
     """ISO UTC timestamp -> '2026-10-16 02:50 UTC'."""
     if not value:
         return "never"
     return f"{value[:10]} {value[11:16]} UTC"
+
+
+def _losses(conn) -> list[SimpleNamespace]:
+    """Your losses for History: who, where, what, its value, and the session's band."""
+    names = dict(conn.execute(CHARACTER_NAMES).fetchall())
+    _trips, attributed = risk.trips_and_losses(conn)
+    rows = []
+    for loss in losses.all_losses(conn):
+        system = conn.execute(
+            "SELECT name, security_status FROM sde_solar_systems WHERE system_id = ?",
+            (loss.system_id,),
+        ).fetchone()
+        rows.append(
+            SimpleNamespace(
+                at=loss.killed_at,
+                character=names.get(loss.character_id, str(loss.character_id)),
+                system=system["name"] if system else str(loss.system_id),
+                security=system["security_status"] if system else None,
+                ship=skills.type_name(conn, loss.ship_type_id),
+                value=losses.value(conn, loss),
+                band=attributed.get(loss.killmail_id),
+            )
+        )
+    return rows
 
 
 def _worth(conn, character_ids) -> SimpleNamespace | None:
@@ -360,6 +391,7 @@ def create_app(
     templates.env.filters["when"] = _when
     templates.env.filters["ago"] = _ago
     templates.env.filters["when_ago"] = _when_ago
+    templates.env.filters["share"] = _share
     templates.env.globals["minutes_since"] = _minutes_since
     templates.env.globals["plan_stale_minutes"] = PLAN_STALE_MINUTES
     templates.env.globals["describe"] = skills.describe
@@ -379,7 +411,7 @@ def create_app(
     def active_character(request: Request, conn) -> tuple[int, str] | None:
         """The header switch's character: the cookie's if it names one of
         ours, else whoever is online, else the first; None without any."""
-        names = dict(conn.execute("SELECT character_id, name FROM characters").fetchall())
+        names = dict(conn.execute(CHARACTER_NAMES).fetchall())
         chosen = request.cookies.get(CHARACTER_COOKIE, "")
         character_id = int(chosen) if chosen.isdigit() and int(chosen) in names else None
         if character_id is None:
@@ -607,7 +639,7 @@ def create_app(
         return back(TODAY, anchor=f"session-{session.session_id}")
 
     def _open_projects(conn) -> list[tuple[str, projects.Project]]:
-        names = dict(conn.execute("SELECT character_id, name FROM characters").fetchall())
+        names = dict(conn.execute(CHARACTER_NAMES).fetchall())
         return [(names.get(p.character_id, "?"), p) for p in projects.open_projects(conn)]
 
     @app.post("/projects/{project_id}/{status}")
@@ -852,6 +884,8 @@ def create_app(
                     learned_by_text.setdefault(text, []).append(r["name"])
             learned = [(", ".join(names), text) for text, names in learned_by_text.items()]
             finish = pace.finish_rate(conn)
+            risk_model = risk.model(conn)
+            own_losses = _losses(conn)
         finally:
             conn.close()
         return render(
@@ -863,6 +897,8 @@ def create_app(
             finish=finish,
             risk_matrix=risk.MATRIX,
             band_labels=BAND_LABELS,
+            risk_model=risk_model,
+            own_losses=own_losses,
         )
 
     @app.get(CHARACTERS, response_class=HTMLResponse)

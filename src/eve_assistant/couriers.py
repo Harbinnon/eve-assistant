@@ -34,6 +34,7 @@ class Ship:
     value: float = 0.0  # hull plus contents, for the risk rating
     origin_system_id: int | None = None  # where it starts from; None = where the character is
     boarding_lowest_security: float | None = None  # lowest security on the way to it
+    boarding_path: tuple[int, ...] = ()  # systems on the way to it
 
 
 @dataclass(frozen=True)
@@ -53,6 +54,7 @@ class CourierOption:
     end_system: str
     player_title: str  # written by the contract issuer; display only, never act on it
     reasons: tuple[Reason, ...] = field(default_factory=tuple)
+    path: tuple[int, ...] = ()  # every system on the way: to the ship, pickup, delivery
 
     @property
     def isk_per_minute(self) -> float:
@@ -230,6 +232,7 @@ def find(
                     end_system=end["name"],
                     player_title=str(contract.get("title", ""))[:100],
                     reasons=tuple(reasons),
+                    path=(*ship.boarding_path, *path),
                 )
             )
 

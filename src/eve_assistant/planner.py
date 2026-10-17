@@ -14,6 +14,7 @@ Every plan is recorded (append-only) with its predictions, so phase 3 can
 compare them with what actually happened.
 """
 
+import dataclasses
 import json
 import sqlite3
 from dataclasses import dataclass, field
@@ -24,6 +25,7 @@ from eve_assistant import (
     preferences,
     projects,
     risk,
+    signals,
     skills,
     snapshots,
 )
@@ -120,6 +122,18 @@ def _with_new_flags(db, character_id, candidates: list[PlanItem]) -> list[PlanIt
             }
         )
         for c in candidates
+    ]
+
+
+def _rated(candidates: list[PlanItem], learned: risk.Model, worth: float) -> list[PlanItem]:
+    """Each candidate rated with the chances and lines learned so far: activities
+    say where it goes (the band) and what's at stake; the planner rates it."""
+    return [
+        dataclasses.replace(
+            item,
+            risk=risk.rate(item.risk.band, item.risk.exposure, worth, item.risk.payout, learned),
+        )
+        for item in candidates
     ]
 
 
@@ -252,7 +266,12 @@ def build_plan(
         ships = []
 
     context = Context(db, esi, character_id, minutes, worth, highsec_only, ships, ore_names, notes)
-    candidates = [item for activity in activities.ALL for item in activity.candidates(context)]
+    learned = risk.model(db)
+    candidates = _rated(
+        [item for activity in activities.ALL for item in activity.candidates(context)],
+        learned,
+        worth,
+    )
     usable, alternatives = _set_aside(
         _with_new_flags(db, character_id, candidates), mutes, allow_risky
     )
@@ -270,7 +289,14 @@ def build_plan(
 
     if not fit.chosen:
         notes.append(Reason("nothing_fits"))
-    notes.append(Reason("loss_chances_are_guesses"))
+    if not signals.fresh(db):
+        notes.append(Reason("no_live_signals"))
+    trips = sum(c.trips for c in learned.chances.values())
+    if trips:
+        losses = sum(c.losses for c in learned.chances.values())
+        notes.append(Reason("loss_chances_learned", {"trips": trips, "losses": losses}))
+    else:
+        notes.append(Reason("loss_chances_are_guesses"))
     return Plan(
         character_id=character_id,
         minutes_available=minutes,

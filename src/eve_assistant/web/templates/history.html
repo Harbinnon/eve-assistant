@@ -77,18 +77,51 @@
 <h2>Risk matrix</h2>
 <p class="lede">Each suggestion is rated by how likely a loss is where it takes you (rows) against how much
 of your net worth it puts at stake (columns). Risky options are left out unless you tick “Include risky
-options”. The starting lines will move as the tool learns what you accept.</p>
+options”. The chance of a loss on each trip starts as a guess and learns from your own losses.</p>
 <div class="table-wrap">
   <table class="keep-grid">
     <thead>
-      <tr><th rowspan="2" scope="col">Chance of loss</th><th colspan="4" scope="colgroup">Share of your net worth at stake</th></tr>
-      <tr><th scope="col">under 2%</th><th scope="col">2–10%</th><th scope="col">10–25%</th><th scope="col">over 25%</th></tr>
+      <tr><th rowspan="2" scope="col">Chance of loss</th><th rowspan="2" scope="col">A trip</th><th colspan="4" scope="colgroup">Share of your net worth at stake</th></tr>
+      {% set cols = risk_model.columns|map("share")|list %}
+      <tr><th scope="col">under {{ cols[0] }}</th><th scope="col">{{ cols[0] }}–{{ cols[1] }}</th><th scope="col">{{ cols[1] }}–{{ cols[2] }}</th><th scope="col">over {{ cols[2] }}</th></tr>
     </thead>
     <tbody>
     {% for band, cells in risk_matrix.items() %}
-      <tr><th scope="row">{{ band_labels[band] }}</th>{% for cell in cells %}<td><span class="pill risk {{ cell }}">{{ risk_labels[cell] }}</span></td>{% endfor %}</tr>
+      {% set c = risk_model.chances[band] %}
+      <tr><th scope="row">{{ band_labels[band] }}</th>
+        <td class="num">{{ "%.2f"|format(c.per_trip * 100) }}%<br><span class="muted small-print">{% if band == "none" %}no player risk{% elif c.learned %}{{ c.losses }} loss{{ "es" if c.losses != 1 }} in {{ c.trips }} trip{{ "s" if c.trips != 1 }}{% else %}starting guess{% endif %}</span></td>
+        {% for cell in cells %}<td><span class="pill risk {{ cell }}">{{ risk_labels[cell] }}</span></td>{% endfor %}</tr>
     {% endfor %}
     </tbody>
   </table>
 </div>
+<p class="lines-moved">{% if risk_model.taken or risk_model.declined %}{% set moved = risk_model.lines_moved %}
+  {% if moved > 1.005 %}The lines have moved ×{{ "%.2f"|format(moved) }} wider{% elif moved < 0.995 %}The lines have moved ×{{ "%.2f"|format(moved) }} narrower{% else %}The lines are back where they started{% endif %}, from {{ risk_model.taken }} Caution or Risky step{{ "s" if risk_model.taken != 1 }} you took and {{ risk_model.declined }} you declined.
+  {% else %}The lines are where they started: no Caution or Risky step has been taken or declined yet.{% endif %}
+  <span class="muted small-print">Taking such steps moves them wider (fewer cautions), declining them narrower, between half and twice where they started.</span></p>
+<p class="muted small-print">A trip is a step of a session you played, with something at stake; a loss in that session counts against its riskiest step. Each chance starts from its guess as if from 100 trips, so one loss can't swing it far.</p>
+
+<h2>Your losses</h2>
+{% if own_losses %}
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>When</th><th>Character</th><th>Where</th><th>Ship</th><th class="num">Value</th><th>Counted as</th></tr></thead>
+    <tbody>
+    {% for l in own_losses %}
+      <tr>
+        <td data-label="When">{{ l.at|when }}</td>
+        <td data-label="Character">{{ l.character }}</td>
+        <td data-label="Where">{{ l.system }}{% if l.security is not none %} <span class="{{ l.security|security_class }}">{{ l.security|security }}</span>{% endif %}</td>
+        <td data-label="Ship">{{ l.ship }}</td>
+        <td data-label="Value" class="num isk">{{ l.value|isk }}</td>
+        <td data-label="Counted as">{% if l.band %}{{ band_labels[l.band] }}{% else %}<span class="muted">outside a recorded session</span>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p class="muted small-print">From your killmails, as the victim only: other people in them are never kept. Value is the ship and what it carried at CCP average prices. Losses outside a recorded session can't be set against a trip, so they don't change the chances.</p>
+{% else %}
+<p class="muted">No losses recorded. They come from your killmails once each character has logged in again with the new permissions.</p>
+{% endif %}
 {% endblock %}

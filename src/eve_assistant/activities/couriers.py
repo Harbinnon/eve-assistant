@@ -12,6 +12,7 @@ from eve_assistant import (
     projects,
     risk,
     routes,
+    signals,
 )
 from eve_assistant.activities import projects as project_steps
 from eve_assistant.activities.base import (
@@ -41,6 +42,7 @@ def courier_candidates(db, esi, character_id, ships, minutes, net_worth, highsec
                 boarding_lowest_security=(
                     routes.lowest_security(db, board.path) if board.jumps else None
                 ),
+                boarding_path=tuple(board.path) if board.jumps else (),
             )
         )
     try:
@@ -63,7 +65,9 @@ def courier_candidates(db, esi, character_id, ships, minutes, net_worth, highsec
     weekly = pace.weekly_play(db).minutes
     finish = pace.finish_rate(db)
     for option in found.options:
-        band = risk.band_for_security(option.lowest_security)
+        assessed = risk.assess(db, option.path)
+        band = assessed.band
+        payout = signals.hull_payout(db, option.ship.type_id)
         in_ship = f" in your {option.ship.name}" if option.ship.switch_minutes else ""
         if option.minutes > minutes:
             if not projects.finishes_in_time(option.minutes, option.days_to_complete, weekly):
@@ -78,13 +82,16 @@ def courier_candidates(db, esi, character_id, ships, minutes, net_worth, highsec
                     total_minutes=option.minutes,
                     isk=option.reward,
                     minutes=minutes,
-                    rating=risk.rate(band, option.collateral + option.ship.value, net_worth),
+                    rating=risk.rate(
+                        band, option.collateral + option.ship.value, net_worth, payout
+                    ),
                     reasons=(
                         Reason(
                             "deadline_fits_your_pace",
                             {"days": option.days_to_complete, "weekly_minutes": weekly},
                         ),  # fmt: skip
                         *option.reasons,
+                        *assessed.reasons,
                     ),
                     inputs={
                         "contract_id": option.contract_id,
@@ -104,8 +111,8 @@ def courier_candidates(db, esi, character_id, ships, minutes, net_worth, highsec
                 f"{option.volume_m3:,.0f} m3){in_ship}",
                 isk=option.reward,
                 minutes=option.minutes,
-                risk=risk.rate(band, option.collateral + option.ship.value, net_worth),
-                reasons=option.reasons,
+                risk=risk.rate(band, option.collateral + option.ship.value, net_worth, payout),
+                reasons=(*option.reasons, *assessed.reasons),
                 inputs={
                     "contract_id": option.contract_id,
                     "collateral": option.collateral,

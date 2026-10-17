@@ -430,11 +430,26 @@ items and ships the player owns or plans to buy.
 
 Each option is rated on two axes.
 
-**How likely is a loss?** Route security; recent kills in those systems,
-especially of haulers and miners (zKillboard, last 24 hours and 7 days);
-time of day; whether the cargo is worth ganking in highsec. Exordium has
-PvP switched off, so it is rated "no player risk" and always green. **Lawless highsec systems cannot be detected** (section
-10), which is stated on any route that leaves Exordium.
+**How likely is a loss?** Route security, and the live signals (built in
+milestone 4): ships and pods destroyed in each system on the way in the
+last hour, and active incursions, from ESI's public data, read every hour.
+Quiet highsec is "very low", busy highsec or quiet lowsec "low", active
+lowsec "medium". A highsec system with 20 or more ships and pods destroyed
+in the hour is a gank hotspot or busy hub ("medium"); elsewhere 10 or more
+is likely camped ("high"); an incursion makes it at least "medium". (On a
+real hour, 17 Oct 2026, 99% of highsec systems had under 14 and 95% of
+lowsec under 5; the top ones were Sivala, Jita, Uedama, Obe and Amamake.)
+Each rating carries the reasons ("163 ships or pods destroyed in the last
+hour along the way, most in Sivala (63), Jita (44) and Uedama (35)"). When
+the signals are over three hours old, security alone decides (highsec
+low, lowsec medium) and the plan says so. Routes weigh each hotspot on the
+way as five extra jumps, so a short detour around one is taken and a long
+one isn't.
+Exordium has PvP switched off, so it is rated "no player risk" and always
+green. **Lawless highsec systems cannot be detected** (section 10), which
+is stated on any route that leaves Exordium. Still to come: time of day,
+and whether the cargo is worth ganking (zKillboard's hauler and miner
+kills over 24 hours and 7 days).
 
 **How much is exposed, compared with what the character owns?** Ship and
 fit, cargo and courier collateral as a share of **net worth** (wallet plus
@@ -456,9 +471,28 @@ registers for an established one.
 - **Red**: hidden unless the player asks for risky options, then shown
   with the expected loss.
 
-Ranking uses profit minus (chance of loss × amount exposed). The starting
-lines are a guess; they move with the player's choices, and every change
-is visible on History and learning. A loss is recorded and feeds straight back in.
+Ranking uses profit minus the expected loss: chance of loss × (amount
+exposed − what EVE pays for the hull). A hull with no insurance bought still
+pays 40% of its Platinum payout, so that much is always taken off; nothing
+is assumed about whether the player insures.
+
+**Learned chances** (milestone 4). The chances per band start as guesses
+(0.1% a trip in very low, 0.5% low, 3% medium, 10% high) and learn from the
+player's own losses, read from their killmails: only killmails where one
+of their characters is the victim are kept (when, where, the ship, what it
+carried), never the attackers. Each step of a finished session that wasn't
+declined, with something at stake, is a trip in its band; a loss during
+that session counts against its riskiest step. `chance = (guess × 100 +
+losses) / (100 + trips)`, so a single loss can't swing it far. Losses
+outside a recorded session are listed but don't change the chances.
+
+**Moving lines.** The net-worth lines move with the player's choices. Each
+Caution or Risky step with something at stake is a vote: taken (answered
+"do", or left unanswered in a session that was played) or declined (not
+now, or muted). The lines scale by `2 ** ((taken − declined) / (taken +
+declined + 5))`, between half and twice where they started. History and
+learning shows each band's chance with its trips and losses, the lines
+where they are now, and the losses themselves.
 
 ### 4.9 Declining, and discovering options
 
@@ -622,7 +656,7 @@ structured reasons and inputs; record where each piece of text came from
 | **0. Setup** | Register an ESI application ([setup guide](setup-esi.md)). | Client ID in local config. |
 | **1. Foundations and dashboard** | Store, ESI login for several characters, snapshots, static data, market prices, skill trees and training time, goals. Pages: Characters, Goals, Skills. | "To fly a Retriever you need Omega, these 6 skills (11 days) and ~32M ISK", correct per character. |
 | **2. First planner** | Mining, ore disposal and courier models; Today page with time limit and projects; risk matrix for highsec and Exordium; decline buttons; every plan recorded. | A 60-minute plan the player agrees is sensible. |
-| **3. Learning** | Reconciling plans with ledger, wallet and contracts; per-activity corrections; goal dates; moving risk lines; History page. Built: sessions, outcomes, game logs, mining-speed correction, History, real pace and goal dates; sale-price and travel-time corrections followed in milestone 3. Left: moving risk lines (milestone 4, once there's lowsec data). | Predictions measurably improve after a few sessions. |
+| **3. Learning** | Reconciling plans with ledger, wallet and contracts; per-activity corrections; goal dates; moving risk lines; History page. Built: sessions, outcomes, game logs, mining-speed correction, History, real pace and goal dates; sale-price and travel-time corrections followed in milestone 3, and learned loss chances and moving risk lines in milestone 4. | Predictions measurably improve after a few sessions. |
 | **3.5 onwards** | Replaced by the milestones in [roadmap.md](roadmap.md) (17 October 2026): foundations (backups, automatic session detection, structure markets, contract tracking), the dashboard's look and flow, a planner restructure with Freelance Jobs and an Omega comparison, risk from real data, new activities (gas, exploration, missions, manufacturing), corporations, nullsec and PI, then alerts and hosted mode. | Each milestone ends with a version tag. |
 | **Later** | MCP server; officer corp data. | — |
 
@@ -900,7 +934,14 @@ hangars, not price moves. The line is a small SVG drawn on the server.
 - **Market**: ESI regional orders and history for hubs and items in use
   (12,000 tokens per 15 minutes for orders, 5-minute cache). Fuzzwork
   aggregates as a fallback.
-- **zKillboard**: kills per system, for risk.
+- **Risk signals** (ESI, public, aggregate): `/universe/system_kills` (ships,
+  pods and NPCs destroyed per system in the last hour) and `/incursions`,
+  read every hour while the dashboard runs; `/insurance/prices` once a day.
+  No player is named in any of it. Later, zKillboard for hauler and miner
+  kills over longer periods.
+- **Your own losses** (ESI, `esi-killmails.read_killmails.v1`): the list of
+  the character's killmails, then each new one fetched once, kept out of
+  the ESI cache; only the owner's own losses are kept, never attackers.
 - **Freelance Jobs** (ESI `/freelance-jobs`, public): walked every half hour;
   mining and delivery jobs are kept (ore or item types, where, ISK per unit,
   limits), never the creator or the description; job names are

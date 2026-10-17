@@ -19,9 +19,11 @@ from eve_assistant import (
     freelance,
     gamelogs,
     goals,
+    losses,
     outcomes,
     planner,
     sde,
+    signals,
     snapshots,
     store,
     structures,
@@ -83,6 +85,7 @@ def refresh_all(
                 report.priced = goals.update_prices(db, esi)
             except EsiError as exc:
                 report.problems.append(f"Market prices: {exc}")
+            report.problems.extend(_refresh_signals(db, esi, datetime.now(UTC)))
     finally:
         db.close()
     return report
@@ -119,6 +122,12 @@ def _snapshot_one(
     results = snapshots.collect(db, esi, character_id, kinds, granted)
     if kinds is None or "location" in kinds or "assets" in kinds:
         structures.refresh(db, esi, character_id)
+    problems = []
+    if kinds is None or "killmails" in kinds:
+        try:
+            losses.update(db, esi, character_id)
+        except EsiError as exc:
+            problems.append(f"{name}, losses: {exc}")
     contracts.sync_projects(db, character_id)  # delivered couriers close their projects
     outcomes.update(db, character_id)  # newer data may settle earlier sessions
     failed = [r for r in results if r.outcome == "failed"]
@@ -127,7 +136,7 @@ def _snapshot_one(
         f"{name}: {changed} changed, "
         f"{len(results) - changed - len(failed)} unchanged, {len(failed)} failed"
     )
-    return line, [f"{name}, {r.kind}: {r.detail}" for r in failed]
+    return line, [*(f"{name}, {r.kind}: {r.detail}" for r in failed), *problems]
 
 
 @_one_at_a_time
@@ -259,6 +268,34 @@ def _prices_due(db, now: datetime) -> bool:
     return row[0] is None or now - datetime.fromisoformat(row[0]) >= PRICES_EVERY
 
 
+def _refresh_signals(db, esi: EsiClient, now: datetime) -> list[str]:
+    """Kills, incursions and insurance prices; a problem line if ESI fails."""
+    try:
+        signals.refresh(db, esi, now)
+    except EsiError as exc:
+        return [f"Risk signals: {exc}"]
+    return []
+
+
+def _public_due(db, now: datetime) -> bool:
+    return _prices_due(db, now) or _freelance_due(db, now) or signals.due(db, now)
+
+
+def _refresh_public(db, esi: EsiClient, now: datetime) -> list[str]:
+    """Market prices, Freelance Jobs and risk signals, each when it's due."""
+    problems = []
+    if _prices_due(db, now):
+        try:
+            goals.update_prices(db, esi)
+        except EsiError as exc:
+            problems.append(f"Market prices: {exc}")
+    if _freelance_due(db, now):
+        problems.extend(_refresh_freelance(db, esi, now))
+    if signals.due(db, now):
+        problems.extend(_refresh_signals(db, esi, now))
+    return problems
+
+
 def _check_static_data(config: Config, db_path, now: datetime) -> list[str]:
     """Once a day, note which static data build CCP has published."""
     db = store.connect(db_path)
@@ -298,7 +335,7 @@ def auto_refresh_once(
             due = due_kinds(db, character.character_id, now)
             if due:
                 work.append((character, due))
-        if not work and not _prices_due(db, now) and not _freelance_due(db, now):
+        if not work and not _public_due(db, now):
             outcomes.update(db)
             return report
         with auth.http_client(config) as client:
@@ -317,13 +354,7 @@ def auto_refresh_once(
                     continue
                 report.checked[character.name] = len(due)
                 report.problems.extend(problems)
-            if _prices_due(db, now):
-                try:
-                    goals.update_prices(db, esi)
-                except EsiError as exc:
-                    report.problems.append(f"Market prices: {exc}")
-            if _freelance_due(db, now):
-                report.problems.extend(_refresh_freelance(db, esi, now))
+            report.problems.extend(_refresh_public(db, esi, now))
         outcomes.update(db)
     finally:
         db.close()

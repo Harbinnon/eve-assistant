@@ -41,6 +41,20 @@ NOT_LEARNED = {
 RISK_WORTH_MENTIONING = 0.05  # of an option's ISK
 
 
+def _and(parts: list[str]) -> str:
+    """["a", "b", "c"] -> "a, b and c"."""
+    return parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " and " + parts[-1]
+
+
+def _where_most(most: list) -> str:
+    """ ", most in Sivala (63) and Jita (44)", or ", in Jufvitte" for one system."""
+    if not most:
+        return ""
+    if len(most) == 1:
+        return f", in {most[0][0]}"
+    return ", most in " + _and([f"{name} ({n})" for name, n in most])
+
+
 def _same_stack(d: dict) -> str:
     step, isk = d["step"], numbers.isk
     extra_isk = d["isk"] - d["rival_isk"]
@@ -189,8 +203,34 @@ def describe(code: str, detail: dict | None = None) -> str:
         "ores_assumed": lambda: (
             f"No mining here on record; assumed common ores: {', '.join(d.get('ores', []))}."
         ),
+        "no_live_signals": lambda: (
+            "No fresh kill data from EVE, so the chance of loss comes from security alone "
+            "(highsec low, lowsec medium). It's read every hour while the dashboard runs."
+        ),
+        "recent_kills": lambda: (
+            f"{d.get('kills', 0)} {'ship or pod' if d.get('kills', 0) == 1 else 'ships or pods'}"
+            f" destroyed in the last hour along the way{_where_most(d.get('most', []))}."
+        ),
+        "hotspot": lambda: (
+            f"Gank hotspot or busy hub: {d.get('kills', 0)} ships and pods destroyed in "
+            f"{d.get('system', '?')} in the last hour."
+        ),
+        "no_recent_kills": lambda: "No ships destroyed along the way in the last hour.",
+        "camped": lambda: (
+            f"Possibly camped: {d.get('kills', 0)} ships and pods destroyed in "
+            f"{d.get('system', '?')} in the last hour."
+        ),
+        "incursion": lambda: (
+            f"Incursion in {', '.join(d.get('systems', []))}: Sansha's ships there attack "
+            "anyone, miners included."
+        ),
+        "loss_chances_learned": lambda: (
+            f"Loss chances are learned from {d.get('trips', 0)} of your trips and "
+            f"{d.get('losses', 0)} loss{'es' if d.get('losses', 0) != 1 else ''}, starting "
+            "from guesses that keep 100 trips' weight."
+        ),
         "loss_chances_are_guesses": lambda: (
-            "Loss chances are starting guesses until kill data and your own history refine them."
+            "Loss chances are starting guesses until your own trips and losses refine them."
         ),
         "no_couriers_fit": lambda: "No courier contracts fit your ships, wallet and time.",
         "selling_at_nearby_station": lambda: (
@@ -286,6 +326,16 @@ def risk_summary(risk: dict) -> str:
     return (
         f"Chance of loss: {band}. At stake: {risk.get('exposure', 0):,.0f} ISK "
         f"({risk.get('share_of_net_worth', 0):.1%} of net worth). Expected loss: "
-        f"{risk.get('expected_loss', 0):,.0f} ISK."
-        + (" The chance is a starting guess." if risk.get("chance_is_a_guess") else "")
+        f"{risk.get('expected_loss', 0):,.0f} ISK"
+        + (
+            f", after the {risk['payout']:,.0f} ISK EVE pays for the hull (uninsured)."
+            if risk.get("payout")
+            else "."
+        )
+        + (
+            " The chance is a starting guess."
+            if risk.get("chance_is_a_guess")
+            else f" The chance ({risk.get('chance', 0):.2%} a trip) is learned from "
+            f"{risk.get('trips', 0)} of your trips."
+        )
     )
