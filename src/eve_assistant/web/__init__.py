@@ -153,10 +153,10 @@ RETURN_PAGES = {page: page for page in (TODAY, CHARACTERS, GOALS, "/skills", "/h
 
 BAND_LABELS = {
     "none": "No player risk (Exordium)",
-    "very_low": "Very low",
-    "low": "Low (highsec)",
-    "medium": "Medium (lowsec)",
-    "high": "High (nullsec, unknown)",
+    "very_low": "Very low (quiet highsec)",
+    "low": "Low (busy highsec, quiet lowsec)",
+    "medium": "Medium (active lowsec, incursions)",
+    "high": "High (camped, nullsec, unknown)",
 }
 
 MESSAGES = {

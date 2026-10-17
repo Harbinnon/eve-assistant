@@ -2,8 +2,10 @@
 
 Design: docs/design.md section 4.8. Exposure is measured as a share of the
 character's net worth, so losing 20M means more to a new character than to
-an established one. The chance bands come from route security for now;
-kill data (zKillboard) refines them in phase 4.
+an established one. The chance band of a route or system comes from its
+security and, while they're fresh, the live signals (signals.py): ships
+lost along it in the last hour, camps and incursions. The payout EVE makes
+for a lost hull is taken off the expected loss.
 
 ALL loss probabilities below are starting guesses, flagged as such in every
 result, and are meant to be replaced by learned values.
@@ -12,7 +14,8 @@ result, and are meant to be replaced by learned values.
 import sqlite3
 from dataclasses import dataclass
 
-from eve_assistant import goals, snapshots, worth
+from eve_assistant import goals, routes, signals, snapshots, worth
+from eve_assistant.skills import Reason
 
 # "none": Exordium, where PvP is switched off, so other players cannot take anything.
 BANDS = ("none", "very_low", "low", "medium", "high")
@@ -22,6 +25,9 @@ LOSS_CHANCE = {"none": 0.0, "very_low": 0.001, "low": 0.005, "medium": 0.03, "hi
 
 # Exposed share of net worth: upper bounds of the four columns.
 SHARE_COLUMNS = (0.02, 0.10, 0.25)
+
+# Ships and pods lost in one system in the last hour from which it counts as camped.
+CAMP_KILLS = 5
 
 MATRIX = {
     "none": ("green", "green", "green", "green"),
@@ -39,6 +45,7 @@ class RiskRating:
     exposure: float
     share_of_net_worth: float
     expected_loss: float
+    payout: float = 0.0  # what EVE pays for the hull if it's lost
 
     def as_dict(self) -> dict:
         return {
@@ -47,8 +54,17 @@ class RiskRating:
             "exposure": self.exposure,
             "share_of_net_worth": self.share_of_net_worth,
             "expected_loss": self.expected_loss,
+            "payout": self.payout,
             "chance_is_a_guess": True,
         }
+
+
+@dataclass(frozen=True)
+class Assessment:
+    """A route's or system's chance band, and what it was decided from."""
+
+    band: str
+    reasons: tuple[Reason, ...] = ()
 
 
 def band_for_security(lowest_security: float | None, region_name: str | None = None) -> str:
@@ -64,7 +80,63 @@ def band_for_security(lowest_security: float | None, region_name: str | None = N
     return "high"
 
 
-def rate(band: str, exposure: float, net_worth: float) -> RiskRating:
+def _names(db: sqlite3.Connection, system_ids) -> list[str]:
+    found = []
+    for system_id in system_ids:
+        row = db.execute(
+            "SELECT name FROM sde_solar_systems WHERE system_id = ?", (system_id,)
+        ).fetchone()
+        found.append(row["name"] if row else str(system_id))
+    return found
+
+
+def _worse(a: str, b: str) -> str:
+    return max(a, b, key=BANDS.index)
+
+
+def _by_kills(lowest: float, any_kills: bool) -> str:
+    """Quiet or busy, by security: highsec very low or low, lowsec low or medium."""
+    rounded = round(lowest, 1)
+    if rounded >= 0.5:
+        return "low" if any_kills else "very_low"
+    if rounded > 0.0:
+        return "medium" if any_kills else "low"
+    return "high"
+
+
+def assess(
+    db: sqlite3.Connection, systems, region_name: str | None = None, now: str | None = None
+) -> Assessment:
+    """The chance band for travelling through, or working in, these systems."""
+    systems = [s for s in dict.fromkeys(systems) if s is not None]
+    if region_name == "Exordium":
+        return Assessment("none")  # PvP is switched off there
+    lowest = routes.lowest_security(db, systems) if systems else None
+    if lowest is None:
+        return Assessment("high")
+    if not signals.fresh(db, now):
+        return Assessment(band_for_security(lowest))  # the plan notes it once
+    kills = signals.kills_in(db, systems)
+    band = _by_kills(lowest, bool(kills))
+    if kills:
+        reasons = [Reason("recent_kills", {"kills": sum(kills.values()),
+                                           "systems": _names(db, kills)})]  # fmt: skip
+    else:
+        reasons = [Reason("no_recent_kills", {"systems": len(systems)})]
+    camped = {s: n for s, n in kills.items() if n >= CAMP_KILLS}
+    if camped:
+        band = "high"
+        worst = max(camped, key=camped.get)
+        reasons.append(Reason("camped", {"system": _names(db, [worst])[0], "kills": camped[worst]}))
+    infested = signals.incursions_in(db, systems)
+    if infested:
+        band = _worse(band, "medium")
+        reasons.append(Reason("incursion", {"systems": _names(db, infested)}))
+    return Assessment(band, tuple(reasons))
+
+
+def rate(band: str, exposure: float, net_worth: float, payout: float = 0.0) -> RiskRating:
+    """payout: what EVE pays for the hull if it's lost, taken off the expected loss."""
     if net_worth > 0:
         share = exposure / net_worth
     elif exposure > 0:
@@ -77,7 +149,8 @@ def rate(band: str, exposure: float, net_worth: float) -> RiskRating:
         rating=MATRIX[band][column],
         exposure=exposure,
         share_of_net_worth=share,
-        expected_loss=LOSS_CHANCE[band] * exposure,
+        expected_loss=LOSS_CHANCE[band] * max(0.0, exposure - payout),
+        payout=payout,
     )
 
 

@@ -189,6 +189,23 @@ def describe(code: str, detail: dict | None = None) -> str:
         "ores_assumed": lambda: (
             f"No mining here on record; assumed common ores: {', '.join(d.get('ores', []))}."
         ),
+        "no_live_signals": lambda: (
+            "No fresh kill data from EVE, so the chance of loss comes from security alone "
+            "(highsec low, lowsec medium). It's read every hour while the dashboard runs."
+        ),
+        "recent_kills": lambda: (
+            f"{d.get('kills', 0)} ship{'s' if d.get('kills', 0) != 1 else ''} or pods destroyed "
+            f"in the last hour along the way ({', '.join(d.get('systems', []))})."
+        ),
+        "no_recent_kills": lambda: "No ships destroyed along the way in the last hour.",
+        "camped": lambda: (
+            f"Possibly camped: {d.get('kills', 0)} ships and pods destroyed in "
+            f"{d.get('system', '?')} in the last hour."
+        ),
+        "incursion": lambda: (
+            f"Incursion in {', '.join(d.get('systems', []))}: Sansha's ships there attack "
+            "anyone, miners included."
+        ),
         "loss_chances_are_guesses": lambda: (
             "Loss chances are starting guesses until kill data and your own history refine them."
         ),
@@ -286,6 +303,11 @@ def risk_summary(risk: dict) -> str:
     return (
         f"Chance of loss: {band}. At stake: {risk.get('exposure', 0):,.0f} ISK "
         f"({risk.get('share_of_net_worth', 0):.1%} of net worth). Expected loss: "
-        f"{risk.get('expected_loss', 0):,.0f} ISK."
+        f"{risk.get('expected_loss', 0):,.0f} ISK"
+        + (
+            f", after the {risk['payout']:,.0f} ISK EVE pays for the hull (uninsured)."
+            if risk.get("payout")
+            else "."
+        )
         + (" The chance is a starting guess." if risk.get("chance_is_a_guess") else "")
     )

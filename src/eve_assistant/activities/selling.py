@@ -11,6 +11,7 @@ from eve_assistant import (
     pace,
     risk,
     routes,
+    signals,
     skills,
     snapshots,
 )
@@ -35,7 +36,8 @@ def hangar_candidates(
         db, location.get("structure_id")
     )
     here_location = docked_at or location.get("structure_id")
-    active_value = next((s.value for s in ships if s.is_active), 0.0)
+    active = next((s for s in ships if s.is_active), None)
+    active_value = active.value if active else 0.0
     sale = corrections.correction(db, character_id, "sale_price")
     per_jump = corrections.minutes_per_jump(db, character_id)
     a_jump = per_jump[0]
@@ -85,12 +87,15 @@ def hangar_candidates(
                 elif hauler is not None:
                     multi_trip.append((option, hauler, switch, 1))  # too long: a project
             for option, hauler, _switch, total in fitting[:2]:  # best, and the next best
+                assessed = risk.Assessment("very_low")
                 if travel_jumps == 0 and option.jumps == 0:
                     rating = risk.rate("very_low", 0.0, net_worth)  # docked: nothing exposed
                 else:
-                    band = risk.band_for_security(routes.lowest_security(db, travel_path))
+                    assessed = risk.assess(db, travel_path)
+                    carrier = hauler or active
                     stake = hauler.value + option.isk if hauler is not None else active_value
-                    rating = risk.rate(band, stake, net_worth)
+                    payout = signals.hull_payout(db, carrier.type_id if carrier else None)
+                    rating = risk.rate(assessed.band, stake, net_worth, payout)
                 if station_id == docked_at:
                     where = ""
                 elif travel_jumps == 0:
@@ -101,7 +106,7 @@ def hangar_candidates(
                 else:
                     where = f"Go to {station['name']} ({travel_jumps} jumps), then: "
                 ship_note = f" (in your {hauler.name})" if hauler is not None else ""
-                reasons = (*option.reasons, sale.reason())
+                reasons = (*option.reasons, sale.reason(), *assessed.reasons)
                 if station_id != docked_at:
                     reasons = (
                         Reason(
@@ -154,8 +159,9 @@ def hangar_candidates(
                     + trips * per_trip
                     - option.jumps * a_jump  # no trip back after the last load
                 )
-                band = risk.band_for_security(routes.lowest_security(db, travel_path))
+                assessed = risk.assess(db, travel_path)
                 stake = hauler.value + option.isk / trips
+                payout = signals.hull_payout(db, hauler.type_id)
                 title = (
                     f"Haul {analysis.type_name} x{quantity:,} from {station['name']} to "
                     f"{option.location} in your {hauler.name}"
@@ -171,7 +177,7 @@ def hangar_candidates(
                         total_minutes=total,
                         isk=option.isk * sale.factor,
                         minutes=minutes,
-                        rating=risk.rate(band, stake, net_worth),
+                        rating=risk.rate(assessed.band, stake, net_worth, payout),
                         reasons=(
                             Reason(
                                 "multi_trip_haul",
@@ -179,6 +185,7 @@ def hangar_candidates(
                             ),  # fmt: skip
                             *option.reasons,
                             sale.reason(),
+                            *assessed.reasons,
                         ),
                         inputs={
                             "type_id": type_id,
@@ -246,9 +253,12 @@ def delivery_candidates(
                 if needed > minutes:
                     continue
                 isk = units * job.reward_per_unit
+                assessed = risk.Assessment("very_low")
                 if jumps:
-                    band = risk.band_for_security(routes.lowest_security(db, path))
-                    rating = risk.rate(band, (active.value if active else 0.0) + isk, net_worth)
+                    assessed = risk.assess(db, path)
+                    payout = signals.hull_payout(db, active.type_id if active else None)
+                    stake = (active.value if active else 0.0) + isk
+                    rating = risk.rate(assessed.band, stake, net_worth, payout)
                 else:
                     rating = risk.rate("very_low", 0.0, net_worth)
                 name = skills.type_name(db, type_id)
@@ -275,6 +285,7 @@ def delivery_candidates(
                                 },
                             ),  # fmt: skip
                             *([jump_reason] if jumps else []),
+                            *assessed.reasons,
                         ),
                         inputs={
                             "station_id": stack_at,

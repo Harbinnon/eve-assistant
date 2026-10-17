@@ -13,7 +13,7 @@ from eve_assistant import (
     mining,
     ore,
     risk,
-    routes,
+    signals,
     skills,
     snapshots,
 )
@@ -114,14 +114,10 @@ def mining_candidates(
         if mining_minutes < MIN_MINING_MINUTES:
             continue
         volume = rate * mining_minutes
-        securities = [here["security_status"]] if here else []
-        if board.jumps:
-            route_low = routes.lowest_security(db, board.path)
-            if route_low is not None:
-                securities.append(route_low)
-        band = risk.band_for_security(
-            min(securities) if securities else None, here["region"] if here else None
+        assessed = risk.assess(
+            db, [system_id, *(board.path if board.jumps else [])], here["region"] if here else None
         )
+        payout = signals.hull_payout(db, ship.type_id)
         prefix = (
             f"Board your {ship.name} ({board.minutes:.0f} min), then mine"
             if board.needs_switch
@@ -153,7 +149,7 @@ def mining_candidates(
                     # What sales really fetch, as learned; unit_prices keep the market's.
                     isk=best.isk * sale.factor,
                     minutes=minutes,
-                    risk=risk.rate(band, ship.value + hold_value, net_worth),
+                    risk=risk.rate(assessed.band, ship.value + hold_value, net_worth, payout),
                     reasons=(
                         Reason(
                             "mining_estimate",
@@ -161,6 +157,7 @@ def mining_candidates(
                         ),
                         learned.reason(),
                         sale.reason(),
+                        *assessed.reasons,
                         *([fit_note] if fit_note else []),
                         *estimate.reasons,
                     ),

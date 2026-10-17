@@ -24,6 +24,7 @@ from eve_assistant import (
     preferences,
     projects,
     risk,
+    signals,
     skills,
     snapshots,
 )
@@ -270,6 +271,8 @@ def build_plan(
 
     if not fit.chosen:
         notes.append(Reason("nothing_fits"))
+    if not signals.fresh(db):
+        notes.append(Reason("no_live_signals"))
     notes.append(Reason("loss_chances_are_guesses"))
     return Plan(
         character_id=character_id,
