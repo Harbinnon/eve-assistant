@@ -1,7 +1,14 @@
 # Dependabot opens pull requests for outdated or vulnerable dependencies.
+#
+# Only the libraries chosen directly in pyproject.toml are watched (the
+# "allow" list, kept in sync with pyproject.toml by a test). Indirect
+# libraries are pinned as a matched set in constraints.txt and updated
+# deliberately by regenerating that file; bumping them one at a time breaks
+# pairs that must move together (e.g. pydantic and pydantic-core). pip-audit
+# in CI still checks every pinned library for known vulnerabilities.
+#
 # The cooldown keeps the project's rule of only using releases at least two
-# weeks old (security fixes are not delayed by it). Pull requests still need
-# the owner's review, and constraints.txt must be regenerated alongside.
+# weeks old. Pull requests still need the owner's review.
 version: 2
 updates:
   - package-ecosystem: "pip"
@@ -11,6 +18,20 @@ updates:
     cooldown:
       default-days: 14
     open-pull-requests-limit: 5
+    allow:
+      - dependency-name: "fastapi"
+      - dependency-name: "uvicorn"
+      - dependency-name: "jinja2"
+      - dependency-name: "python-multipart"
+      - dependency-name: "httpx"
+      - dependency-name: "pyjwt"
+      - dependency-name: "cryptography"
+      - dependency-name: "pytest"
+      - dependency-name: "ruff"
+      - dependency-name: "pre-commit"
+      - dependency-name: "detect-secrets"
+      - dependency-name: "respx"
+      - dependency-name: "pip-audit"
 
   - package-ecosystem: "github-actions"
     directory: "/"

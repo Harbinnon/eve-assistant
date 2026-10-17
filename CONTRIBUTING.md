@@ -37,7 +37,8 @@ an agreed rule; once it is public it is enforced.
 - Python 3.13. Format and lint with `ruff format` and `ruff check`.
 - Every change comes with tests. Network calls are mocked in tests.
 - New libraries: propose them in the pull request with a reason. Versions
-  are pinned exactly.
+  are pinned exactly, `constraints.txt` is regenerated, and the library is
+  added to the allow list in `.github/dependabot.yml` (a test checks).
 - Design changes: update [docs/design.md](docs/design.md) in the same pull
   request.
 
