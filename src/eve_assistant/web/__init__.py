@@ -58,7 +58,10 @@ SECURITY_HEADERS = {
     ),
     "X-Frame-Options": "DENY",
     "X-Content-Type-Options": "nosniff",
-    "Referrer-Policy": "no-referrer",
+    # same-origin, not no-referrer: under no-referrer browsers send "Origin: null"
+    # on the dashboard's own form posts, which the cross-site check rightly
+    # rejects. Other sites still get no referrer.
+    "Referrer-Policy": "same-origin",
     "Cross-Origin-Opener-Policy": "same-origin",
     "Cross-Origin-Resource-Policy": "same-origin",
     "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
