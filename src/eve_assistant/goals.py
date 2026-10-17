@@ -150,6 +150,30 @@ def _wallet(db: sqlite3.Connection, character_id: int | None) -> float | None:
     return total if seen else None
 
 
+def _skills_part(db: sqlite3.Connection, goal: Goal, reasons: list[Reason]):
+    """For ship and skill goals: (requirement, price, is_alpha, target ISK)."""
+    character = skills.load_character_skills(db, goal.character_id)
+    if character.is_alpha and character.clone_state == "unknown":
+        reasons.append(Reason("clone_state_unknown"))
+    if goal.kind == "skill":
+        requirement = skills.plan_skill(db, character, goal.type_id, goal.level)
+        return requirement, None, character.is_alpha, None
+    price = price_of(db, goal.type_id)
+    if price is None:
+        reasons.append(Reason("no_price"))
+    return skills.plan(db, character, goal.type_id), price, character.is_alpha, price
+
+
+def _goal_date(db: sqlite3.Connection, goal: Goal, isk_needed, reasons: list[Reason]):
+    """Weeks to bank the ISK at the character's real pace: (weeks, earning rate)."""
+    if not isk_needed or goal.character_id is None:
+        return None, None
+    earning = pace.banked_per_hour(db, goal.character_id)
+    if earning is None:
+        reasons.append(Reason("goal_date_needs_sessions"))
+    return pace.weeks_to(isk_needed, earning, pace.weekly_play(db).minutes), earning
+
+
 def evaluate(db: sqlite3.Connection, goal: Goal) -> GoalStatus:
     name = None
     if goal.character_id is not None:
@@ -159,35 +183,15 @@ def evaluate(db: sqlite3.Connection, goal: Goal) -> GoalStatus:
         name = row["name"] if row else None
     wallet = _wallet(db, goal.character_id)
 
-    requirement = None
-    price = None
-    is_alpha = None
-    target_isk = goal.isk
     reasons: list[Reason] = []
+    requirement, price, is_alpha, target_isk = None, None, None, goal.isk
     if goal.kind in ("fly_ship", "skill"):
-        character = skills.load_character_skills(db, goal.character_id)
-        is_alpha = character.is_alpha
-        if goal.kind == "fly_ship":
-            requirement = skills.plan(db, character, goal.type_id)
-            price = price_of(db, goal.type_id)
-            target_isk = price
-            if price is None:
-                reasons.append(Reason("no_price"))
-        else:
-            requirement = skills.plan_skill(db, character, goal.type_id, goal.level)
-            target_isk = None
-        if character.is_alpha and character.clone_state == "unknown":
-            reasons.append(Reason("clone_state_unknown"))
+        requirement, price, is_alpha, target_isk = _skills_part(db, goal, reasons)
 
     isk_needed = None
     if target_isk is not None and wallet is not None:
         isk_needed = max(0.0, target_isk - wallet)
-    weeks, earning = None, None
-    if isk_needed and goal.character_id is not None:
-        earning = pace.banked_per_hour(db, goal.character_id)
-        weeks = pace.weeks_to(isk_needed, earning, pace.weekly_play(db).minutes)
-        if earning is None:
-            reasons.append(Reason("goal_date_needs_sessions"))
+    weeks, earning = _goal_date(db, goal, isk_needed, reasons)
     return GoalStatus(
         goal, name, requirement, price, wallet, isk_needed, is_alpha, tuple(reasons), weeks, earning
     )
