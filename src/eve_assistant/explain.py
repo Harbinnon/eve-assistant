@@ -41,6 +41,11 @@ NOT_LEARNED = {
 RISK_WORTH_MENTIONING = 0.05  # of an option's ISK
 
 
+def _and(parts: list[str]) -> str:
+    """["a", "b", "c"] -> "a, b and c"."""
+    return parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " and " + parts[-1]
+
+
 def _same_stack(d: dict) -> str:
     step, isk = d["step"], numbers.isk
     extra_isk = d["isk"] - d["rival_isk"]
@@ -194,8 +199,20 @@ def describe(code: str, detail: dict | None = None) -> str:
             "(highsec low, lowsec medium). It's read every hour while the dashboard runs."
         ),
         "recent_kills": lambda: (
-            f"{d.get('kills', 0)} ship{'s' if d.get('kills', 0) != 1 else ''} or pods destroyed "
-            f"in the last hour along the way ({', '.join(d.get('systems', []))})."
+            f"{d.get('kills', 0)} {'ship or pod' if d.get('kills', 0) == 1 else 'ships or pods'}"
+            " destroyed in the last hour along the way"
+            + (
+                ", most in " + _and([f"{name} ({n})" for name, n in d["most"]])
+                if len(d.get("most", [])) > 1
+                else f", in {d['most'][0][0]}"
+                if d.get("most")
+                else ""
+            )
+            + "."
+        ),
+        "hotspot": lambda: (
+            f"Gank hotspot or busy hub: {d.get('kills', 0)} ships and pods destroyed in "
+            f"{d.get('system', '?')} in the last hour."
         ),
         "no_recent_kills": lambda: "No ships destroyed along the way in the last hour.",
         "camped": lambda: (

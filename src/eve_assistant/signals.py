@@ -22,8 +22,12 @@ from eve_assistant.store import utc_now
 SIGNALS_EVERY = timedelta(hours=1)  # ESI caches system kills for an hour
 INSURANCE_EVERY = timedelta(days=1)
 STALE_AFTER = timedelta(hours=3)
-# Ships and pods lost in one system in the last hour from which it counts as camped.
-CAMP_KILLS = 5
+# Ships and pods lost in one system in the last hour from which it's a hotspot.
+# Calibrated on a real hour (17 Oct 2026): 86% of highsec systems had none and
+# 99% under 14, the top being gank spots and hubs (Sivala 63, Jita 44, Uedama
+# 35); in lowsec 95% had under 5, the top being PvP hubs (Obe 65, Amamake 55).
+HIGHSEC_HOTSPOT = 20  # a gank hotspot or a busy hub
+LOWSEC_CAMP = 10  # likely camped
 UNINSURED_SHARE = 0.4  # of the Platinum payout, for a hull with no insurance
 SETTING = "signals_checked"
 INSURANCE_SETTING = "insurance_checked"
@@ -110,16 +114,21 @@ def kills_in(db: sqlite3.Connection, system_ids) -> dict[int, int]:
     return found
 
 
-def camped_systems(db: sqlite3.Connection, now: str | None = None) -> set[int]:
-    """Systems that look camped right now; none when the signals are stale."""
+def hotspots(db: sqlite3.Connection, now: str | None = None) -> dict[int, tuple[int, bool]]:
+    """Systems over their security's threshold right now, with (kills, is
+    highsec); none when the signals are stale. Highsec gank hotspots and hubs
+    from HIGHSEC_HOTSPOT, likely camps elsewhere from LOWSEC_CAMP."""
     if not fresh(db, now):
-        return set()
-    return {
-        r[0]
-        for r in db.execute(
-            "SELECT system_id FROM system_kills WHERE ship_kills + pod_kills >= ?", (CAMP_KILLS,)
-        )
-    }
+        return {}
+    rows = db.execute(
+        "SELECT k.system_id, k.ship_kills + k.pod_kills AS kills, "
+        "ROUND(s.security_status, 1) >= 0.5 AS highsec FROM system_kills k "
+        "JOIN sde_solar_systems s USING (system_id) "
+        "WHERE k.ship_kills + k.pod_kills >= CASE WHEN ROUND(s.security_status, 1) >= 0.5 "
+        "THEN ? ELSE ? END",
+        (HIGHSEC_HOTSPOT, LOWSEC_CAMP),
+    )
+    return {r["system_id"]: (r["kills"], bool(r["highsec"])) for r in rows}
 
 
 def incursions_in(db: sqlite3.Connection, system_ids) -> list[int]:

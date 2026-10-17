@@ -47,7 +47,6 @@ LOSS_CHANCE = {"none": 0.0, "very_low": 0.001, "low": 0.005, "medium": 0.03, "hi
 # Exposed share of net worth: upper bounds of the four columns.
 SHARE_COLUMNS = (0.02, 0.10, 0.25)
 
-CAMP_KILLS = signals.CAMP_KILLS
 PRIOR_TRIPS = 100.0  # how many trips' weight the starting guesses keep
 PRIOR_VOTES = 5.0  # how many choices' weight the starting lines keep
 
@@ -177,15 +176,22 @@ def assess(
     kills = signals.kills_in(db, systems)
     band = _by_kills(lowest, bool(kills))
     if kills:
-        reasons = [Reason("recent_kills", {"kills": sum(kills.values()),
-                                           "systems": _names(db, kills)})]  # fmt: skip
+        most = sorted(kills, key=kills.get, reverse=True)[:3]
+        reasons = [Reason("recent_kills", {
+            "kills": sum(kills.values()),
+            "most": [[name, kills[s]] for name, s in zip(_names(db, most), most, strict=True)],
+        })]  # fmt: skip
     else:
         reasons = [Reason("no_recent_kills", {"systems": len(systems)})]
-    camped = {s: n for s, n in kills.items() if n >= CAMP_KILLS}
-    if camped:
-        band = "high"
-        worst = max(camped, key=camped.get)
-        reasons.append(Reason("camped", {"system": _names(db, [worst])[0], "kills": camped[worst]}))
+    hot = {s: found for s, found in signals.hotspots(db, now).items() if s in systems}
+    for system_id, (count, highsec) in sorted(hot.items(), key=lambda h: -h[1][0]):
+        name = _names(db, [system_id])[0]
+        if highsec:
+            band = _worse(band, "medium")
+            reasons.append(Reason("hotspot", {"system": name, "kills": count}))
+        else:
+            band = "high"
+            reasons.append(Reason("camped", {"system": name, "kills": count}))
     infested = signals.incursions_in(db, systems)
     if infested:
         band = _worse(band, "medium")

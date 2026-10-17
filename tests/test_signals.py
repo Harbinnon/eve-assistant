@@ -85,7 +85,9 @@ def test_an_uninsured_hull_still_pays_forty_percent(db):
         ([HIGH_A, HIGH_B], [(HIGH_B, 1)], "low", ["recent_kills"]),
         ([HIGH_A, LOW], [], "low", ["no_recent_kills"]),
         ([HIGH_A, LOW], [(LOW, 2)], "medium", ["recent_kills"]),
-        ([HIGH_A, HIGH_B], [(HIGH_A, 5)], "high", ["recent_kills", "camped"]),
+        ([HIGH_A, HIGH_B], [(HIGH_A, 19)], "low", ["recent_kills"]),  # busy, not a hotspot
+        ([HIGH_A, HIGH_B], [(HIGH_A, 20)], "medium", ["recent_kills", "hotspot"]),
+        ([HIGH_A, LOW], [(LOW, 10)], "high", ["recent_kills", "camped"]),
         ([NULL], [], "high", ["no_recent_kills"]),
     ],
 )
@@ -115,14 +117,21 @@ def test_the_hull_payout_comes_off_the_expected_loss():
 
 
 def test_reasons_read_plainly(db):
-    _read(db, kills=[(HIGH_A, 6)], incursions=[HIGH_B])
+    _read(db, kills=[(HIGH_A, 25), (HIGH_B, 2), (LOW, 12)], incursions=[HIGH_B])
     texts = [
         explain.describe(r.code, r.detail)
-        for r in risk.assess(db, [HIGH_A, HIGH_B], now=NOW.isoformat()).reasons
+        for r in risk.assess(db, [HIGH_A, HIGH_B, LOW], now=NOW.isoformat()).reasons
     ]
     assert texts == [
-        "6 ships or pods destroyed in the last hour along the way (Highsec A).",
-        "Possibly camped: 6 ships and pods destroyed in Highsec A in the last hour.",
+        "39 ships or pods destroyed in the last hour along the way, most in Highsec A (25), "
+        "Lowsec (12) and Highsec B (2).",
+        "Gank hotspot or busy hub: 25 ships and pods destroyed in Highsec A in the last hour.",
+        "Possibly camped: 12 ships and pods destroyed in Lowsec in the last hour.",
         "Incursion in Highsec B: Sansha's ships there attack anyone, miners included.",
     ]
+    _read(db, kills=[(HIGH_B, 1)])
+    (only,) = risk.assess(db, [HIGH_A, HIGH_B], now=NOW.isoformat()).reasons
+    assert explain.describe(only.code, only.detail) == (
+        "1 ship or pod destroyed in the last hour along the way, in Highsec B."
+    )
     assert "security alone" in explain.describe("no_live_signals", {})

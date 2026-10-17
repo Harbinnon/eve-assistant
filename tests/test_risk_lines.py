@@ -25,30 +25,36 @@ def db():
     conn.close()
 
 
-def _kills(db, *systems, n=6):
+def _kills(db, *systems, n=12):  # lowsec: camped from 10
     for system in systems:
         db.execute("INSERT INTO system_kills VALUES (?, ?, 0, 0, 'x')", (system, n))
     signals._mark(db, signals.SETTING, datetime.now(UTC))
 
 
-def test_routes_go_around_a_camp_when_they_can(db):
+def test_routes_go_around_a_camp_when_the_detour_is_short(db):
     assert routes.jumps_between(db, A, D) == [A, B, D]
     _kills(db, B)
-    assert routes.jumps_between(db, A, D) == [A, C, E, D]
+    assert routes.jumps_between(db, A, D) == [A, C, E, D]  # one jump more beats a camp
     assert routes.jump_count(db, A, D, avoid_camps=False) == 2  # timing past travel
     _kills(db, C)
-    assert routes.jumps_between(db, A, D) == [A, B, D]  # no way around: the short one
+    assert routes.jumps_between(db, A, D) == [A, B, D]  # a camp either way: the short one
+
+
+def test_a_long_detour_isnt_worth_it(db, monkeypatch):
+    monkeypatch.setattr(routes, "HOTSPOT_JUMPS", 0.5)
+    _kills(db, B)
+    assert routes.jumps_between(db, A, D) == [A, B, D]
 
 
 def test_the_ends_are_never_avoided_and_stale_camps_are_ignored(db):
     _kills(db, A, D)
     assert routes.jumps_between(db, A, D) == [A, B, D]
-    _kills(db, B, n=3)  # busy, not camped
+    _kills(db, B, n=9)  # busy, not camped
     assert routes.jumps_between(db, A, D) == [A, B, D]
     db.execute("UPDATE settings SET value = '2020-01-01T00:00:00+00:00' WHERE key = ?",
                (signals.SETTING,))  # fmt: skip
     db.execute("UPDATE system_kills SET ship_kills = 9")
-    assert signals.camped_systems(db) == set()
+    assert signals.hotspots(db) == {}
 
 
 def _step(db, plan_id, n, rating, response=None, exposure=1e6):
