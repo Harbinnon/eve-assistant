@@ -41,9 +41,17 @@ from eve_assistant.skills import Reason
 from eve_assistant.store import utc_now
 
 # What can be "new to you"; reminders never are.
-ACTIVITY_KINDS = ("mining", "courier", "project_start", "gas", "manufacturing", "mission")
+ACTIVITY_KINDS = (
+    "mining",
+    "courier",
+    "project_start",
+    "gas",
+    "manufacturing",
+    "mission",
+    "exploration",
+)
 # Main activities sized to the time left (the rest take the minutes they need).
-SIZED_KINDS = ("mining", "project_start", "gas", "mission")
+SIZED_KINDS = ("mining", "project_start", "gas", "mission", "exploration")
 
 
 class PlanError(Exception):

@@ -24,6 +24,7 @@ LEARNED = {
     "minutes_per_jump": "Travel time",
     "gas_rate": "Gas harvesting speed",
     "mission_income": "Mission income",
+    "exploration_income": "Exploration income",
 }
 # What a plan uses until a correction has sessions to learn from, and where it learns from.
 NOT_LEARNED = {
@@ -34,6 +35,10 @@ NOT_LEARNED = {
     "sale_price": (
         "so plans expect what buyers' orders pay now. It learns from what your market sales "
         "in recorded sessions actually got."
+    ),
+    "exploration_income": (
+        "so this is a starting guess from players' reports. It learns from the change in "
+        "your net worth across exploration sessions."
     ),
     "mission_income": (
         "so this is a starting guess from one published figure. It learns from the "
@@ -212,6 +217,15 @@ def describe(code: str, detail: dict | None = None) -> str:
         ),
         "ores_assumed": lambda: (
             f"No mining here on record; assumed common ores: {', '.join(d.get('ores', []))}."
+        ),
+        "exploration_guess": lambda: (
+            f"About {numbers.isk(d.get('isk_per_hour'))} ISK an hour from "
+            f"{' and '.join(d.get('sites', []))} sites, a starting guess (players report "
+            "500k-1.5M in highsec, EVE forums; loot is very much luck). Sites have to be "
+            "scanned down first."
+        ),
+        "exploration_needs_fit": lambda: (
+            "Exploration: fit a probe launcher and a relic or data analyzer to see it in plans."
         ),
         "mission_guess": lambda: (
             f"Level {d.get('level')} distribution missions: about "

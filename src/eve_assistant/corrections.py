@@ -24,6 +24,9 @@ Corrections learned so far:
 - **mission_income**: ISK an hour from agent mission rewards in the wallet
   journal (over the minutes the plan gave to missions) against the starting
   guess for the agent's level. LP isn't in the journal, so only the ISK.
+- **exploration_income**: ISK an hour from the change in net worth (wallet
+  plus items) across the session, over the minutes the plan gave to
+  exploring, against the starting guess. A lost ship counts against it.
 - **gas_rate**: gas m3 a minute from the mining ledger (the session's gas,
   over the minutes the plan gave to harvesting) against the plan's estimate.
   Only if EVE's mining ledger records gas; otherwise it stays at 1.
@@ -43,7 +46,14 @@ from eve_assistant.skills import Reason
 PRIOR_SESSIONS = 3.0  # how many sessions' weight the starting guess keeps
 LIMITS = (0.5, 1.5)
 MIN_ACTIVE_MINUTES = 10.0  # shorter mining stretches are too noisy to learn from
-WHATS = ("mining_rate", "sale_price", "minutes_per_jump", "gas_rate", "mission_income")
+WHATS = (
+    "mining_rate",
+    "sale_price",
+    "minutes_per_jump",
+    "gas_rate",
+    "mission_income",
+    "exploration_income",
+)
 GAS_GROUP = "Harvestable Cloud"  # the gas types
 
 
@@ -227,8 +237,27 @@ def mission_observations(db: sqlite3.Connection, character_id: int) -> list[Obse
     return found
 
 
+def exploration_observations(db: sqlite3.Connection, character_id: int) -> list[Observation]:
+    """Sessions with an exploration step the player didn't decline and a known
+    change in net worth: ISK an hour against the guess."""
+    found = []
+    for outcome in _latest_outcomes(db, character_id):
+        steps = [
+            step
+            for step in _steps_done(db, outcome.get("plan"))
+            if step.get("inputs", {}).get("exploration_minutes")
+        ]
+        change = (outcome.get("worth") or {}).get("change")
+        if steps and change is not None:
+            inputs = steps[0]["inputs"]
+            hours = inputs["exploration_minutes"] / 60
+            found.append(Observation(outcome["session_id"], inputs["isk_per_hour"], change / hours))
+    return found
+
+
 OBSERVATIONS = {
     "mining_rate": mining_observations,
+    "exploration_income": exploration_observations,
     "mission_income": mission_observations,
     "gas_rate": gas_observations,
     "sale_price": sale_observations,

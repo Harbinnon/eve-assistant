@@ -12,6 +12,7 @@ new module here, added to ALL.
 
 from eve_assistant.activities import (
     couriers,
+    exploration,
     gas,
     manufacturing,
     mining,
@@ -22,7 +23,7 @@ from eve_assistant.activities import (
 )
 
 # In the order candidates are gathered (ties keep this order).
-ALL = (skills, projects, selling, manufacturing, mining, gas, missions, couriers)
+ALL = (skills, projects, selling, manufacturing, mining, gas, exploration, missions, couriers)
 
 
 def learned(db, character_id: int) -> list:
