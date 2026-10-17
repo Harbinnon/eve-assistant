@@ -498,8 +498,10 @@ login (§4.1–4.2), whatever the code licence says.
    scripts or inline styles; a test enforces it.
 3. **Dependency vulnerability checks: done.** `pip-audit` (approved by the
    owner) checks every pinned library in `constraints.txt` against known
-   vulnerabilities on every pull request; Dependabot is configured (pip and
-   GitHub Actions, weekly, 14-day cooldown to keep the two-week rule).
+   vulnerabilities on every pull request; Dependabot watches the directly
+   chosen libraries and GitHub Actions (weekly, 14-day cooldown to keep the
+   two-week rule). Indirect libraries in `constraints.txt` are updated
+   deliberately as a matched set, not one at a time.
 4. **`SECURITY.md`: done.** Private reporting through GitHub.
 5. **Threat model: done** (below).
 6. **Security review: done** (below; one finding fixed, the rest recorded).
@@ -557,11 +559,13 @@ CI and pre-commit configuration.
 In order; each box is ticked in this document when done.
 
 - [x] Phase 2 finished (hangar sales elsewhere, multi-session projects).
-- [ ] Security hardening above merged.
-- [ ] The **whole Git history** scanned for secrets and personal data, not
-      just the current files.
-- [ ] Every pull request title and description on GitHub read through for
-      personal details (they become public too).
+- [x] Security hardening above merged (#14).
+- [x] The **whole Git history** scanned for secrets and personal data, not
+      just the current files (2026-10-16: 30 commits, 174 file versions,
+      every branch; nothing found).
+- [x] Every pull request title and description on GitHub read through for
+      personal details (they become public too) (2026-10-16: all 19, plus
+      comments and reviews; nothing found).
 - [ ] Repository switched to public.
 - [ ] `main` protected: changes only through pull requests approved by the
       code owner; CI checks required to pass.

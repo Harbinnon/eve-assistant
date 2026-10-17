@@ -39,3 +39,20 @@ def test_no_personal_files_are_tracked():
     ).stdout.splitlines()
     forbidden = [p for p in tracked if p.startswith("private/") or p == "config/local.toml"]
     assert not forbidden, f"personal files are tracked: {forbidden}"
+
+
+def test_dependabot_watches_exactly_the_direct_libraries():
+    import re
+
+    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    project = pyproject["project"]
+    direct = {
+        re.split(r"[=<>\[]", spec)[0].lower()
+        for spec in [*project["dependencies"], *project["optional-dependencies"]["dev"]]
+    }
+    config = (ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8")
+    allowed = {name.lower() for name in re.findall(r'dependency-name:\s*"([^"]+)"', config)}
+    assert allowed == direct, (
+        "Keep the allow list in .github/dependabot.yml in step with pyproject.toml: "
+        f"missing {sorted(direct - allowed)}, extra {sorted(allowed - direct)}"
+    )
