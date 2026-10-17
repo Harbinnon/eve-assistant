@@ -627,3 +627,119 @@ def test_omega_unlock_is_said_once():
     html = env.get_template("_requirement.html").render(req=req, is_alpha=True)
     assert html.count("already trained") == 1
     assert "Mining Barge 1 is above the Alpha limit" in html
+
+
+# --- One way to commit, and the session view (roadmap 2.4) --------------------
+
+
+def test_steps_offer_no_do_it(planning_client):
+    _token_value, plan_url = _new_plan(planning_client)
+    page = planning_client.get(plan_url).text
+    assert ">Do it<" not in page
+    assert ">Not now<" in page
+    assert ">Not this kind<" in page
+    assert "Start this plan" in page
+
+
+def test_today_becomes_the_session_view_while_playing(session_client):
+    token, plan_url = _new_plan(session_client)
+    plan_id = plan_url.rsplit("/", 1)[1]
+    session_client.post("/sessions/start", data={"token": token, "plan_id": plan_id})
+
+    today = session_client.get("/today").text
+    assert "Playing now" in today
+    assert "Now · step 1 of 1" in today
+    assert "Plan my time" not in today  # the planning form waits until you're done
+    assert '<meta http-equiv="refresh" content="60; url=/today">' in today
+    session_id = re.search(r'id="session-(\d+)"', today).group(1)
+    item_id = re.search(r'/steps/(\d+)/done"', today).group(1)
+
+    ticked = session_client.post(
+        f"/sessions/{session_id}/steps/{item_id}/done",
+        data={"token": token},
+        follow_redirects=False,
+    )
+    assert ticked.headers["location"] == f"/today#session-{session_id}"
+    today = session_client.get("/today").text
+    assert "Every step is done or skipped" in today
+    assert f"/steps/{item_id}/undo" in today
+
+    assert '<meta http-equiv="refresh"' in session_client.get("/characters").text
+    assert '<meta http-equiv="refresh"' not in session_client.get("/goals").text  # forms
+
+    session_client.post(f"/sessions/{session_id}/finish", data={"token": token})
+    today = session_client.get("/today").text
+    assert "Plan my time" in today
+    assert '<meta http-equiv="refresh"' not in today
+    assert "ticked off" in session_client.get("/history").text
+
+
+def test_not_now_from_the_session_view_returns_to_it(session_client):
+    token, plan_url = _new_plan(session_client)
+    plan_id = plan_url.rsplit("/", 1)[1]
+    session_client.post("/sessions/start", data={"token": token, "plan_id": plan_id})
+    today = session_client.get("/today").text
+    session_id = re.search(r'id="session-(\d+)"', today).group(1)
+    item_id = re.search(r'/steps/(\d+)/done"', today).group(1)
+    response = session_client.post(
+        f"/plan-items/{item_id}/respond",
+        data={"token": token, "response": "not_now"},
+        follow_redirects=False,
+    )
+    assert response.headers["location"] == f"/today?msg=not_now#session-{session_id}"
+
+
+def test_ticking_needs_the_token_and_a_real_step(session_client):
+    token, plan_url = _new_plan(session_client)
+    plan_id = plan_url.rsplit("/", 1)[1]
+    session_client.post("/sessions/start", data={"token": token, "plan_id": plan_id})
+    assert session_client.post("/sessions/1/steps/1/done", data={"token": "x"}).status_code == 403
+    assert (
+        session_client.post("/sessions/1/steps/999/done", data={"token": token}).status_code == 400
+    )
+    assert session_client.post("/sessions/9/steps/1/done", data={"token": token}).status_code == 404
+    assert (
+        session_client.post("/sessions/1/steps/1/maybe", data={"token": token}).status_code == 404
+    )
+
+
+def test_start_project_is_offered_on_a_projects_first_step(db_path):
+    from eve_assistant import planner, projects, risk
+
+    conn = store.connect(db_path)
+    project = {"kind": "haul", "key": "k", "title": "Haul ore", "total_minutes": 120, "isk": 5e6}
+    plan = planner.record(
+        conn,
+        planner.Plan(
+            character_id=7,
+            minutes_available=60,
+            items=(
+                planner.PlanItem(
+                    kind="project_start",
+                    key="k",
+                    title="Haul ore, first trip",
+                    isk=1e6,
+                    minutes=30,
+                    risk=risk.rate("low", 1e5, 1e8),
+                    inputs={"project": project},
+                ),
+            ),  # fmt: skip
+            alternatives=(),
+            notes=(),
+            net_worth=1e8,
+        ),
+        {},
+    )
+    item_id = planner.load_plan(conn, plan.plan_id).items[0].item_id
+    conn.close()
+    with TestClient(create_app(db_path), base_url=LOCAL) as test_client:
+        page = test_client.get(f"/plans/{plan.plan_id}").text
+        assert ">Start project<" in page
+        started = test_client.post(
+            f"/plan-items/{item_id}/respond", data={"token": _token(page), "response": "do"}
+        )
+        assert "Project started" in started.text
+        assert ">Start project<" not in started.text
+    conn = store.connect(db_path)
+    assert [p.title for p in projects.open_projects(conn, 7)] == ["Haul ore"]
+    conn.close()
