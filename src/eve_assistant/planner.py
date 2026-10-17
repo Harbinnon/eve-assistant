@@ -1063,6 +1063,8 @@ class StoredPlan:
     notes: list[dict]
     items: list[StoredItem]
     alternatives: list[StoredItem]
+    allow_lowsec: bool = False  # the options it was made with, to plan again the same way
+    allow_risky: bool = False
 
     @property
     def total_isk(self) -> float:
@@ -1118,6 +1120,8 @@ def load_plan(db: sqlite3.Connection, plan_id: int) -> StoredPlan:
         notes=inputs.get("notes", []),
         items=items,
         alternatives=alternatives,
+        allow_lowsec=bool(inputs.get("allow_lowsec")),
+        allow_risky=bool(inputs.get("risky")),
     )
 
 
@@ -1129,3 +1133,52 @@ def latest_plan_id(db: sqlite3.Connection, character_id: int | None = None) -> i
             "SELECT MAX(plan_id) FROM plans WHERE character_id = ?", (character_id,)
         ).fetchone()
     return row[0]
+
+
+# Steps that are the plan's one main activity (what other activities compete with).
+MAIN_KINDS = ("mining", "courier", "project_start")
+
+
+def _stack(item: StoredItem) -> tuple | None:
+    inputs = item.details.get("inputs", {})
+    if "type_id" not in inputs or inputs.get("station_id") is None:
+        return None
+    return (inputs["station_id"], inputs["type_id"])
+
+
+def _rival(plan: StoredPlan, alt: StoredItem) -> tuple[StoredItem, bool] | None:
+    """The chosen step an alternative lost to, and whether it sells the same
+    stack of goods (the quick sale where you're docked comes first)."""
+    stack = _stack(alt)
+    if stack is not None:
+        for item in plan.items:
+            if item.kind == "sell_hangar" and _stack(item) == stack:
+                return item, True
+    main = [i for i in plan.items if i.kind in MAIN_KINDS or (
+        i.kind == "sell_hangar" and i.details.get("inputs", {}).get("jumps", 0) > 0)]  # fmt: skip
+    return (main[-1], False) if main else None
+
+
+def why_not(plan: StoredPlan, alt: StoredItem) -> Reason:
+    """Why an alternative wasn't picked, in numbers specific to it."""
+    code = alt.details.get("why_not", "worse")
+    if code == "too_long":
+        return Reason("too_long", {"minutes": alt.minutes, "available": plan.minutes_available})
+    if code != "worse":
+        return Reason(code)
+    found = _rival(plan, alt)
+    if found is None:
+        return Reason("worse")
+    rival, same_stack = found
+    return Reason(
+        "same_stack" if same_stack else "less_after_losses",
+        {
+            "step": plan.items.index(rival) + 1,
+            "isk": alt.isk,
+            "minutes": alt.minutes,
+            "loss": alt.expected_loss,
+            "rival_isk": rival.isk,
+            "rival_minutes": rival.minutes,
+            "rival_loss": rival.expected_loss,
+        },
+    )

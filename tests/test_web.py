@@ -17,8 +17,11 @@ def db_path(tmp_path):
     path = tmp_path / "test.sqlite3"
     conn = store.connect(path)
     conn.executemany(
-        "INSERT INTO sde_types (type_id, name, group_id, published) VALUES (?, ?, 1, 1)",
-        [(SKILL, "Mining"), (SHIP, "Big Barge"), (32880, "Venture")],
+        "INSERT INTO sde_types (type_id, name, group_id, published) VALUES (?, ?, ?, 1)",
+        [(SKILL, "Mining", 1), (SHIP, "Big Barge", 2), (32880, "Venture", 2)],
+    )
+    conn.executemany(
+        "INSERT INTO sde_groups VALUES (?, ?, ?, 1)", [(1, 16, "Skills"), (2, 6, "Ships")]
     )
     conn.executemany(
         "INSERT INTO sde_type_attributes VALUES (?, ?, ?)",
@@ -246,26 +249,27 @@ def test_responding_records_and_mute_shows_in_preferences(planning_client):
     page = planning_client.get(plan_url).text
     item_id = re.search(r'action="/plan-items/(\d+)/respond"', page).group(1)
 
-    done = planning_client.post(
+    refused = planning_client.post(
         f"/plan-items/{item_id}/respond", data={"token": token, "response": "do"}
     )
-    assert "Recorded: you" in done.text
-    assert "You said: doing it" in done.text
+    assert refused.status_code == 400  # "Start this plan" is the one commitment
+    assert "Start this plan" in refused.text
 
     muted = planning_client.post(
         f"/plan-items/{item_id}/respond", data={"token": token, "response": "mute"}
     )
     assert "Muted." in muted.text
-    prefs = planning_client.get("/preferences").text
+    prefs = planning_client.get("/settings").text
     assert "kind:mining" in prefs
-    assert "What it has learned" in prefs
-    assert "Mining speed: not yet checked" in prefs
     assert "Play time: 6.0 hours a week, your setting" in prefs
-    assert "assumed 10% are not finished" in prefs
     assert "Unmute" in prefs
+    learning = planning_client.get("/history").text  # learning lives with History now
+    assert "What it has learned" in learning
+    assert "Mining speed: not yet checked" in learning
+    assert "assumed 10% are not finished" in learning
 
     unmuted = planning_client.post(
-        "/preferences/unmute", data={"token": token, "category": "kind:mining"}
+        "/settings/unmute", data={"token": token, "category": "kind:mining"}
     )
     assert "Unmuted." in unmuted.text
 
@@ -285,7 +289,7 @@ def test_today_forms_need_the_token(planning_client):
     )
     assert (
         planning_client.post(
-            "/preferences/mute", data={"token": "x", "category": "kind:mining"}
+            "/settings/mute", data={"token": "x", "category": "kind:mining"}
         ).status_code
         == 403
     )
@@ -338,8 +342,8 @@ def test_open_projects_show_on_today_and_can_be_closed(planning_client, db_path)
 
 
 def test_play_time_is_set_on_preferences(planning_client):
-    token = _token(planning_client.get("/preferences").text)
-    saved = planning_client.post("/preferences-play-time", data={"token": token, "hours": "9.5"})
+    token = _token(planning_client.get("/settings").text)
+    saved = planning_client.post("/settings/play-time", data={"token": token, "hours": "9.5"})
     assert "Play time saved." in saved.text
     assert 'value="9.5"' in saved.text
 
@@ -573,7 +577,7 @@ def test_no_internal_words_on_any_page(planning_client):
     planning_client.post(
         "/today/plan", data={"token": token, "character": "Test Pilot", "minutes": "45"}
     )
-    for path in ("/today", "/characters", "/goals", "/skills", "/history", "/preferences"):
+    for path in ("/today", "/characters", "/goals", "/skills", "/history", "/settings"):
         text = _visible(planning_client.get(path).text).lower()
         for word in JARGON:
             assert word not in text, (path, word)
@@ -588,7 +592,7 @@ def test_risk_is_a_word_and_a_shape(planning_client):
     )
     page = planning_client.get("/today").text
     assert '<span class="pill risk green">Safe</span>' in page
-    prefs = planning_client.get("/preferences").text
+    prefs = planning_client.get("/history").text
     assert "Share of your net worth at stake" in prefs
     assert '<span class="pill risk red">Risky</span>' in prefs
     assert '<span class="pill risk amber">Caution</span>' in prefs
@@ -599,7 +603,7 @@ def test_characters_with_the_same_learning_share_one_line(db_path):
     snapshots.ensure_character(conn, 8, "Second Pilot")
     conn.close()
     with TestClient(create_app(db_path), base_url=LOCAL) as test_client:
-        prefs = test_client.get("/preferences").text
+        prefs = test_client.get("/history").text
     assert prefs.count("Mining speed: not yet checked") == 1
     assert "<strong>Second Pilot, Test Pilot</strong>" in prefs
 
@@ -627,3 +631,475 @@ def test_omega_unlock_is_said_once():
     html = env.get_template("_requirement.html").render(req=req, is_alpha=True)
     assert html.count("already trained") == 1
     assert "Mining Barge 1 is above the Alpha limit" in html
+
+
+# --- One way to commit, and the session view (roadmap 2.4) --------------------
+
+
+def test_steps_offer_no_do_it(planning_client):
+    _token_value, plan_url = _new_plan(planning_client)
+    page = planning_client.get(plan_url).text
+    assert ">Do it<" not in page
+    assert ">Not now<" in page
+    assert ">Not this kind<" in page
+    assert "Start this plan" in page
+
+
+def test_today_becomes_the_session_view_while_playing(session_client):
+    token, plan_url = _new_plan(session_client)
+    plan_id = plan_url.rsplit("/", 1)[1]
+    session_client.post("/sessions/start", data={"token": token, "plan_id": plan_id})
+
+    today = session_client.get("/today").text
+    assert "Playing now" in today
+    assert "Now · step 1 of 1" in today
+    assert "Plan my time" not in today  # the planning form waits until you're done
+    assert '<meta http-equiv="refresh" content="60; url=/today">' in today
+    session_id = re.search(r'id="session-(\d+)"', today).group(1)
+    item_id = re.search(r'/steps/(\d+)/done"', today).group(1)
+
+    ticked = session_client.post(
+        f"/sessions/{session_id}/steps/{item_id}/done",
+        data={"token": token},
+        follow_redirects=False,
+    )
+    assert ticked.headers["location"] == f"/today#session-{session_id}"
+    today = session_client.get("/today").text
+    assert "Every step is done or skipped" in today
+    assert f"/steps/{item_id}/undo" in today
+
+    assert '<meta http-equiv="refresh"' in session_client.get("/characters").text
+    assert '<meta http-equiv="refresh"' not in session_client.get("/goals").text  # forms
+
+    session_client.post(f"/sessions/{session_id}/finish", data={"token": token})
+    today = session_client.get("/today").text
+    assert "Plan my time" in today
+    assert '<meta http-equiv="refresh"' not in today
+    assert "ticked off" in session_client.get("/history").text
+
+
+def test_not_now_from_the_session_view_returns_to_it(session_client):
+    token, plan_url = _new_plan(session_client)
+    plan_id = plan_url.rsplit("/", 1)[1]
+    session_client.post("/sessions/start", data={"token": token, "plan_id": plan_id})
+    today = session_client.get("/today").text
+    session_id = re.search(r'id="session-(\d+)"', today).group(1)
+    item_id = re.search(r'/steps/(\d+)/done"', today).group(1)
+    response = session_client.post(
+        f"/plan-items/{item_id}/respond",
+        data={"token": token, "response": "not_now"},
+        follow_redirects=False,
+    )
+    assert response.headers["location"] == f"/today?msg=not_now#session-{session_id}"
+
+
+def test_ticking_needs_the_token_and_a_real_step(session_client):
+    token, plan_url = _new_plan(session_client)
+    plan_id = plan_url.rsplit("/", 1)[1]
+    session_client.post("/sessions/start", data={"token": token, "plan_id": plan_id})
+    assert session_client.post("/sessions/1/steps/1/done", data={"token": "x"}).status_code == 403
+    assert (
+        session_client.post("/sessions/1/steps/999/done", data={"token": token}).status_code == 400
+    )
+    assert session_client.post("/sessions/9/steps/1/done", data={"token": token}).status_code == 404
+    assert (
+        session_client.post("/sessions/1/steps/1/maybe", data={"token": token}).status_code == 404
+    )
+
+
+def test_start_project_is_offered_on_a_projects_first_step(db_path):
+    from eve_assistant import planner, projects, risk
+
+    conn = store.connect(db_path)
+    project = {"kind": "haul", "key": "k", "title": "Haul ore", "total_minutes": 120, "isk": 5e6}
+    plan = planner.record(
+        conn,
+        planner.Plan(
+            character_id=7,
+            minutes_available=60,
+            items=(
+                planner.PlanItem(
+                    kind="project_start",
+                    key="k",
+                    title="Haul ore, first trip",
+                    isk=1e6,
+                    minutes=30,
+                    risk=risk.rate("low", 1e5, 1e8),
+                    inputs={"project": project},
+                ),
+            ),  # fmt: skip
+            alternatives=(),
+            notes=(),
+            net_worth=1e8,
+        ),
+        {},
+    )
+    item_id = planner.load_plan(conn, plan.plan_id).items[0].item_id
+    conn.close()
+    with TestClient(create_app(db_path), base_url=LOCAL) as test_client:
+        page = test_client.get(f"/plans/{plan.plan_id}").text
+        assert ">Start project<" in page
+        started = test_client.post(
+            f"/plan-items/{item_id}/respond", data={"token": _token(page), "response": "do"}
+        )
+        assert "Project started" in started.text
+        assert ">Start project<" not in started.text
+    conn = store.connect(db_path)
+    assert [p.title for p in projects.open_projects(conn, 7)] == ["Haul ore"]
+    conn.close()
+
+
+# --- Plan age and staying in place (roadmap 2.5) ------------------------------
+
+
+def test_ago_reads_like_a_person_would_say_it(monkeypatch):
+    from datetime import UTC, datetime
+
+    from eve_assistant import web
+
+    monkeypatch.setattr(web, "_now", lambda: datetime(2026, 10, 17, 12, 0, tzinfo=UTC))
+    assert web._ago("2026-10-17T11:59:40+00:00") == "just now"
+    assert web._ago("2026-10-17T11:48:00+00:00") == "12 min ago"
+    assert web._ago("2026-10-17T11:00:00+00:00") == "1 hour ago"
+    assert web._ago("2026-10-17T06:00:00Z") == "6 hours ago"
+    assert web._ago("2026-10-14T12:00:00+00:00") == "3 days ago"
+    assert web._ago(None) == "never"
+
+
+def test_an_old_plan_says_so_and_offers_to_plan_again(planning_client, monkeypatch):
+    from datetime import UTC, datetime, timedelta
+
+    from eve_assistant import web
+
+    _token_value, plan_url = _new_plan(planning_client)
+    assert "Plan again" not in planning_client.get(plan_url).text  # fresh
+    monkeypatch.setattr(web, "_now", lambda: datetime.now(UTC) + timedelta(hours=6))
+    page = planning_client.get(plan_url).text
+    assert "This plan was made 6 hours ago." in page
+    assert ">Plan again</button>" in page
+    assert '<input type="hidden" name="character" value="Test Pilot">' in page
+    assert '<input type="hidden" name="minutes" value="60">' in page
+
+
+def test_answering_a_step_returns_to_it(planning_client):
+    token, plan_url = _new_plan(planning_client)
+    page = planning_client.get(plan_url).text
+    item_id = re.search(r'<li class="step" id="item-(\d+)"', page).group(1)
+    response = planning_client.post(
+        f"/plan-items/{item_id}/respond",
+        data={"token": token, "response": "not_now"},
+        follow_redirects=False,
+    )
+    assert response.headers["location"].endswith(f"?msg=not_now#item-{item_id}")
+
+
+# --- Active character switcher (roadmap 2.7) ----------------------------------
+
+
+def _second_character(db_path):
+    conn = store.connect(db_path)
+    snapshots.ensure_character(conn, 8, "Alpha Pilot")  # first by name, but offline
+    snapshots.record(conn, 8, "online", {"online": False})
+    conn.close()
+
+
+def test_the_online_character_is_active_by_default(db_path):
+    _second_character(db_path)
+    with TestClient(create_app(db_path), base_url=LOCAL) as test_client:
+        page = test_client.get("/today").text
+    assert '<option value="7" selected>Test Pilot</option>' in page
+    assert "For <strong>Test Pilot</strong>" in page
+
+
+def test_switching_character_follows_on_today_skills_and_goals(db_path):
+    _second_character(db_path)
+    app = create_app(db_path, make_plan=_fake_plan_maker(db_path))
+    with TestClient(app, base_url=LOCAL) as test_client:
+        token, _plan_url = _new_plan(test_client)  # a plan for Test Pilot
+        assert "Plan for Test Pilot" in test_client.get("/today").text
+        switched = test_client.post(
+            "/character",
+            data={"token": token, "character_id": "8", "return_to": "/skills"},
+            follow_redirects=False,
+        )
+        assert switched.headers["location"] == "/skills"
+        assert switched.headers["set-cookie"].startswith("character=8;")
+        test_client.cookies.set("character", "8")
+        today = test_client.get("/today").text
+        assert "For <strong>Alpha Pilot</strong>" in today
+        assert "Plan for Test Pilot" not in today  # Today shows the active character's plans
+        assert "For <strong>Alpha Pilot</strong>" in test_client.get("/skills").text
+        assert "<option selected>Alpha Pilot</option>" in test_client.get("/goals").text
+
+
+def test_only_known_characters_can_be_chosen(client):
+    token = _token(client.get("/today").text)
+    refused = client.post("/character", data={"token": token, "character_id": "999"})
+    assert refused.status_code == 400
+    client.cookies.set("character", "not-a-number")
+    assert '<option value="7" selected>Test Pilot</option>' in client.get("/today").text
+
+
+# --- Skills to Goals, and better goals (roadmap 2.8) ---------------------------
+
+
+def test_a_ship_becomes_a_goal_with_progress_in_two_clicks(client):
+    checked = client.get("/skills", params={"item": "Big Barge"}).text  # click 1: Check
+    assert '<datalist id="ship-names">' in checked
+    assert '<option value="Big Barge">' in checked
+    assert ">Set as goal</button>" in checked
+    added = client.post(  # click 2: Set as goal
+        "/goals",
+        data={"token": _token(checked), "kind": "ship", "target": "Big Barge",
+              "character": "Test Pilot"},
+    )  # fmt: skip
+    assert "Goal added." in added.text
+    assert "Fly a Big Barge" in added.text
+    assert "% of the skill points trained" in added.text
+    assert '<progress value="' in added.text
+
+
+def test_goal_names_are_suggested_while_typing(client):
+    page = client.get("/goals").text
+    assert (
+        '<input id="target" name="target" required placeholder="Retriever" list="goal-names"'
+        in page
+    )
+    assert '<option value="Mining">' in page  # skills
+    assert '<option value="Venture">' in page  # and ships
+
+
+def test_isk_goals_read_the_same_way_as_other_isk(client):
+    token = _token(client.get("/goals").text)
+    client.post(
+        "/goals",
+        data={"token": token, "kind": "isk", "target": "2460000000", "character": "Test Pilot"},
+    )
+    assert "Have 2.46B ISK" in client.get("/goals").text
+
+
+def test_dropping_a_goal_asks_first(client):
+    token = _token(client.get("/goals").text)
+    client.post(
+        "/goals",
+        data={"token": token, "kind": "ship", "target": "Big Barge", "character": "Test Pilot"},
+    )
+    page = client.get("/goals").text
+    goal_id = re.search(r'href="/goals/(\d+)/drop">Drop</a>', page).group(1)
+    confirm = client.get(f"/goals/{goal_id}/drop").text
+    assert "Drop this goal?" in confirm
+    assert "Fly a Big Barge" in confirm
+    assert 'href="/goals">Keep it</a>' in confirm
+    assert "Fly a Big Barge" in client.get("/goals").text  # nothing dropped yet
+    dropped = client.post(f"/goals/{goal_id}/status", data={"token": token, "status": "dropped"})
+    assert "Goal dropped." in dropped.text
+    assert client.get("/goals/999/drop").status_code == 404
+
+
+def test_dropping_a_project_asks_first(planning_client, db_path):
+    from eve_assistant import projects
+
+    conn = store.connect(db_path)
+    project_id = projects.start(conn, 7, "haul", "1:2:x", "Haul ore", 120, 5e6, {})
+    conn.close()
+    page = planning_client.get("/today").text
+    assert f'href="/projects/{project_id}/drop">Drop</a>' in page
+    confirm = planning_client.get(f"/projects/{project_id}/drop").text
+    assert "Drop this project?" in confirm
+    assert f'action="/projects/{project_id}/dropped"' in confirm
+
+
+def test_times_say_how_long_ago_or_until(monkeypatch):
+    from datetime import UTC, datetime
+
+    from eve_assistant import web
+
+    monkeypatch.setattr(web, "_now", lambda: datetime(2026, 10, 17, 12, 0, tzinfo=UTC))
+    assert web._when_ago("2026-10-17T06:00:00+00:00") == "2026-10-17 06:00 UTC · 6 hours ago"
+    assert web._when_ago("2026-10-19T12:00:00+00:00") == "2026-10-19 12:00 UTC · in 2 days"
+    assert web._when_ago("2026-10-17T12:00:20+00:00").endswith("· just now")
+    assert web._when_ago(None) == "never"
+
+
+# --- Navigation (roadmap 2.9) -------------------------------------------------
+
+
+def test_preferences_became_settings(client):
+    old = client.get("/preferences", follow_redirects=False)
+    assert old.status_code == 308
+    assert old.headers["location"] == "/settings"
+    page = client.get("/settings").text
+    assert "<h1>Settings</h1>" in page
+    assert 'href="/settings" aria-current="page">Settings</a>' in page
+    assert "Risk matrix" not in page  # moved to History and learning
+    assert "<h1>History and learning</h1>" in client.get("/history").text
+
+
+# --- Add a character from the dashboard (roadmap 2.10) --------------------------
+
+
+def _wait_for(predicate, seconds=3.0):
+    import time
+
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        time.sleep(0.02)
+    return False
+
+
+def test_a_character_can_be_added_from_the_dashboard(db_path):
+    import threading
+
+    browser_done = threading.Event()
+    calls = []
+
+    def add_character():
+        calls.append(1)
+        browser_done.wait(5)
+        return "New Pilot"
+
+    with TestClient(create_app(db_path, add_character=add_character), base_url=LOCAL) as client:
+        page = client.get("/characters").text
+        assert ">Add a character</button>" in page
+        token = _token(page)
+        started = client.post("/characters/add", data={"token": token}, follow_redirects=False)
+        assert started.headers["location"] == "/characters"
+        waiting = client.get("/characters").text
+        assert "EVE's login page is open in your browser" in waiting
+        assert '<meta http-equiv="refresh" content="5; url=/characters">' in waiting
+        assert "disabled>Add a character" in waiting
+        client.post("/characters/add", data={"token": token})  # pressed again: no second login
+        browser_done.set()
+        assert _wait_for(lambda: "Added New Pilot." in client.get("/characters").text)
+        assert calls == [1]
+
+
+def test_a_failed_login_is_shown(db_path):
+    def add_character():
+        raise RuntimeError("the browser window was closed")
+
+    with TestClient(create_app(db_path, add_character=add_character), base_url=LOCAL) as client:
+        client.post("/characters/add", data={"token": _token(client.get("/characters").text)})
+        assert _wait_for(
+            lambda: (
+                "The login didn&#39;t finish: the browser window was closed"
+                in client.get("/characters").text
+            )
+        )
+
+
+def test_adding_needs_the_dashboard_to_offer_it(client):
+    page = client.get("/characters").text
+    assert "Add a character" not in page
+    response = client.post("/characters/add", data={"token": _token(page)})
+    assert response.status_code == 400
+    assert "eve-assistant login" in response.text
+
+
+# --- Portraits and ship renders (roadmap 2.11) ----------------------------------
+
+
+def test_images_are_served_by_the_dashboard(db_path):
+    png = b"\x89PNG\r\n\x1a\nfake"
+    asked = []
+
+    def fetch(address):
+        asked.append(address)
+        return png
+
+    with TestClient(create_app(db_path, fetch_image=fetch), base_url=LOCAL) as client:
+        portrait = client.get("/images/portrait/7.png")
+        assert portrait.status_code == 200
+        assert portrait.headers["content-type"] == "image/png"
+        assert portrait.headers["cache-control"] == "private, max-age=86400"
+        assert portrait.content == png
+        assert client.get("/images/portrait/999.png").status_code == 404  # not our character
+        assert client.get("/images/logo/1.png").status_code == 404
+        page = client.get("/characters").text
+        assert '<img class="portrait" src="/images/portrait/7.png"' in page
+        assert '<img class="render" src="/images/render/32880.png"' in page
+    assert asked == ["https://images.evetech.net/characters/7/portrait?size=128"]
+
+
+def test_a_placeholder_when_no_image_is_available(client):
+    response = client.get("/images/render/32880.png")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("image/svg+xml")
+    assert "<polygon" in response.text
+
+
+def test_today_shows_the_next_step_and_a_timeline(planning_client):
+    _token_value, plan_url = _new_plan(planning_client)
+    page = planning_client.get("/today").text
+    assert "Next up · step 1 of 1" in page
+    assert '<ol class="steps timeline">' in page
+    assert '<img class="render" src="/images/render/32880.png"' in page  # the ship it flies
+
+
+# --- Phone layout (roadmap 2.12) -------------------------------------------------
+
+
+class _Tables(__import__("html.parser").parser.HTMLParser):
+    """Each table's headings, and each body cell's data-label."""
+
+    def __init__(self):
+        super().__init__()
+        self.tables: list[dict] = []
+        self._in_head = self._in_th = False
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if tag == "table":
+            self.tables.append({"grid": "keep-grid" in (attrs.get("class") or ""),
+                                "heads": [], "rows": []})  # fmt: skip
+        elif tag == "thead":
+            self._in_head = True
+        elif tag == "th" and self._in_head:
+            self._in_th = True
+            self.tables[-1]["heads"].append("")
+        elif tag == "tr" and not self._in_head and self.tables:
+            self.tables[-1]["rows"].append([])
+        elif tag == "td" and self.tables and self.tables[-1]["rows"]:
+            self.tables[-1]["rows"][-1].append(attrs.get("data-label"))
+
+    def handle_endtag(self, tag):
+        if tag == "thead":
+            self._in_head = False
+        elif tag == "th":
+            self._in_th = False
+
+    def handle_data(self, data):
+        if self._in_th and self._in_head:
+            self.tables[-1]["heads"][-1] += data.strip()
+
+
+def test_tables_can_become_cards_on_a_phone(planning_client, db_path):
+    from eve_assistant import projects
+
+    _token_value, plan_url = _new_plan(planning_client)
+    conn = store.connect(db_path)
+    projects.start(conn, 7, "haul", "1:2:x", "Haul ore", 120, 5e6, {})
+    conn.close()
+    checked = 0
+    for path in (plan_url, "/today", "/history", "/settings", "/skills?item=Big%20Barge"):
+        reader = _Tables()
+        reader.feed(planning_client.get(path).text)
+        for table in reader.tables:
+            if table["grid"]:
+                continue
+            for row in table["rows"]:
+                for head, label in zip(table["heads"], row, strict=False):
+                    if head:
+                        assert label == head, (path, head, label)
+                        checked += 1
+    assert checked > 10
+
+
+def test_a_compact_menu_for_narrow_screens(client):
+    page = client.get("/goals").text
+    assert '<details class="nav-narrow">' in page
+    assert "<summary>Menu</summary>" in page
+    assert page.count('<a href="/goals" aria-current="page">Goals</a>') == 2  # wide and narrow
+    assert page.startswith("<!doctype html>")

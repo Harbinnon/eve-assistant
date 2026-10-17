@@ -12,11 +12,11 @@
       <tbody>
       {% for s in req.steps %}
         <tr>
-          <td>{{ s.skill_name }}</td>
-          <td>{{ s.level }}</td>
-          <td class="num">{{ "{:,}".format(s.skillpoints) }}</td>
-          <td class="num">{{ s.minutes_omega|duration }}</td>
-          <td>{% if s.allowed_for_alpha %}<span class="muted">allowed</span>{% else %}<span class="pill alpha">Omega only</span>{% endif %}</td>
+          <td data-label="Skill">{{ s.skill_name }}</td>
+          <td data-label="Level">{{ s.level }}</td>
+          <td data-label="Skill points" class="num">{{ "{:,}".format(s.skillpoints) }}</td>
+          <td data-label="Time as Omega" class="num">{{ s.minutes_omega|duration }}</td>
+          <td data-label="Alpha">{% if s.allowed_for_alpha %}<span class="muted">allowed</span>{% else %}<span class="pill alpha">Omega only</span>{% endif %}</td>
         </tr>
       {% endfor %}
       </tbody>

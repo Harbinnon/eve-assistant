@@ -27,6 +27,7 @@ class CharacterSummary:
     queue_length: int
     training: str | None  # e.g. "Mining 4", when the queue is running
     last_checked: str | None
+    ship_type_id: int | None = None
 
 
 def _system(db: sqlite3.Connection, system_id: int | None):
@@ -93,7 +94,18 @@ def summarize(db: sqlite3.Connection, character_id: int) -> CharacterSummary:
         queue_length=len(queue),
         training=training,
         last_checked=checked,
+        ship_type_id=ship.get("ship_type_id"),
     )
+
+
+def default_character(db: sqlite3.Connection) -> int | None:
+    """The character to show when none was chosen: one that is online (by
+    name), else the first by name; None without characters."""
+    ids = [r[0] for r in db.execute("SELECT character_id FROM characters ORDER BY name")]
+    for character_id in ids:
+        if (snapshots.latest(db, character_id, "online") or {}).get("online"):
+            return character_id
+    return ids[0] if ids else None
 
 
 def all_characters(db: sqlite3.Connection) -> list[CharacterSummary]:

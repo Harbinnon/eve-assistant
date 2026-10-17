@@ -5,7 +5,7 @@ from; this turns them into sentences for the dashboard and CLI. Unknown
 codes fall back to the code itself, so nothing is hidden.
 """
 
-from eve_assistant import skills
+from eve_assistant import numbers, skills
 from eve_assistant.skills import Reason
 
 WHY_NOT = {
@@ -19,11 +19,56 @@ WHY_NOT = {
 
 
 LEARNED = {"mining_rate": "Mining speed"}
+RISK_WORTH_MENTIONING = 0.05  # of an option's ISK
+
+
+def _same_stack(d: dict) -> str:
+    step, isk = d["step"], numbers.isk
+    extra_isk = d["isk"] - d["rival_isk"]
+    extra_minutes = d["minutes"] - d["rival_minutes"]
+    if extra_isk > 0 and extra_minutes > 0:
+        return (
+            f"Step {step} already sells this, {isk(d['rival_isk'])} in "
+            f"{d['rival_minutes']:.0f} min. "
+            f"This way earns {isk(extra_isk)} more but takes {extra_minutes:.0f} min longer: "
+            f"{isk(numbers.per_hour(extra_isk, extra_minutes))} an hour for the extra time."
+        )
+    return (
+        f"Step {step} already sells this, for more: {isk(d['rival_isk'])} against {isk(d['isk'])}."
+    )
+
+
+def _less_after_losses(d: dict) -> str:
+    """Compared per hour after expected losses: a mining step in the plan is
+    cut to the time left, so totals over different minutes would mislead."""
+    step, isk = d["step"], numbers.isk
+    mine = numbers.per_hour(d["isk"] - d["loss"], d["minutes"]) or 0.0
+    theirs = numbers.per_hour(d["rival_isk"] - d["rival_loss"], d["rival_minutes"]) or 0.0
+    if mine > theirs:
+        return (
+            f"Earns more an hour than step {step} ({isk(mine)} against {isk(theirs)}), but "
+            f"step {step} earns more in the time you have: "
+            f"{isk(d['rival_isk'] - d['rival_loss'])} against {isk(d['isk'] - d['loss'])}."
+        )
+    # Mention the expected loss only when it matters (5% of the ISK or more).
+    risky = d["loss"] >= RISK_WORTH_MENTIONING * max(d["isk"], 1)
+    risk = f"; this one's expected loss is {isk(d['loss'])}" if risky else ""
+    return (
+        f"Step {step} earns more an hour after expected losses: "
+        f"{isk(theirs)} against {isk(mine)}{risk}."
+    )
 
 
 def describe(code: str, detail: dict | None = None) -> str:
     d = detail or {}
     texts = {
+        "same_stack": lambda: _same_stack(d),
+        "less_after_losses": lambda: _less_after_losses(d),
+        "too_long": lambda: (
+            f"Takes {d.get('minutes', 0):.0f} min; you have {d.get('available', 0):.0f}."
+            if d
+            else WHY_NOT["too_long"]
+        ),
         "alpha_cap": lambda: skills.describe(Reason(code, d)),
         "alpha_sp_limit": lambda: skills.describe(Reason(code, d)),
         "trained_but_alpha_locked": lambda: skills.describe(Reason(code, d)),
@@ -191,7 +236,9 @@ def describe(code: str, detail: dict | None = None) -> str:
         ),
     }
     maker = texts.get(code)
-    return maker() if maker else code
+    if maker:
+        return maker()
+    return WHY_NOT.get(code, code)
 
 
 def risk_summary(risk: dict) -> str:

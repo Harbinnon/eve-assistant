@@ -1,23 +1,40 @@
+{% macro page_links(current) %}
+  {% for key, href, label in [("today", "/today", "Today"), ("characters", "/characters", "Characters"),
+                              ("goals", "/goals", "Goals"), ("skills", "/skills", "Skills"),
+                              ("history", "/history", "History"), ("settings", "/settings", "Settings")] %}
+  <a href="{{ href }}" {% if current == key %}aria-current="page"{% endif %}>{{ label }}</a>
+  {% endfor %}
+{% endmacro -%}
 <!doctype html>
 <html lang="en" data-theme="{{ theme }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>{% block title %}EVE Assistant{% endblock %}</title>
+  {% if reload %}<meta http-equiv="refresh" content="{{ reload }}; url={{ here }}">{% endif %}
   <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
 </head>
 <body>
   <header class="bar">
     <div class="wrap">
       <a class="brand" href="/today">EVE <span>Assistant</span></a>
-      <nav aria-label="Pages">
-        <a href="/today" {% if page == 'today' %}aria-current="page"{% endif %}>Today</a>
-        <a href="/characters" {% if page == 'characters' %}aria-current="page"{% endif %}>Characters</a>
-        <a href="/goals" {% if page == 'goals' %}aria-current="page"{% endif %}>Goals</a>
-        <a href="/skills" {% if page == 'skills' %}aria-current="page"{% endif %}>Skills</a>
-        <a href="/history" {% if page == 'history' %}aria-current="page"{% endif %}>History</a>
-        <a href="/preferences" {% if page == 'preferences' %}aria-current="page"{% endif %}>Preferences</a>
-      </nav>
+      <nav class="nav-wide" aria-label="Pages">{{ page_links(page) }}</nav>
+      <details class="nav-narrow">
+        <summary>Menu</summary>
+        <nav aria-label="Pages">{{ page_links(page) }}</nav>
+      </details>
+      {% if switch_characters %}
+      <form class="character-switch" method="post" action="/character">
+        <input type="hidden" name="token" value="{{ form_token }}">
+        <input type="hidden" name="return_to" value="{{ here }}">
+        {% if active %}<img class="portrait tiny" src="/images/portrait/{{ active.id }}.png" alt="" width="26" height="26">{% endif %}
+        <label for="active-character">Character</label>
+        <select id="active-character" name="character_id">
+          {% for character_id, name in switch_characters %}<option value="{{ character_id }}" {% if active and active.id == character_id %}selected{% endif %}>{{ name }}</option>{% endfor %}
+        </select>
+        <button class="small" type="submit">Switch</button>
+      </form>
+      {% endif %}
     </div>
   </header>
   <main class="wrap">
@@ -50,7 +67,7 @@
         <button class="small" type="submit" name="theme" value="{{ value }}" aria-pressed="{{ 'true' if theme == value else 'false' }}">{{ label }}</button>
         {% endfor %}
       </form>
-      <p class="auto-status">{% if auto.enabled %}Updates from EVE automatically while this page's server runs{% if auto.last_run %} · last check {{ auto.last_run|when }}{% else %} · starting{% endif %}.
+      <p class="auto-status">{% if auto.enabled %}Updates from EVE automatically while this page's server runs{% if auto.last_run %} · last check {{ auto.last_run|when_ago }}{% else %} · starting{% endif %}.
         {% if auto.problems %}<span class="error-text">{{ auto.problems|length }} problem{{ "s" if auto.problems|length != 1 }}: {{ auto.problems|first }}</span>{% endif %}
         {% else %}Automatic updates are off; press Refresh on the Characters page.{% endif %}</p>
       EVE Online and the EVE logo are the trademarks or registered trademarks of CCP hf.

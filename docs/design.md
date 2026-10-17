@@ -183,9 +183,18 @@ Each session records the plan (with predictions), what the player did
 
 **Sessions are marked explicitly.** "Start this plan" on the Today page
 (or `eve-assistant session start`) records the start time and takes a
-snapshot; "I'm done" records the end and takes another. That is cheap,
-accurate and needs no background polling; detecting sessions on its own
-can come later. Details:
+snapshot; "I'm done" records the end and takes another. "Start this plan"
+is the one commitment: plan steps offer only "Not now" and "Not this kind"
+(and "Start project" on a project's first step). Sessions EVE saw but
+weren't marked are offered for recording too (see below). Details:
+
+- While a session runs, Today is the **session view**: time played, the
+  wallet's change since the start, the step to do now (Done, Not now), and
+  the plan as a checklist to tick off or undo. Ticks are append-only; the
+  latest for a step wins. Ticking off a project step logs its minutes on
+  the project once. Today, Characters and History reload themselves every
+  minute while a session runs (a meta refresh, no JavaScript); History
+  shows which steps were ticked off.
 
 - One running session per character; others can play meanwhile.
 - "I'm done" accepts the minutes actually played, for when the player
@@ -276,7 +285,7 @@ moves it a quarter of the way, four sessions a little over half.
   corrected figure, so the correction can't feed on itself.
 - Without game logs the mining correction stays at 1 and the plan says it
   is the published figure, with how to turn the logs on.
-- The Preferences page and `eve-assistant learned` show what has been
+- The History and learning page and `eve-assistant learned` show what has been
   learned per character.
 - Still to come: sale prices actually reached, and travel time. Plans
   don't yet record the per-unit price and per-jump time they assumed, so
@@ -342,8 +351,8 @@ A **web dashboard** is the main interface.
 | **Goals** | Progress, estimated arrival date, what is slowing it down, what Omega would change. |
 | **Characters** | All characters side by side: training, wallet, net worth, location, ship. |
 | **Skills** | Training plan for the current goal, with each skill's payback. |
-| **History** | Past plans against results, so the learning can be checked rather than trusted. |
-| **Preferences** | Everything declined or muted, the risk matrix lines, with undo. |
+| **History and learning** | Past plans against results, what the planner has learned from them, and the risk matrix, so the learning can be checked rather than trusted. |
+| **Settings** | Everything muted (with undo), play time, backups. The theme switch is at the bottom of every page. |
 
 Server-rendered pages with a small amount of self-written JavaScript,
 everything self-hosted, **no third-party scripts or CDNs**.
@@ -409,19 +418,19 @@ registers for an established one.
 
 Ranking uses profit minus (chance of loss × amount exposed). The starting
 lines are a guess; they move with the player's choices, and every change
-is visible on Preferences. A loss is recorded and feeds straight back in.
+is visible on History and learning. A loss is recorded and feeds straight back in.
 
 ### 4.9 Declining, and discovering options
 
 Every suggestion has:
-- **Do it**: recorded, so the outcome can be checked later.
-- **Not now**: no penalty.
+- **Not now**: no penalty. (Committing is "Start this plan" for the whole
+  plan; while playing, steps are ticked off in the session view.)
 - **Not this kind**: mutes a category, specific ("not this route") or
   broad ("no hauling").
 - **Why?**: how the estimate was made, with a link to a guide (EVE
   University wiki) for anything unfamiliar.
 
-Mutes live on Preferences with undo. A muted category whose numbers improve
+Mutes live in Settings with undo. A muted category whose numbers improve
 a lot gets one polite mention a month at most, which can also be turned
 off.
 
@@ -843,6 +852,11 @@ ran and shows its first problem, if any. `[app] auto_refresh = false` in
   (12,000 tokens per 15 minutes for orders, 5-minute cache). Fuzzwork
   aggregates as a fallback.
 - **zKillboard**: kills per system, for risk.
+- **CCP's image server** (`images.evetech.net`): portraits of the owner's
+  own characters and ship renders, downloaded the first time a page needs
+  them into `var/images` (never committed) and served by the dashboard
+  itself, so pages still load images only from their own address. A
+  missing image is remembered for a day; a plain placeholder shows meanwhile.
 - **Local logs** (local mode only): game logs for activity history, Local
   chat logs for the player's own location history. Market logs are not
   used (only written on manual export, and can be blocked by Windows

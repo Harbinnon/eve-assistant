@@ -9,7 +9,7 @@ the learned play time per week (see pace.py).
 import sqlite3
 from dataclasses import dataclass, field
 
-from eve_assistant import pace, skills, snapshots
+from eve_assistant import numbers, pace, skills, snapshots
 from eve_assistant.esi.client import EsiClient
 from eve_assistant.skills import Reason, Requirement
 from eve_assistant.store import utc_now
@@ -94,13 +94,14 @@ def add_goal(
     if kind in ("fly_ship", "skill") and character_id is None:
         raise GoalError("Ship and skill goals are for a particular character.")
     if kind == "fly_ship":
-        label = f"Fly a {skills.type_name(db, type_id)}"
+        verb = "Fly" if skills.is_ship(db, type_id) else "Use"
+        label = f"{verb} a {skills.type_name(db, type_id)}"
     elif kind == "skill":
         label = f"Train {skills.type_name(db, type_id)} {level}"
     elif kind == "isk":
         if not isk or isk <= 0:
             raise GoalError("An ISK goal needs a positive amount.")
-        label = f"Have {isk:,.0f} ISK"
+        label = f"Have {numbers.isk(isk)} ISK"
     else:
         raise GoalError(f"Unknown goal kind '{kind}'.")
     cursor = db.execute(

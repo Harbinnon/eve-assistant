@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}History · EVE Assistant{% endblock %}
+{% block title %}History and learning · EVE Assistant{% endblock %}
 {% macro share(value) %}{% if value is not none %}<span class="pill {{ 'green' if 0.8 <= value <= 1.25 else 'amber' }}">{{ (value * 100)|round|int }}%</span>{% endif %}{% endmacro %}
 {% block content %}
-<h1>History</h1>
-<p class="lede">Each session you played, its plan, and what EVE's data says happened. This is how to check the learning rather than trust it.</p>
+<h1>History and learning</h1>
+<p class="lede">Each session you played, its plan, and what EVE's data says happened; then what the planner has learned from them. This is how to check the learning rather than trust it.</p>
 
 {% if not past %}
 <p class="muted">No finished sessions yet. On Today, press “Start this plan” before you play and “I'm done” after.</p>
@@ -11,7 +11,7 @@
 
 {% for h in past %}
 <article class="card">
-  <h2 class="history-title">{{ h.session.character_name }} · {{ h.session.started_at|when }}</h2>
+  <h2 class="history-title">{{ h.session.character_name }} · {{ h.session.started_at|when_ago }}</h2>
   <p class="figures">
     Played {{ h.session.minutes()|round|int }} min{% if h.plan %} of a {{ h.plan.total_minutes|round|int }}-minute <a href="/plans/{{ h.plan.plan_id }}">plan</a>{% else %}, no plan{% endif %}
     {% if h.outcome %} · wallet change {{ h.outcome.net_isk|isk }} ISK
@@ -26,16 +26,16 @@
       <tbody>
       {% for s in h.steps %}
         <tr>
-          <td>{{ s.item.title }}</td>
-          <td>{{ {"do": "doing it", "not_now": "not now", "mute": "not this kind"}.get(s.item.response, "–") }}</td>
-          <td class="num">{{ s.item.isk|isk }} ISK{% if s.predicted_units %}<br><span class="muted small-print">{{ "{:,}".format(s.predicted_units) }} units</span>{% endif %}
+          <td data-label="Step">{{ s.item.title }}</td>
+          <td data-label="Your answer">{% if s.item.item_id in h.ticked %}ticked off{% else %}{{ {"do": "doing it", "not_now": "not now", "mute": "not this kind"}.get(s.item.response, "–") }}{% endif %}</td>
+          <td data-label="Planned" class="num">{{ s.item.isk|isk }} ISK{% if s.predicted_units %}<br><span class="muted small-print">{{ "{:,}".format(s.predicted_units) }} units</span>{% endif %}
             {% if s.predicted_rate %}<br><span class="muted small-print">{{ s.predicted_rate|round|int }} m³/min</span>{% endif %}</td>
-          <td class="num">
+          <td data-label="Happened" class="num">
             {% if s.actual_isk is not none %}{{ s.actual_isk|isk }} ISK {{ share(s.isk_share) }}<br>{% endif %}
             {% if s.actual_units is not none %}<span class="small-print">{{ "{:,}".format(s.actual_units) }} units ({{ s.source }})</span><br>{% endif %}
             {% if s.actual_rate %}<span class="small-print">{{ s.actual_rate|round|int }} m³/min {{ share(s.rate_share) }}</span>{% endif %}
           </td>
-          <td>{{ s.verdict_text }}</td>
+          <td data-label="Verdict">{{ s.verdict_text }}</td>
         </tr>
       {% endfor %}
       </tbody>
@@ -48,19 +48,47 @@
 </article>
 {% endfor %}
 
+<h2>What it has learned</h2>
+<p class="muted">Corrections to the planner's estimates, from your own sessions. They start at the published figures and move as sessions agree.</p>
+<ul>
+  <li>{{ explain(finish.reason().code, finish.reason().detail) }}</li>
+</ul>
+{% if learned %}
+<ul>
+  {% for names, text in learned %}<li><strong>{{ names }}</strong>: {{ text }}</li>{% endfor %}
+</ul>
+{% else %}<p class="muted">No characters yet.</p>{% endif %}
+
 {% if speeds %}
 <h2>Mining speed, session by session</h2>
-<p class="muted">What the mining correction on the Preferences page is built from: your m³ per minute while mining (game logs) against the plan's estimate.</p>
+<p class="muted">What the mining correction above is built from: your m³ per minute while mining (game logs) against the plan's estimate.</p>
 <div class="table-wrap">
   <table>
     <thead><tr><th>Character</th><th>Session</th><th class="num">Estimate</th><th class="num">You</th><th class="num">Ratio</th></tr></thead>
     <tbody>
     {% for name, found in speeds %}{% for o in found %}
-      <tr><td>{{ name }}</td><td>{{ o.session_id }}</td><td class="num">{{ o.predicted|round|int }} m³/min</td>
-        <td class="num">{{ o.actual|round|int }} m³/min</td><td class="num">{{ share(o.ratio) }}</td></tr>
+      <tr><td data-label="Character">{{ name }}</td><td data-label="Session">{{ o.session_id }}</td><td data-label="Estimate" class="num">{{ o.predicted|round|int }} m³/min</td>
+        <td data-label="You" class="num">{{ o.actual|round|int }} m³/min</td><td data-label="Ratio" class="num">{{ share(o.ratio) }}</td></tr>
     {% endfor %}{% endfor %}
     </tbody>
   </table>
 </div>
 {% endif %}
+<h2>Risk matrix</h2>
+<p class="lede">Each suggestion is rated by how likely a loss is where it takes you (rows) against how much
+of your net worth it puts at stake (columns). Risky options are left out unless you tick “Include risky
+options”. The starting lines will move as the tool learns what you accept.</p>
+<div class="table-wrap">
+  <table class="keep-grid">
+    <thead>
+      <tr><th rowspan="2" scope="col">Chance of loss</th><th colspan="4" scope="colgroup">Share of your net worth at stake</th></tr>
+      <tr><th scope="col">under 2%</th><th scope="col">2–10%</th><th scope="col">10–25%</th><th scope="col">over 25%</th></tr>
+    </thead>
+    <tbody>
+    {% for band, cells in risk_matrix.items() %}
+      <tr><th scope="row">{{ band_labels[band] }}</th>{% for cell in cells %}<td><span class="pill risk {{ cell }}">{{ risk_labels[cell] }}</span></td>{% endfor %}</tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
 {% endblock %}

@@ -161,6 +161,15 @@ header.bar .wrap {
 .brand span { color: var(--action); }
 .brand:hover { color: var(--heading); }
 nav { display: flex; gap: 2px; flex-wrap: wrap; }
+.character-switch { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.character-switch label {
+  font: 600 11px/1 var(--display);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.character-switch select { padding: 5px 8px; font-size: 14px; }
+.form-for { display: flex; flex-direction: column; gap: 2px; margin: 0; align-self: center; }
 nav a {
   font: 600 13px/1 var(--display);
   letter-spacing: 0.09em;
@@ -197,6 +206,7 @@ h2::after { content: ""; flex: 1 1 40px; height: 1px; background: var(--line); a
 h3 { font-family: var(--display); font-weight: 600; letter-spacing: 0.02em; color: var(--heading); }
 .lede { color: var(--muted); margin: 0 0 24px; max-width: 70ch; }
 .page-head { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
+.head-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .heading-note { font-weight: 400; font-size: 13px; letter-spacing: 0.04em; text-transform: none; color: var(--muted); }
 
 /* Messages */
@@ -211,6 +221,11 @@ h3 { font-family: var(--display); font-weight: 600; letter-spacing: 0.02em; colo
 .error, .problems { background: var(--bad-soft); border-color: var(--bad); }
 .banner { background: var(--attention-soft); border-color: var(--attention); }
 .banner strong { color: var(--attention); }
+.banner p { margin: 0 0 8px; }
+.banner p:last-child { margin-bottom: 0; }
+/* Jumping to a step (#item-…) leaves room above it and marks it */
+[id^="item-"] { scroll-margin-top: 16px; }
+[id^="item-"]:target { outline: 2px solid var(--action); outline-offset: 6px; }
 .problems ul { margin: 4px 0 0; padding-left: 20px; }
 .error-text { color: var(--bad); }
 
@@ -362,6 +377,7 @@ a.button:hover { border-color: var(--action); color: var(--action-hover); }
 a.button.primary { background: var(--action); border-color: var(--action); color: var(--on-action); }
 a.button.primary:hover { background: var(--action-hover); border-color: var(--action-hover); color: var(--on-action); }
 .error-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 24px; }
+a.button.small { padding: 5px 10px; font-size: 12px; }
 .checks { display: flex; gap: 16px; flex-wrap: wrap; font-size: 14px; color: var(--muted); }
 form.stack .checks label {
   flex-direction: row;
@@ -402,6 +418,87 @@ form.stack .checks label {
 .readout .value small { font-size: 0.95rem; font-weight: 400; color: var(--muted); margin-left: 3px; }
 .readout .value.isk { color: var(--isk); }
 .readout .value.minor { font-size: 1.35rem; padding-top: 0.5rem; display: inline-block; }
+
+/* Portraits and ship renders (from CCP's image server, kept in var/images) */
+.portrait, .render { display: inline-block; vertical-align: middle; border: 1px solid var(--line-strong); border-radius: 2px; background: var(--field); }
+.portrait.tiny { width: 26px; height: 26px; }
+.portrait.small { width: 32px; height: 32px; margin-right: 6px; }
+.render { margin-right: 8px; }
+.who { display: flex; align-items: center; gap: 12px; }
+
+/* Today: the next step, big, above the timeline */
+.next-up {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  border-left: 3px solid var(--action);
+  background: var(--action-soft);
+  padding: 12px 16px;
+  margin: 4px 0 8px;
+}
+.next-up .label {
+  font: 600 11px/1.6 var(--display);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--action);
+}
+.next-up .render { margin: 0; }
+.next-what { min-width: 0; }
+.next-figures { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; color: var(--muted); font-size: 14px; }
+.next-figures b { font: 600 1.15rem/1 var(--display); color: var(--heading); }
+.next-figures span:first-child b { color: var(--isk); }
+
+/* Steps as a timeline: a line through the step numbers */
+.steps.timeline { position: relative; }
+.steps.timeline::before {
+  content: "";
+  position: absolute;
+  left: calc(1.05em - 0.5px);
+  top: 24px;
+  bottom: 24px;
+  width: 1px;
+  background: var(--line-strong);
+}
+.steps.timeline .step .num { position: relative; background: var(--surface); }
+.steps.timeline .step .num::after { content: ""; position: absolute; inset: 0; background: var(--action-soft); }
+
+/* Today while playing: the session view */
+.session-view { margin-bottom: 18px; }
+.session-view .now {
+  border-left: 3px solid var(--action);
+  background: var(--action-soft);
+  padding: 12px 16px;
+  margin: 16px 0;
+}
+.now .label {
+  font: 600 11px/1.6 var(--display);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--action);
+}
+.now-title { font: 600 1.25rem/1.3 var(--display); color: var(--heading); margin: 2px 0 4px; overflow-wrap: anywhere; }
+.now .figures { margin: 0; color: var(--muted); font-size: 14px; }
+.now .figures strong { color: var(--isk); font-family: var(--display); }
+.checklist { list-style: none; margin: 8px 0 16px; padding: 0; }
+.checklist li {
+  display: grid;
+  grid-template-columns: 2em 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+}
+.checklist li:first-child { border-top: 0; }
+.checklist .tick { font: 600 0.95rem/1 var(--display); text-align: center; color: var(--muted); }
+.checklist .what { min-width: 0; overflow-wrap: anywhere; }
+.checklist .done .tick { color: var(--ok); }
+.checklist .done .what { color: var(--muted); }
+.checklist .current .tick { color: var(--action); }
+.checklist .current .what { color: var(--heading); font-weight: 600; }
+.checklist .skipped .what { color: var(--muted); text-decoration: line-through; }
+.session-view .finish { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 16px; margin-top: 8px; }
+.session-view .finish form.inline { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; }
+.session-view .finish label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
 
 /* Today: plan steps */
 .steps { list-style: none; margin: 0; padding: 0; }
@@ -473,5 +570,86 @@ progress.isk::-moz-progress-bar { background: var(--isk); }
 
 footer { color: var(--muted); font-size: 12px; border-top: 1px solid var(--line); padding-block: 18px 28px; }
 .auto-status { margin: 0 0 6px; }
+
+/* Phones and narrow windows */
+.nav-narrow { display: none; position: relative; margin-left: auto; }
+.nav-narrow summary {
+  cursor: pointer;
+  list-style: none;
+  font: 600 13px/1 var(--display);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--fg);
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
+  padding: 8px 12px;
+}
+.nav-narrow summary::-webkit-details-marker { display: none; }
+.nav-narrow summary::after { content: " \25BE"; color: var(--action); }
+.nav-narrow[open] summary::after { content: " \25B4"; }
+.nav-narrow nav {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 10;
+  min-width: 200px;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
+  padding: 4px 0;
+}
+.nav-narrow nav a { border-bottom: 0; border-left: 2px solid transparent; padding: 10px 12px; }
+.nav-narrow nav a[aria-current="page"] { border-left-color: var(--action); }
+
+@media (max-width: 720px) {
+  .nav-wide { display: none; }
+  .nav-narrow { display: block; }
+  header.bar .wrap { gap: 10px 16px; }
+  .character-switch { margin-left: 0; width: 100%; }
+  .character-switch select { flex: 1; min-width: 0; }
+  h1 { font-size: 1.6rem; }
+  main { padding-block: 20px 48px; }
+  .readout { gap: 10px 24px; }
+  .readout .value { font-size: 1.7rem; }
+  .readout .value.minor { font-size: 1.15rem; padding-top: 0.35rem; }
+  .next-up { align-items: flex-start; }
+  .next-up .render { width: 48px; height: 48px; }
+}
+
+/* Tables become cards: one block per row, each value under its heading. */
+@media (max-width: 640px) {
+  .table-wrap table:not(.keep-grid),
+  .table-wrap table:not(.keep-grid) tbody,
+  .table-wrap table:not(.keep-grid) tr,
+  .table-wrap table:not(.keep-grid) td { display: block; width: 100%; }
+  .table-wrap table:not(.keep-grid) thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .table-wrap table:not(.keep-grid) tr {
+    display: flex; /* numbers two to a line, so a card isn't one long column */
+    flex-wrap: wrap;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .table-wrap table:not(.keep-grid) tr:last-child { border-bottom: 0; }
+  .table-wrap table:not(.keep-grid) td { border: 0; padding: 4px 14px; text-align: left; white-space: normal; }
+  .table-wrap table:not(.keep-grid) td.num { width: 50%; }
+  .table-wrap table:not(.keep-grid) td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    font: 600 11px/1.6 var(--display);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .table-wrap table.keep-grid { font-size: 12px; }
+  .table-wrap table.keep-grid th, .table-wrap table.keep-grid td { padding: 6px; }
+}
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }

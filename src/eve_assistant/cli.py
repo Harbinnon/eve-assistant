@@ -15,6 +15,7 @@ from eve_assistant import (
     explain,
     gamelogs,
     goals,
+    images,
     launcher,
     market,
     mining,
@@ -34,6 +35,7 @@ from eve_assistant import (
 )
 from eve_assistant.accounts import AccountError
 from eve_assistant.config import ConfigError, load_config
+from eve_assistant.esi import user_agent
 from eve_assistant.esi.client import EsiClient, EsiError
 from eve_assistant.esi.sso import SSOError
 from eve_assistant.goals import GoalError
@@ -150,6 +152,12 @@ def _cmd_serve(args) -> int:
     def do_auto_refresh():
         return refresh.auto_refresh_once(config, secrets)
 
+    def do_add_character() -> str:
+        with auth.http_client(config) as client:
+            character = auth.login_character(config, secrets, client, store_lock=refresh.ESI_LOCK)
+        refresh.snapshot_character(config, secrets, character.character_id)
+        return character.name
+
     print(f"Dashboard: http://127.0.0.1:{args.port}  (Ctrl+C or close this window to stop)")
     if args.open:
         launcher.open_when_listening(args.port)
@@ -160,6 +168,8 @@ def _cmd_serve(args) -> int:
             snapshot=do_snapshot,
             auto_refresh=do_auto_refresh if config.auto_refresh else None,
             backups_dir=config.backups_dir,
+            add_character=do_add_character,
+            fetch_image=lambda address: images.download(address, user_agent(config.contact)),
         ),
         host="127.0.0.1",
         port=args.port,

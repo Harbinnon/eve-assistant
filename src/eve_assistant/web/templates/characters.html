@@ -6,11 +6,29 @@
     <h1>Characters</h1>
     <p class="lede">What each character has and where it is, as of the last check with EVE.</p>
   </div>
-  <form method="post" action="/refresh">
-    <input type="hidden" name="token" value="{{ form_token }}">
-    <button class="primary" type="submit">Refresh from EVE</button>
-  </form>
+  <div class="head-actions">
+    {% if can_add %}
+    <form method="post" action="/characters/add">
+      <input type="hidden" name="token" value="{{ form_token }}">
+      <button type="submit" {% if login and login.state == "waiting" %}disabled{% endif %}>Add a character</button>
+    </form>
+    {% endif %}
+    <form method="post" action="/refresh">
+      <input type="hidden" name="token" value="{{ form_token }}">
+      <button class="primary" type="submit">Refresh from EVE</button>
+    </form>
+  </div>
 </div>
+
+{% if login %}
+  {% if login.state == "waiting" %}
+  <p class="notice" role="status">EVE's login page is open in your browser: log in there and pick the character to add. This page checks back every few seconds.</p>
+  {% elif login.state == "done" %}
+  <p class="notice" role="status">{{ login.message }}</p>
+  {% else %}
+  <p class="error" role="alert">{{ login.message }}</p>
+  {% endif %}
+{% endif %}
 
 {% if problems %}
 <div class="problems" role="alert">
@@ -20,12 +38,15 @@
 {% endif %}
 
 {% if not characters %}
-<p>No characters yet. Log one in with <span class="mono">eve-assistant login</span>, then press Refresh.</p>
+<p>No characters yet. Press <strong>Add a character</strong> to log one in with EVE.</p>
 {% else %}
 <div class="cards">
   {% for c in characters %}
   <article class="card">
-    <h3>{{ c.name }} <span class="pill {{ c.clone_state }}">{{ c.clone_state|capitalize }}</span></h3>
+    <div class="who">
+      <img class="portrait" src="/images/portrait/{{ c.character_id }}.png" alt="" width="56" height="56">
+      <h3>{{ c.name }} <span class="pill {{ c.clone_state }}">{{ c.clone_state|capitalize }}</span></h3>
+    </div>
     <p class="sub">{% if c.account %}Account: {{ c.account }}{% else %}No account set{% endif %}
       {% if c.online %} · <span class="pill good">online</span>{% endif %}</p>
     <dl class="facts">
@@ -38,7 +59,7 @@
         {% if c.structure_name %}<span class="muted player-text" title="Name chosen by the structure's owner">at “{{ c.structure_name }}”</span>{% endif %}
         {% else %}<span class="muted">unknown</span>{% endif %}</dd>
       <dt>Ship</dt>
-      <dd>{{ c.ship_type or "unknown" }}{% if c.ship_name %}
+      <dd>{% if c.ship_type_id %}<img class="render" src="/images/render/{{ c.ship_type_id }}.png" alt="" width="40" height="40">{% endif %}{{ c.ship_type or "unknown" }}{% if c.ship_name %}
         <span class="muted player-text" title="Name chosen by the player">“{{ c.ship_name }}”</span>{% endif %}</dd>
       <dt>Training</dt>
       <dd>{% if c.training %}{{ c.training }}{% if c.queue_length > 1 %} <span class="muted">+{{ c.queue_length - 1 }} queued</span>{% endif %}
@@ -49,7 +70,7 @@
       <dt>Alpha-locked</dt><dd>{{ c.alpha_locked_skills }} trained skills wait for Omega</dd>
       {% endif %}
     </dl>
-    <p class="sub checked">Checked {{ c.last_checked|when }}</p>
+    <p class="sub checked">Checked {{ c.last_checked|when_ago }}</p>
   </article>
   {% endfor %}
 </div>

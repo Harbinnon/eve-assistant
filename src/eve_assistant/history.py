@@ -15,7 +15,7 @@ says happened. Matching is by what each step is about:
 import sqlite3
 from dataclasses import dataclass
 
-from eve_assistant import contracts, outcomes, planner
+from eve_assistant import checklist, contracts, outcomes, planner
 from eve_assistant.outcomes import Outcome
 from eve_assistant.planner import StoredItem, StoredPlan
 from eve_assistant.sessions import PlaySession
@@ -64,6 +64,7 @@ class SessionHistory:
     outcome: Outcome | None
     plan: StoredPlan | None
     steps: list[StepResult]
+    ticked: frozenset[int] = frozenset()  # steps ticked off in the session view
 
 
 def _mining_rate(item: StoredItem) -> float | None:
@@ -170,5 +171,6 @@ def sessions_history(db: sqlite3.Connection, limit: int = 20) -> list[SessionHis
                 plan = None
         known = contracts.mine(db, session.character_id)
         steps = [compare_step(item, outcome, known) for item in plan.items] if plan else []
-        found.append(SessionHistory(session, outcome, plan, steps))
+        ticked = checklist.ticked(db, session.session_id)
+        found.append(SessionHistory(session, outcome, plan, steps, ticked))
     return found

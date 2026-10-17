@@ -5,7 +5,7 @@
     <summary>Why?</summary>
     <ul>
       <li>{{ risk_summary(item.details.risk) }}</li>
-      {% if item.details.why_not %}<li>Not chosen: {{ why_not.get(item.details.why_not, item.details.why_not) }}</li>{% endif %}
+      {% if item.details.why_not and plan %}{% set r = why_not_here(plan, item) %}<li>Not chosen: {{ explain(r.code, r.detail) }}</li>{% endif %}
       {% for r in item.details.reasons %}<li>{{ explain(r.code, r) }}</li>{% endfor %}
       {% if item.details.inputs.player_title %}
       <li>Contract title, written by the issuer: <span class="player-text">“{{ item.details.inputs.player_title }}”</span></li>
@@ -13,20 +13,30 @@
     </ul>
   </details>
 {% endmacro %}
+{# "Start this plan" is the commitment; steps can only be put off or muted,
+   and a project's first step can start the project. #}
 {% macro responses(item) %}
   <div class="responses">
     {% if item.response %}
-      <span class="responded">You said: {{ {"do": "doing it", "not_now": "not now", "mute": "not this kind"}[item.response] }}.</span>
+      <span class="responded">You said: {{ {"do": "started" if item.kind == "project_start" else "doing it", "not_now": "not now", "mute": "not this kind"}[item.response] }}.</span>
     {% endif %}
-    {% for value, label in [("do", "Do it"), ("not_now", "Not now"), ("mute", "Not this kind")] %}
+    {% set options = [("not_now", "Not now"), ("mute", "Not this kind")] %}
+    {% if item.kind == "project_start" and item.response != "do" %}{% set options = [("do", "Start project")] + options %}{% endif %}
+    {% for value, label in options %}
     <form class="inline" method="post" action="/plan-items/{{ item.item_id }}/respond">
       <input type="hidden" name="token" value="{{ form_token }}">
       <input type="hidden" name="response" value="{{ value }}">
-      <button class="small{% if value == 'do' %} primary{% endif %}" type="submit"
+      <button class="small" type="submit"
         {% if value == 'mute' %}title="Stop suggesting {{ category_labels.get('kind:' ~ item.kind, 'this kind of step') }}"{% endif %}>{{ label }}</button>
     </form>
     {% endfor %}
   </div>
+{% endmacro %}
+{% macro tick(session, step, action, label, cls="small") %}
+  <form class="inline" method="post" action="/sessions/{{ session.session_id }}/steps/{{ step.item.item_id }}/{{ action }}">
+    <input type="hidden" name="token" value="{{ form_token }}">
+    <button class="{{ cls }}" type="submit">{{ label }}</button>
+  </form>
 {% endmacro %}
 
 {% block content %}
@@ -40,7 +50,7 @@
 <p class="muted small-print">From EVE's login and logout times. Record them so the assistant can learn from them; nothing is recorded until you say so.</p>
 {% for d in noticed %}
 <article class="card session">
-  <p><strong>{{ d.character_name }}</strong> · {{ d.login|when }} to {{ d.logout[11:16] }} UTC · {{ d.minutes|round|int }} min
+  <p><strong>{{ d.character_name }}</strong> · {{ d.login|when_ago }}, to {{ d.logout[11:16] }} UTC · {{ d.minutes|round|int }} min
     {% if d.plan_id %} · with <a href="/plans/{{ d.plan_id }}">plan {{ d.plan_id }}</a>{% endif %}</p>
   {% for action, label, cls in [("record", "Record it", "small primary"), ("dismiss", "Not a session", "small")] %}
   <form class="inline" method="post" action="/detected/{{ action }}">
@@ -54,36 +64,79 @@
 {% endfor %}
 {% endif %}
 
-{% if open_sessions %}
-<h2>Playing now</h2>
-{% for s in open_sessions %}
-<article class="card session">
-  <p><strong>{{ s.character_name }}</strong> · started {{ s.started_at|when }} · {{ s.minutes()|round|int }} min so far
-    {% if s.plan_id %} · following <a href="/plans/{{ s.plan_id }}">plan {{ s.plan_id }}</a>{% endif %}</p>
-  {% if s.is_stale() %}<p class="muted">That was a while ago. Say how many minutes you actually played.</p>{% endif %}
-  <form class="inline" method="post" action="/sessions/{{ s.session_id }}/finish">
-    <input type="hidden" name="token" value="{{ form_token }}">
-    <label for="minutes-{{ s.session_id }}">Minutes played{% if not s.is_stale() %} (only if you stopped earlier){% endif %}
-      <input id="minutes-{{ s.session_id }}" name="minutes" type="number" min="1" step="1" class="narrow"
-        {% if s.is_stale() %}required{% endif %}>
-    </label>
-    <button class="small primary" type="submit">I'm done</button>
-  </form>
-  <form class="inline" method="post" action="/sessions/{{ s.session_id }}/cancel">
-    <input type="hidden" name="token" value="{{ form_token }}">
-    <button class="small" type="submit">Cancel: I didn't play</button>
-  </form>
-</article>
-{% endfor %}
-{% endif %}
+{% for v in session_views %}
+{% set s = v.session %}
+<section class="card session-view" id="session-{{ s.session_id }}" aria-label="Playing now: {{ s.character_name }}">
+  <h2 class="history-title"><img class="portrait small" src="/images/portrait/{{ s.character_id }}.png" alt="" width="32" height="32"> Playing now · {{ s.character_name }}
+    {% if s.plan_id %}<span class="heading-note">· following <a href="/plans/{{ s.plan_id }}">plan {{ s.plan_id }}</a></span>{% endif %}</h2>
+  <div class="readout">
+    <div><span class="label">Playing for</span><span class="value">{{ s.minutes()|round|int }}<small>min</small></span></div>
+    <div><span class="label">Started</span><span class="value minor">{{ s.started_at[11:16] }}<small>UTC</small></span></div>
+    {% if v.wallet_change is not none %}<div><span class="label">Wallet since the start</span><span class="value minor isk">{{ "+" if v.wallet_change > 0 }}{{ v.wallet_change|isk }}<small>ISK</small></span></div>{% endif %}
+    {% if v.plan %}<div><span class="label">The plan</span><span class="value minor">{{ v.plan.total_isk|isk }}<small>ISK · {{ v.plan.total_minutes|round|int }} min</small></span></div>{% endif %}
+  </div>
+  {% if s.is_stale() %}<p class="banner">This started a while ago. Say how many minutes you actually played, then press I'm done.</p>{% endif %}
 
+  {% set c = v.current %}
+  {% if c %}
+  <div class="now">
+    <span class="label">Now · step {{ c.number }} of {{ v.steps|length }}</span>
+    <p class="now-title">{{ c.item.title }}</p>
+    <p class="figures"><strong>{{ c.item.isk|isk }} ISK</strong> · {{ c.item.minutes|round|int }} min ·
+      <span class="pill risk {{ c.item.risk_rating }}">{{ risk_labels[c.item.risk_rating] }}</span></p>
+    <div class="responses">
+      {{ tick(s, c, "done", "Done", "primary") }}
+      <form class="inline" method="post" action="/plan-items/{{ c.item.item_id }}/respond">
+        <input type="hidden" name="token" value="{{ form_token }}">
+        <input type="hidden" name="response" value="not_now">
+        <button class="small" type="submit">Not now</button>
+      </form>
+    </div>
+  </div>
+  {% elif v.steps %}
+  <p class="notice">Every step is done or skipped. Press “I'm done” when you stop playing.</p>
+  {% else %}
+  <p class="muted">No plan for this session: it's timed, and what happened is worked out when you finish.</p>
+  {% endif %}
+
+  {% if v.steps %}
+  <ol class="checklist" aria-label="Steps">
+    {% for st in v.steps %}
+    <li class="{{ 'done' if st.done else 'skipped' if st.skipped else 'current' if st.current else 'next' }}">
+      <span class="tick" aria-hidden="true">{{ "✓" if st.done else "–" if st.skipped else st.number }}</span>
+      <span class="what">{{ st.item.title }}
+        <span class="muted small-print">· {{ st.item.isk|isk }} ISK · {{ st.item.minutes|round|int }} min{% if st.done %} · done{% elif st.skipped %} · skipped{% endif %}</span></span>
+      {% if st.done %}{{ tick(s, st, "undo", "Undo") }}{% elif not st.current and not st.skipped %}{{ tick(s, st, "done", "Done") }}{% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+  {% endif %}
+
+  <div class="finish">
+    <form class="inline" method="post" action="/sessions/{{ s.session_id }}/finish">
+      <input type="hidden" name="token" value="{{ form_token }}">
+      <label for="minutes-{{ s.session_id }}">Minutes played{% if not s.is_stale() %} (only if you stopped earlier){% endif %}
+        <input id="minutes-{{ s.session_id }}" name="minutes" type="number" min="1" step="1" class="narrow"
+          {% if s.is_stale() %}required{% endif %}>
+      </label>
+      <button class="{{ 'small' if c else 'primary' }}" type="submit">I'm done</button>
+    </form>
+    <form class="inline" method="post" action="/sessions/{{ s.session_id }}/cancel">
+      <input type="hidden" name="token" value="{{ form_token }}">
+      <button class="small" type="submit">Cancel: I didn't play</button>
+    </form>
+  </div>
+  <p class="muted small-print">This page updates itself every minute while you play{% if v.wallet_checked_at %}; EVE's wallet was last read {{ v.wallet_checked_at|when }}{% endif %}.</p>
+</section>
+{% endfor %}
+
+{% if not session_views %}
 <form class="stack card" method="post" action="/today/plan">
   <input type="hidden" name="token" value="{{ form_token }}">
-  <label for="character">Character
-    <select id="character" name="character">
-      {% for n in character_names %}<option {% if plan and n == plan.character_name %}selected{% endif %}>{{ n }}</option>{% endfor %}
-    </select>
-  </label>
+  {% if active %}
+  <input type="hidden" name="character" value="{{ active.name }}">
+  <p class="form-for">For <strong>{{ active.name }}</strong><span class="muted small-print">switch at the top</span></p>
+  {% endif %}
   <label for="minutes">Minutes
     <input id="minutes" name="minutes" type="number" min="5" max="600" step="5"
       value="{{ (plan.minutes_available|int) if plan else 60 }}" class="narrow" required>
@@ -94,8 +147,9 @@
   </div>
   <button class="primary" type="submit" {% if not can_plan or not character_names %}disabled{% endif %}>Plan my time</button>
 </form>
-{% if not character_names %}<p class="muted">No characters yet: log one in with <span class="mono">eve-assistant login</span>, then refresh on the Characters page.</p>{% endif %}
+{% if not character_names %}<p class="muted">No characters yet: add one on the <a href="/characters">Characters</a> page.</p>{% endif %}
 <p class="muted small-print">Planning reads live market prices and contracts, so it takes a few seconds.</p>
+{% endif %}
 
 {% if results %}
 <h2>Recent sessions</h2>
@@ -105,13 +159,13 @@
     <tbody>
     {% for s, o in results %}
       <tr>
-        <td>{{ s.character_name }} · {{ s.started_at|when }}{% if s.plan_id %} · <a href="/plans/{{ s.plan_id }}">plan</a>{% endif %}</td>
-        <td class="num">{{ s.minutes()|round|int }} min</td>
-        <td class="num">{% if o and o.planned_isk is not none %}{{ o.planned_isk|isk }} · {{ o.planned_minutes|round|int }} min{% else %}–{% endif %}</td>
-        <td class="num">{% if o %}{{ o.net_isk|isk }}{% else %}–{% endif %}</td>
-        <td class="num">{% if o and o.details.mined is not none %}{{ o.details.mined_m3|round|int }} m³{% if o.mined_value %} · ~{{ o.mined_value|isk }}{% endif %}{% else %}–{% endif %}
+        <td data-label="Session">{{ s.character_name }} · {{ s.started_at|when }}{% if s.plan_id %} · <a href="/plans/{{ s.plan_id }}">plan</a>{% endif %}</td>
+        <td data-label="Played" class="num">{{ s.minutes()|round|int }} min</td>
+        <td data-label="Planned" class="num">{% if o and o.planned_isk is not none %}{{ o.planned_isk|isk }} · {{ o.planned_minutes|round|int }} min{% else %}–{% endif %}</td>
+        <td data-label="Wallet change" class="num">{% if o %}{{ o.net_isk|isk }}{% else %}–{% endif %}</td>
+        <td data-label="Ore mined" class="num">{% if o and o.details.mined is not none %}{{ o.details.mined_m3|round|int }} m³{% if o.mined_value %} · ~{{ o.mined_value|isk }}{% endif %}{% else %}–{% endif %}
           {% if o and o.log_mining and o.log_mining.m3_per_active_minute %}<br><span class="muted small-print">logs: {{ o.log_mining.m3_per_active_minute|round|int }} m³/min while mining</span>{% endif %}</td>
-        <td>{% if not o %}not worked out yet{% elif o.settled %}final{% else %}may still change{% endif %}
+        <td data-label="Status">{% if not o %}not worked out yet{% elif o.settled %}final{% else %}may still change{% endif %}
           {% if o and o.notes() %}<details class="why"><summary>Notes</summary><ul>{% for n in o.notes() %}<li>{{ n }}</li>{% endfor %}</ul></details>{% endif %}</td>
       </tr>
     {% endfor %}
@@ -129,20 +183,19 @@
     <tbody>
     {% for who, p in open_projects %}
       <tr>
-        <td>{{ p.title }}</td>
-        <td>{{ who }}</td>
-        <td><span class="progress"><progress value="{{ p.minutes_done }}" max="{{ p.total_minutes or 1 }}"
+        <td data-label="Project">{{ p.title }}</td>
+        <td data-label="Character">{{ who }}</td>
+        <td data-label="Done"><span class="progress"><progress value="{{ p.minutes_done }}" max="{{ p.total_minutes or 1 }}"
           aria-label="{{ p.minutes_done|round|int }} of {{ p.total_minutes|round|int }} minutes done"></progress>
           <span class="small-print">{{ p.minutes_done|round|int }} / {{ p.total_minutes|round|int }} min</span></span></td>
-        <td class="num">{{ p.isk|isk }}</td>
-        <td>{{ p.deadline|when if p.deadline else "none" }}</td>
+        <td data-label="ISK at the end" class="num">{{ p.isk|isk }}</td>
+        <td data-label="Deadline">{{ p.deadline|when_ago if p.deadline else "none" }}</td>
         <td>
-          {% for status, label in [("done", "Done"), ("dropped", "Drop")] %}
-          <form class="inline" method="post" action="/projects/{{ p.project_id }}/{{ status }}">
+          <form class="inline" method="post" action="/projects/{{ p.project_id }}/done">
             <input type="hidden" name="token" value="{{ form_token }}">
-            <button class="small" type="submit">{{ label }}</button>
+            <button class="small" type="submit">Done</button>
           </form>
-          {% endfor %}
+          <a class="button small" href="/projects/{{ p.project_id }}/drop">Drop</a>
         </td>
       </tr>
     {% endfor %}
@@ -151,9 +204,23 @@
 </div>
 {% endif %}
 
-{% if plan %}
-<h2>Plan for {{ plan.character_name }} · {{ plan.minutes_available|int }} minutes
-  <span class="muted heading-note">· made {{ plan.created_at|when }}</span></h2>
+{% if plan and not session_views %}
+<h2 id="plan">Plan for {{ plan.character_name }} · {{ plan.minutes_available|int }} minutes
+  <span class="muted heading-note">· made {{ plan.created_at|when }}, {{ plan.created_at|ago }}</span></h2>
+
+{% if (minutes_since(plan.created_at) or 0) > plan_stale_minutes %}
+<div class="banner stale-plan">
+  <p><strong>This plan was made {{ plan.created_at|ago }}.</strong> Prices and contracts have moved since, so its numbers may be off.</p>
+  <form class="inline" method="post" action="/today/plan">
+    <input type="hidden" name="token" value="{{ form_token }}">
+    <input type="hidden" name="character" value="{{ plan.character_name }}">
+    <input type="hidden" name="minutes" value="{{ plan.minutes_available|int }}">
+    {% if plan.allow_lowsec %}<input type="hidden" name="allow_lowsec" value="true">{% endif %}
+    {% if plan.allow_risky %}<input type="hidden" name="allow_risky" value="true">{% endif %}
+    <button class="small" type="submit" {% if not can_plan %}disabled{% endif %}>Plan again</button>
+  </form>
+</div>
+{% endif %}
 
 {% set busy = open_sessions|selectattr("character_id", "equalto", plan.character_id)|list %}
 {% if not busy %}
@@ -175,15 +242,29 @@
     {% if plan.total_minutes %}<div><span class="label">Per hour</span><span class="value minor">{{ (plan.total_isk / plan.total_minutes * 60)|isk }}<small>ISK</small></span></div>{% endif %}
     {% if plan.net_worth %}<div><span class="label">Net worth</span><span class="value minor">{{ plan.net_worth|isk }}<small>ISK</small></span></div>{% endif %}
   </div>
-  <ol class="steps">
+  {% set first = plan.items[0] %}
+  <div class="next-up">
+    {% if ship_type_id %}<img class="render" src="/images/render/{{ ship_type_id }}.png" alt="" width="72" height="72">{% endif %}
+    <div class="next-what">
+      <span class="label">Next up · step 1 of {{ plan.items|length }}</span>
+      <p class="now-title">{{ first.title }}</p>
+      <div class="next-figures">
+        <span><b>{{ first.isk|isk }}</b> ISK</span>
+        {% if per_hour(first.isk, first.minutes) %}<span><b>{{ per_hour(first.isk, first.minutes)|isk }}</b> an hour</span>{% endif %}
+        <span><b>{{ first.minutes|round|int }}</b> min</span>
+        <span class="pill risk {{ first.risk_rating }}">{{ risk_labels[first.risk_rating] }}</span>
+      </div>
+    </div>
+  </div>
+  <ol class="steps timeline">
     {% for item in plan.items %}
-    <li class="step">
+    <li class="step" id="item-{{ item.item_id }}">
       <span class="num" aria-hidden="true">{{ loop.index }}</span>
       <div class="body">
         <div class="title">{{ item.title }}
           {% if item.details.new_to_you %}<span class="pill new">new to you</span>{% endif %}</div>
         <div class="figures">
-          <strong>{{ item.isk|isk }} ISK</strong> · {{ item.minutes|round|int }} min ·
+          <strong>{{ item.isk|isk }} ISK</strong> · {{ item.minutes|round|int }} min{% if per_hour(item.isk, item.minutes) %} · {{ per_hour(item.isk, item.minutes)|isk }} an hour{% endif %} ·
           <span class="pill risk {{ item.risk_rating }}">{{ risk_labels[item.risk_rating] }}</span>
           {% if item.expected_loss > 0 %} · expected loss {{ item.expected_loss|isk }}{% endif %}
         </div>
@@ -203,15 +284,16 @@
 <h2>Also considered</h2>
 <div class="table-wrap">
   <table>
-    <thead><tr><th>Option</th><th class="num">ISK</th><th class="num">Minutes</th><th>Risk</th><th>Why not</th></tr></thead>
+    <thead><tr><th>Option</th><th class="num">ISK</th><th class="num">Minutes</th><th class="num">Per hour</th><th>Risk</th><th>Why not</th></tr></thead>
     <tbody>
     {% for alt in plan.alternatives[:12] %}
-      <tr>
-        <td>{{ alt.title }}{{ why(alt) }}</td>
-        <td class="num">{{ alt.isk|isk }}</td>
-        <td class="num">{{ alt.minutes|round|int }}</td>
-        <td><span class="pill risk {{ alt.risk_rating }}">{{ risk_labels[alt.risk_rating] }}</span></td>
-        <td class="alt-why">{{ why_not.get(alt.details.why_not, alt.details.why_not) }}</td>
+      <tr id="item-{{ alt.item_id }}">
+        <td data-label="Option">{{ alt.title }}{{ why(alt) }}</td>
+        <td data-label="ISK" class="num">{{ alt.isk|isk }}</td>
+        <td data-label="Minutes" class="num">{{ alt.minutes|round|int }}</td>
+        <td data-label="Per hour" class="num">{{ per_hour(alt.isk, alt.minutes)|isk if per_hour(alt.isk, alt.minutes) else "–" }}</td>
+        <td data-label="Risk"><span class="pill risk {{ alt.risk_rating }}">{{ risk_labels[alt.risk_rating] }}</span></td>
+        <td data-label="Why not" class="alt-why">{% set r = why_not_here(plan, alt) %}{{ explain(r.code, r.detail) }}</td>
       </tr>
     {% endfor %}
     </tbody>

@@ -119,3 +119,29 @@ def test_list_and_logout():
     assert auth.logout(store, 1) is True
     assert auth.logout(store, 1) is False
     assert [c.character_id for c in auth.list_characters(store)] == [2]
+
+
+def test_the_store_lock_is_held_only_while_saving(config, mocked_sso, make_token):
+    import threading
+
+    mocked_sso.post(sso.TOKEN_URL).mock(
+        return_value=httpx.Response(
+            200, json={"access_token": make_token(), "refresh_token": "r", "expires_in": 1199}
+        )
+    )
+    lock = threading.Lock()
+
+    def wait(callback_url, state):
+        assert not lock.locked()  # the background refresh keeps working meanwhile
+        return "code"
+
+    class WatchedStore(MemoryStore):
+        def save(self, data):
+            assert lock.locked()
+            super().save(data)
+
+    store = WatchedStore()
+    with httpx.Client() as client:
+        auth.login_character(config, store, client, lambda url: None, wait, store_lock=lock)
+    assert "2112000001" in store.data["characters"]
+    assert not lock.locked()
