@@ -146,6 +146,15 @@ def record(db: sqlite3.Connection, character_id: int, kind: str, payload) -> boo
     return changed
 
 
+def last_checked(db: sqlite3.Connection, character_id: int) -> dict[str, str]:
+    """When each kind was last tried for a character, successful or not."""
+    rows = db.execute(
+        "SELECT kind, MAX(checked_at) FROM snapshot_checks WHERE character_id = ? GROUP BY kind",
+        (character_id,),
+    )
+    return {kind: when for kind, when in rows}
+
+
 def _record_failure(db: sqlite3.Connection, character_id: int, kind: str, detail: str) -> None:
     db.execute(
         "INSERT INTO snapshot_checks (character_id, kind, checked_at, outcome, detail) "
@@ -155,11 +164,15 @@ def _record_failure(db: sqlite3.Connection, character_id: int, kind: str, detail
     db.commit()
 
 
-def collect(db: sqlite3.Connection, esi: EsiClient, character_id: int) -> list[CheckResult]:
-    """Fetch every kind for one character. One failing kind does not stop the rest;
-    a rate limit stops everything."""
+def collect(
+    db: sqlite3.Connection, esi: EsiClient, character_id: int, kinds: set[str] | None = None
+) -> list[CheckResult]:
+    """Fetch every kind (or only `kinds`) for one character. One failing kind does
+    not stop the rest; a rate limit stops everything."""
     results = []
     for kind in KINDS:
+        if kinds is not None and kind.name not in kinds:
+            continue
         try:
             result = esi.get(
                 kind.path.format(id=character_id),

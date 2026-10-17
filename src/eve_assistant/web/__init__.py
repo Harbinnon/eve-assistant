@@ -4,8 +4,14 @@ Local mode only for now: it listens on 127.0.0.1 and has no login, so it
 refuses to run in hosted mode until hosted mode (with a login) is built.
 Forms carry a per-process token and cross-site posts are rejected, so a
 web page in another tab cannot change anything here.
+
+When given an auto_refresh function, the dashboard runs it in the
+background every minute while it is open (it fetches only what is due).
 """
 
+import asyncio
+import contextlib
+import logging
 import secrets
 import sqlite3
 from collections.abc import Callable
@@ -40,6 +46,10 @@ from eve_assistant.skills import SkillsError
 # make_plan(character_id, minutes, allow_lowsec, allow_risky) -> plan_id
 PlanMaker = Callable[[int, float, bool, bool], int]
 SnapshotTaker = Callable[[int], list[str]]
+# Returns an object with .problems (list[str]) and .retry_after (seconds or None).
+AutoRefresher = Callable[[], object]
+AUTO_TICK_SECONDS = 60.0
+log = logging.getLogger(__name__)
 TODAY = "/today"
 
 HERE = Path(__file__).parent
@@ -128,11 +138,41 @@ def create_app(
     make_plan: PlanMaker | None = None,
     snapshot: SnapshotTaker | None = None,
     allowed_hosts: tuple[str, ...] = LOCAL_HOSTS,
+    auto_refresh: AutoRefresher | None = None,
+    auto_tick_seconds: float = AUTO_TICK_SECONDS,
 ) -> FastAPI:
     """refresh: called by the Refresh button; returns problem lines, empty when all went well.
     make_plan: builds and records a plan (needs ESI), returning its ID.
-    snapshot: snapshots one character (needs ESI), returning problem lines."""
-    app = FastAPI(title="EVE Assistant", docs_url=None, redoc_url=None, openapi_url=None)
+    snapshot: snapshots one character (needs ESI), returning problem lines.
+    auto_refresh: one background refresh tick (needs ESI), run every auto_tick_seconds."""
+    auto_status: dict = {"enabled": auto_refresh is not None, "last_run": None, "problems": []}
+
+    async def auto_loop() -> None:
+        while True:
+            delay = auto_tick_seconds
+            try:
+                report = await asyncio.to_thread(auto_refresh)
+                auto_status["problems"] = list(report.problems)
+                if report.retry_after:
+                    delay = max(delay, report.retry_after)
+            except Exception as exc:  # noqa: BLE001  # keep the loop alive; shown on every page
+                log.warning("Background refresh failed: %s", exc)
+                auto_status["problems"] = [f"Background refresh failed: {exc}"]
+            auto_status["last_run"] = store.utc_now()
+            await asyncio.sleep(delay)
+
+    @contextlib.asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        task = asyncio.create_task(auto_loop()) if auto_refresh is not None else None
+        yield
+        if task is not None:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+
+    app = FastAPI(
+        title="EVE Assistant", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan
+    )
     app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(allowed_hosts))
 
@@ -165,6 +205,7 @@ def create_app(
             {
                 "form_token": form_token,
                 "message": message,
+                "auto": auto_status,
                 "page": name.split(".")[0],
                 **context,
             },  # fmt: skip
