@@ -430,7 +430,9 @@ progress::-webkit-progress-value { background: var(--action); }
 progress::-moz-progress-bar { background: var(--action); }
 progress.isk::-webkit-progress-value { background: var(--isk); }
 progress.isk::-moz-progress-bar { background: var(--isk); }
-.progress { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
+.progress { display: inline-flex; align-items: center; gap: 10px; }
+.progress progress { flex: none; width: 160px; }
+.progress span { white-space: nowrap; }
 
 /* Theme switch in the footer */
 .theme-switch { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 12px; }

@@ -239,7 +239,9 @@ def create_app(
     def render(request: Request, name: str, **context) -> HTMLResponse:
         message = MESSAGES.get(request.query_params.get("msg", ""))
         theme = request.cookies.get(THEME_COOKIE, DEFAULT_THEME)
-        here = request.url.path + (f"?{request.url.query}" if request.url.query else "")
+        # Where the theme form returns to: this page, without its one-off message.
+        kept = urlencode([(k, v) for k, v in request.query_params.multi_items() if k != "msg"])
+        here = request.url.path + (f"?{kept}" if kept else "")
         conn = db()
         try:
             static_data = sde.update_status(conn)

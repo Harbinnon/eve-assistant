@@ -354,6 +354,11 @@ system security uses EVE's own colours, as a bar beside the number (EVE's
 low and null reds are too dark to read as text on dark). Headings, labels
 and numbers use Bahnschrift, text uses Segoe UI: both ship with Windows, so
 there are no font files; other systems fall back to their own font.
+Every colour is a named token, with a dark and a light set; the footer of
+every page switches between Dark (the default), Light and Match system
+with a plain form that sets a cookie (no JavaScript). A test reads the
+stylesheet and checks every text colour against what it sits on, in both
+themes, at 4.5:1 or more (WCAG AA).
 
 **Starting it:** `eve-assistant shortcut` puts a shortcut on the Windows
 desktop that runs `serve --open`: it starts the dashboard and opens it in

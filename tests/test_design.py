@@ -195,6 +195,11 @@ def test_unknown_theme_is_refused_and_unknown_cookie_ignored(client):
     assert 'data-theme="dark"' in client.get("/today").text
 
 
+def test_theme_form_returns_without_the_one_off_message(client):
+    page = client.get("/goals?msg=goal_added&x=1").text
+    assert 'name="return_to" value="/goals?x=1"' in page
+
+
 def test_theme_form_needs_the_form_token(client):
     response = client.post("/theme", data={"token": "wrong", "theme": "light"})
     assert response.status_code == 403
