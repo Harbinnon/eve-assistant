@@ -35,6 +35,29 @@
 
 {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
 
+{% if open_sessions %}
+<h2>Playing now</h2>
+{% for s in open_sessions %}
+<article class="card session">
+  <p><strong>{{ s.character_name }}</strong> · started {{ s.started_at|when }} · {{ s.minutes()|round|int }} min so far
+    {% if s.plan_id %} · following <a href="/plans/{{ s.plan_id }}">plan {{ s.plan_id }}</a>{% endif %}</p>
+  {% if s.is_stale() %}<p class="muted">That was a while ago. Say how many minutes you actually played.</p>{% endif %}
+  <form class="inline" method="post" action="/sessions/{{ s.session_id }}/finish">
+    <input type="hidden" name="token" value="{{ form_token }}">
+    <label for="minutes-{{ s.session_id }}">Minutes played{% if not s.is_stale() %} (only if you stopped earlier){% endif %}
+      <input id="minutes-{{ s.session_id }}" name="minutes" type="number" min="1" step="1" class="narrow"
+        {% if s.is_stale() %}required{% endif %}>
+    </label>
+    <button class="small primary" type="submit">I'm done</button>
+  </form>
+  <form class="inline" method="post" action="/sessions/{{ s.session_id }}/cancel">
+    <input type="hidden" name="token" value="{{ form_token }}">
+    <button class="small" type="submit">Cancel: I didn't play</button>
+  </form>
+</article>
+{% endfor %}
+{% endif %}
+
 <form class="stack card" method="post" action="/today/plan">
   <input type="hidden" name="token" value="{{ form_token }}">
   <label for="character">Character
@@ -86,6 +109,16 @@
 {% if plan %}
 <h2>Plan for {{ plan.character_name }} · {{ plan.minutes_available|int }} minutes
   <span class="muted heading-note">· made {{ plan.created_at|when }}</span></h2>
+
+{% set busy = open_sessions|selectattr("character_id", "equalto", plan.character_id)|list %}
+{% if not busy %}
+<form class="session-start" method="post" action="/sessions/start">
+  <input type="hidden" name="token" value="{{ form_token }}">
+  <input type="hidden" name="plan_id" value="{{ plan.plan_id }}">
+  <button class="primary" type="submit">Start this plan</button>
+  <span class="muted small-print">Takes a snapshot now and another when you press “I'm done”, so the assistant can compare the plan with what happened.</span>
+</form>
+{% endif %}
 
 <article class="card">
   {% if not plan.items %}

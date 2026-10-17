@@ -7,8 +7,8 @@ then learns from what actually happened.
 
 **Status: phases 1 and 2 are built: login, snapshots, skill plans, goals,
 the dashboard, and the session planner (mining, ore, couriers, your whole
-fleet, multi-session projects, risk ratings, decline buttons). Learning from
-results (phase 3) comes next.** The design is in
+fleet, multi-session projects, risk ratings, decline buttons). Phase 3,
+learning from results, is under way: play sessions are recorded.** The design is in
 [docs/design.md](docs/design.md).
 
 ## What it will do
@@ -66,6 +66,10 @@ eve-assistant mute|unmute <category>  / eve-assistant mutes
 eve-assistant projects                 list open multi-session projects
 eve-assistant project done|dropped <id>
 eve-assistant play-time <hours>        your usual play time per week (default 6)
+eve-assistant session start <character> [--plan <id>|--no-plan]   start playing (snapshot)
+eve-assistant session finish <character> [--minutes <played>]     stop playing (snapshot)
+eve-assistant session cancel <character>                          discard a session not played
+eve-assistant sessions                 list recent play sessions
 eve-assistant serve [--port 8700]      run the dashboard at http://127.0.0.1:8700
 ```
 

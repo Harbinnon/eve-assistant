@@ -36,23 +36,15 @@ def refresh_all(
             for character in characters:
                 snapshots.ensure_character(db, character.character_id, character.name)
                 try:
-                    results = snapshots.collect(db, esi, character.character_id)
-                    structures.refresh(db, esi, character.character_id)
+                    line, problems = _snapshot_one(db, esi, character.character_id, character.name)
                 except EsiRateLimited as exc:
-                    report.problems.append(
-                        f"{exc} Try again in about {int(exc.retry_after)} seconds."
-                    )
+                    report.problems.append(_rate_limited(exc))
                     return report
                 except SSOError as exc:
                     report.problems.append(f"{character.name}: {exc}")
                     continue
-                failed = [r for r in results if r.outcome == "failed"]
-                changed = sum(r.outcome == "changed" for r in results)
-                report.lines.append(
-                    f"{character.name}: {changed} changed, "
-                    f"{len(results) - changed - len(failed)} unchanged, {len(failed)} failed"
-                )
-                report.problems.extend(f"{character.name}, {r.kind}: {r.detail}" for r in failed)
+                report.lines.append(line)
+                report.problems.extend(problems)
             try:
                 report.priced = goals.update_prices(db, esi)
             except EsiError as exc:
@@ -60,6 +52,51 @@ def refresh_all(
     finally:
         db.close()
     return report
+
+
+def _rate_limited(exc: EsiRateLimited) -> str:
+    return f"{exc} Try again in about {int(exc.retry_after)} seconds."
+
+
+def _snapshot_one(db, esi: EsiClient, character_id: int, name: str) -> tuple[str, list[str]]:
+    """Snapshot one character. Returns a summary line and problem lines."""
+    results = snapshots.collect(db, esi, character_id)
+    structures.refresh(db, esi, character_id)
+    failed = [r for r in results if r.outcome == "failed"]
+    changed = sum(r.outcome == "changed" for r in results)
+    line = (
+        f"{name}: {changed} changed, "
+        f"{len(results) - changed - len(failed)} unchanged, {len(failed)} failed"
+    )
+    return line, [f"{name}, {r.kind}: {r.detail}" for r in failed]
+
+
+def snapshot_character(
+    config: Config,
+    secrets: SecretStore,
+    character_id: int,
+    db_path: Path | str = store.DEFAULT_DB_PATH,
+) -> list[str]:
+    """Snapshot one character, e.g. at the start and end of a play session.
+    Returns problem lines; empty when everything was collected."""
+    if character_id not in {c.character_id for c in auth.list_characters(secrets)}:
+        return ["This character is not logged in, so no snapshot was taken."]
+    db = store.connect(db_path)
+    try:
+        row = db.execute(
+            "SELECT name FROM characters WHERE character_id = ?", (character_id,)
+        ).fetchone()
+        name = row["name"] if row else str(character_id)
+        with auth.http_client(config) as client:
+            esi = EsiClient(client, db, token_for=auth.AccessTokens(config, secrets, client).get)
+            try:
+                return _snapshot_one(db, esi, character_id, name)[1]
+            except EsiRateLimited as exc:
+                return [_rate_limited(exc)]
+            except (SSOError, EsiError) as exc:
+                return [f"{name}: {exc}"]
+    finally:
+        db.close()
 
 
 def plan_now(
