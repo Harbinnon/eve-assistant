@@ -45,8 +45,9 @@ def test_mistakes_are_caught_before_the_snapshot(db_path):
     snapshot = mock.Mock(return_value=[])
     with pytest.raises(sessions.SessionNotFound, match="No plan"):
         session_flow.begin(db_path, snapshot, plan_id=999)
+    alts_plan = _plan(db_path, 8)
     with pytest.raises(sessions.SessionError, match="another character"):
-        session_flow.begin(db_path, snapshot, character_id=7, plan_id=_plan(db_path, 8))
+        session_flow.begin(db_path, snapshot, character_id=7, plan_id=alts_plan)
     with pytest.raises(sessions.SessionError, match="which character"):
         session_flow.begin(db_path, snapshot)
     session_flow.begin(db_path, snapshot, character_id=7)
