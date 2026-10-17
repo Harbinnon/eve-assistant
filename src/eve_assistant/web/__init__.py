@@ -286,6 +286,7 @@ def create_app(
     backups_dir: Path | str | None = None,
     add_character: Callable[[], str] | None = None,
     fetch_image: images.Fetch | None = None,
+    missing_scopes: Callable[[], dict[int, tuple[str, ...]]] | None = None,
 ) -> FastAPI:
     """refresh: called by the Refresh button; returns problem lines, empty when all went well.
     make_plan: builds and records a plan (needs ESI), returning its ID.
@@ -840,11 +841,17 @@ def create_app(
         finally:
             conn.close()
         recent = login["at"] and (_minutes_since(login["at"]) or 0) < LOGIN_NEWS_MINUTES
+        missing = {
+            cid: scopes
+            for cid, scopes in (missing_scopes() if missing_scopes else {}).items()
+            if scopes
+        }
         return render(
             request,
             "characters.html",
             characters=summaries,
             problems=[],
+            missing=missing,
             login=login if login["state"] == "waiting" or recent else None,
             can_add=add_character is not None,
             # While EVE's login page is open, check back every few seconds.

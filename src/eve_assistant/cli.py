@@ -170,6 +170,9 @@ def _cmd_serve(args) -> int:
             backups_dir=config.backups_dir,
             add_character=do_add_character,
             fetch_image=lambda address: images.download(address, user_agent(config.contact)),
+            missing_scopes=lambda: {
+                c.character_id: c.missing_scopes for c in auth.list_characters(secrets)
+            },
         ),
         host="127.0.0.1",
         port=args.port,

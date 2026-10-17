@@ -29,6 +29,10 @@ SCOPES = (
     "esi-location.read_online.v1",
     "esi-fittings.read_fittings.v1",
     "esi-universe.read_structures.v1",
+    # Added 17 Oct 2026 (roadmap 3.2), in one re-login; reasons in docs/design.md.
+    "esi-characters.read_freelance_jobs.v1",
+    "esi-characters.read_loyalty.v1",
+    "esi-killmails.read_killmails.v1",
 )
 
 

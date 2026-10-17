@@ -22,6 +22,9 @@ class Kind:
     # Kinds that name other players are cleaned before storing (see
     # `sanitise`), and their raw responses are kept out of the ESI cache.
     names_others: bool = False
+    # A scope added after characters first logged in: skipped for those whose
+    # login doesn't have it yet, instead of failing on every refresh.
+    scope: str | None = None
 
 
 KINDS = (
@@ -195,13 +198,20 @@ def _record_failure(db: sqlite3.Connection, character_id: int, kind: str, detail
 
 
 def collect(
-    db: sqlite3.Connection, esi: EsiClient, character_id: int, kinds: set[str] | None = None
+    db: sqlite3.Connection,
+    esi: EsiClient,
+    character_id: int,
+    kinds: set[str] | None = None,
+    granted: tuple[str, ...] | None = None,
 ) -> list[CheckResult]:
     """Fetch every kind (or only `kinds`) for one character. One failing kind does
-    not stop the rest; a rate limit stops everything."""
+    not stop the rest; a rate limit stops everything. With `granted` (the
+    scopes the character's login has), kinds needing another scope are skipped."""
     results = []
     for kind in KINDS:
         if kinds is not None and kind.name not in kinds:
+            continue
+        if kind.scope and granted is not None and kind.scope not in granted:
             continue
         try:
             result = esi.get(

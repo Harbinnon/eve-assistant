@@ -883,10 +883,16 @@ refresh, and the new one is always saved. Read-only scopes:
 | `esi-universe.read_structures.v1` | Naming player stations |
 | `esi-characters.read_standings.v1` | Standings lower broker fees and refining tax |
 | `esi-markets.structure_markets.v1` | Prices in player-owned markets |
+| `esi-characters.read_freelance_jobs.v1` | Freelance Jobs you've accepted and your progress on them, so plans include them and outcomes count them (roadmap 3.3; owner's decision, 17 Oct 2026) |
+| `esi-characters.read_loyalty.v1` | Loyalty points, for LP-store value of missions and other LP sources (milestone 5; requested now so characters log in again once) |
+| `esi-killmails.read_killmails.v1` | Your own losses, to replace guessed loss chances with real ones (milestone 4). Only the owner's losses: other players named in a killmail are not kept |
 
 Later, if needed: `esi-planets.manage_planets.v1` (PI), corp scopes for the
 officer module. No write scopes, no mail. Adding scopes later means each
-character logs in once more.
+character logs in once more (and the scope ticked on the ESI application
+first). Until then, snapshot kinds needing a scope a character's login
+lacks are skipped for that character, and Characters says who needs to log
+in again.
 
 ### Shape
 

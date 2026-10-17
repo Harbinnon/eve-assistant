@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from eve_assistant import refresh, snapshots, store
 from eve_assistant.config import Config, ConfigError, load_config
+from eve_assistant.esi import SCOPES
 from eve_assistant.esi.client import EsiRateLimited
 from eve_assistant.web import create_app
 
@@ -59,14 +60,16 @@ def test_due_kinds_follow_the_last_check(db_path):
 def fake_esi(monkeypatch):
     calls = []
     monkeypatch.setattr(
-        refresh.auth, "list_characters", lambda _s: [SimpleNamespace(character_id=7, name="Miner")]
+        refresh.auth,
+        "list_characters",
+        lambda _s: [SimpleNamespace(character_id=7, name="Miner", scopes=SCOPES)],
     )
     monkeypatch.setattr(refresh.auth, "http_client", lambda _c: contextlib.nullcontext(None))
     monkeypatch.setattr(
         refresh.auth, "AccessTokens", lambda *_a: SimpleNamespace(get=lambda _cid: "t")
     )
 
-    def snapshot_one(db, esi, character_id, name, kinds=None):
+    def snapshot_one(db, esi, character_id, name, kinds=None, granted=None):
         calls.append(set(kinds))
         for kind in kinds:
             check(db, kind, minutes_ago=0, character_id=character_id)

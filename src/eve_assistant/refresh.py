@@ -67,7 +67,9 @@ def refresh_all(
             for character in characters:
                 snapshots.ensure_character(db, character.character_id, character.name)
                 try:
-                    line, problems = _snapshot_one(db, esi, character.character_id, character.name)
+                    line, problems = _snapshot_one(
+                        db, esi, character.character_id, character.name, granted=character.scopes
+                    )
                 except EsiRateLimited as exc:
                     report.problems.append(_rate_limited(exc))
                     return report
@@ -104,11 +106,16 @@ def _rate_limited(exc: EsiRateLimited) -> str:
 
 
 def _snapshot_one(
-    db, esi: EsiClient, character_id: int, name: str, kinds: set[str] | None = None
+    db,
+    esi: EsiClient,
+    character_id: int,
+    name: str,
+    kinds: set[str] | None = None,
+    granted: tuple[str, ...] | None = None,
 ) -> tuple[str, list[str]]:
     """Snapshot one character (every kind, or only `kinds`). Returns a summary
     line and problem lines."""
-    results = snapshots.collect(db, esi, character_id, kinds)
+    results = snapshots.collect(db, esi, character_id, kinds, granted)
     if kinds is None or "location" in kinds or "assets" in kinds:
         structures.refresh(db, esi, character_id)
     contracts.sync_projects(db, character_id)  # delivered couriers close their projects
@@ -131,8 +138,10 @@ def snapshot_character(
 ) -> list[str]:
     """Snapshot one character, e.g. at the start and end of a play session.
     Returns problem lines; empty when everything was collected."""
-    if character_id not in {c.character_id for c in auth.list_characters(secrets)}:
+    logged_in = {c.character_id: c for c in auth.list_characters(secrets)}
+    if character_id not in logged_in:
         return ["This character is not logged in, so no snapshot was taken."]
+    granted = logged_in[character_id].scopes
     db = store.connect(db_path)
     try:
         row = db.execute(
@@ -143,7 +152,8 @@ def snapshot_character(
         with auth.http_client(config) as client:
             esi = EsiClient(client, db, token_for=auth.AccessTokens(config, secrets, client).get)
             try:
-                return log_problems + _snapshot_one(db, esi, character_id, name)[1]
+                problems = _snapshot_one(db, esi, character_id, name, granted=granted)[1]
+                return log_problems + problems
             except EsiRateLimited as exc:
                 return [*log_problems, _rate_limited(exc)]
             except (SSOError, EsiError) as exc:
@@ -273,7 +283,7 @@ def auto_refresh_once(
             for character, due in work:
                 try:
                     _line, problems = _snapshot_one(
-                        db, esi, character.character_id, character.name, due
+                        db, esi, character.character_id, character.name, due, character.scopes
                     )
                 except EsiRateLimited as exc:
                     report.problems.append(_rate_limited(exc))
