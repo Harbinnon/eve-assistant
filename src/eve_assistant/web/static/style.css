@@ -437,8 +437,9 @@ form.stack .checks label {
 .checklist .current .tick { color: var(--action); }
 .checklist .current .what { color: var(--heading); font-weight: 600; }
 .checklist .skipped .what { color: var(--muted); text-decoration: line-through; }
-.session-view .finish { display: flex; flex-wrap: wrap; align-items: end; gap: 10px 16px; margin-top: 8px; }
-.session-view .finish label { display: inline-flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); margin-right: 8px; }
+.session-view .finish { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 16px; margin-top: 8px; }
+.session-view .finish form.inline { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; }
+.session-view .finish label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
 
 /* Today: plan steps */
 .steps { list-style: none; margin: 0; padding: 0; }
