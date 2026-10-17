@@ -504,3 +504,14 @@ def why_not(plan: StoredPlan, alt: StoredItem) -> Reason:
             "rival_loss": rival.expected_loss,
         },
     )
+
+
+def plan_value(plan: StoredPlan) -> float:
+    """What a plan is worth: its ISK after expected losses."""
+    return sum(item.isk - item.expected_loss for item in plan.items)
+
+
+def who_should_play(plans: list[StoredPlan]) -> list[StoredPlan]:
+    """Plans for the same time, one per character, best first. Characters on
+    one Alpha account can't play at once, so the first is the one to pick."""
+    return sorted(plans, key=lambda plan: -plan_value(plan))

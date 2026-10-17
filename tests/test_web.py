@@ -1103,3 +1103,55 @@ def test_a_compact_menu_for_narrow_screens(client):
     assert "<summary>Menu</summary>" in page
     assert page.count('<a href="/goals" aria-current="page">Goals</a>') == 2  # wide and narrow
     assert page.startswith("<!doctype html>")
+
+
+# --- Who should play today (roadmap 3.4) ------------------------------------------
+
+
+def _paying_plan_maker(db_path, isk_by_character):
+    from eve_assistant import planner, risk
+
+    def make(character_id, minutes, allow_lowsec, allow_risky):
+        conn = store.connect(db_path)
+        try:
+            item = planner.PlanItem(
+                kind="mining", key=str(character_id), title=f"Mine for {character_id}",
+                isk=isk_by_character[character_id], minutes=minutes,
+                risk=risk.rate("low", 100_000, 10_000_000),
+            )  # fmt: skip
+            plan = planner.Plan(character_id, minutes, (item,), (), (), 10_000_000)
+            return planner.record(conn, plan, {}).plan_id
+        finally:
+            conn.close()
+
+    return make
+
+
+def test_comparing_characters_says_who_should_play(db_path):
+    _second_character(db_path)
+    maker = _paying_plan_maker(db_path, {7: 1_000_000, 8: 4_000_000})
+    with TestClient(create_app(db_path, make_plan=maker), base_url=LOCAL) as client:
+        page = client.get("/today").text
+        assert ">Compare characters</button>" in page
+        compared = client.post(
+            "/today/plan",
+            data={"token": _token(page), "character": "Test Pilot", "minutes": "60",
+                  "compare": "true"},
+            follow_redirects=False,
+        )  # fmt: skip
+        assert compared.headers["location"].startswith("/today?compare=")
+        view = client.get(compared.headers["location"]).text
+    assert "Who should play · 60 minutes" in view
+    assert "<strong>Alpha Pilot</strong> would make the most" in view
+    assert "3M more than Test Pilot" in view
+    assert view.index("Play Alpha Pilot") < view.index("Play Test Pilot")  # best first
+
+
+def test_compare_is_offered_only_with_more_than_one_character(planning_client):
+    assert "Compare characters" not in planning_client.get("/today").text
+
+
+def test_the_compare_list_only_takes_plan_numbers(planning_client):
+    page = planning_client.get("/today?compare=1,x,%3Cscript%3E").text
+    assert "Who should play" not in page  # no such plans
+    assert "<script>" not in page

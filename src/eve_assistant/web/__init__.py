@@ -112,6 +112,9 @@ RELOADING_PAGES = ("today", "characters", "history")
 LOGIN_RELOAD_SECONDS = 5
 LOGIN_NEWS_MINUTES = 15
 
+# At most this many plans side by side in "who should play".
+MAX_COMPARED = 10
+
 # Past this age a plan's prices and contracts have likely moved: say so.
 PLAN_STALE_MINUTES = 60
 
@@ -351,6 +354,7 @@ def create_app(
     templates.env.globals["why_not"] = explain.WHY_NOT
     templates.env.globals["why_not_here"] = planner.why_not
     templates.env.globals["per_hour"] = numbers.per_hour
+    templates.env.globals["plan_value"] = planner.plan_value
     templates.env.globals["risk_labels"] = RISK_LABELS
     templates.env.globals["category_labels"] = preferences.KNOWN
     form_token = secrets.token_urlsafe(32)
@@ -528,10 +532,18 @@ def create_app(
         return [r["name"] for r in conn.execute("SELECT name FROM characters ORDER BY name")]
 
     @app.get(TODAY, response_class=HTMLResponse)
-    def today_page(request: Request, error: str | None = None):
+    def today_page(request: Request, error: str | None = None, compare: str = ""):
         conn = db()
         try:
             names = _names(conn)
+            compared = []
+            for text in compare.split(",")[:MAX_COMPARED]:
+                if text.isdigit():
+                    try:
+                        compared.append(planner.load_plan(conn, int(text)))
+                    except planner.PlanError:
+                        continue
+            compared = planner.who_should_play(compared)
             active = active_character(request, conn)
             latest = planner.latest_plan_id(conn, active[0] if active else None)
             recent = planner.load_plan(conn, latest) if latest else None
@@ -558,6 +570,7 @@ def create_app(
             session_views=session_views,  # while playing, Today is the session view
             noticed=noticed,
             ship_type_id=ship_type_id,
+            compared=compared,
         )
 
     @app.post("/sessions/{session_id}/steps/{item_id}/{action}")
@@ -605,6 +618,7 @@ def create_app(
         minutes: float = Form(...),
         allow_lowsec: bool = Form(False),
         allow_risky: bool = Form(False),
+        compare: bool = Form(False),
     ):
         check_form(request, token)
         if make_plan is None:
@@ -612,11 +626,15 @@ def create_app(
         conn = db()
         try:
             character_id = goals.resolve_character(conn, character)
+            everyone = [r["character_id"] for r in conn.execute(CHARACTERS_BY_NAME)]
         except GoalError as exc:
             return today_page(request, error=str(exc))
         finally:
             conn.close()
         try:
+            if compare:  # the same plan for every character, to pick who plays
+                made = [make_plan(cid, minutes, allow_lowsec, allow_risky) for cid in everyone]
+                return back(TODAY, compare=",".join(str(int(plan_id)) for plan_id in made))
             plan_id = make_plan(character_id, minutes, allow_lowsec, allow_risky)
         except Exception as exc:  # noqa: BLE001  # shown to the person, never swallowed silently
             return today_page(request, error=f"Could not build a plan: {exc}")

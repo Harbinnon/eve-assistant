@@ -114,3 +114,10 @@ def test_other_reasons_keep_their_words(db):
     long_haul, lowsec = reasons["Long haul"], reasons["Lowsec run"]
     assert explain.describe(long_haul.code, long_haul.detail) == "Takes 120 min; you have 60."
     assert explain.describe(lowsec.code, lowsec.detail).startswith("Rated Risky.")
+
+
+def test_who_should_play_ranks_by_isk_after_losses(db):
+    low = _stored(db, [_item("mining", "Mine", 2_000_000, 60, loss=1_500_000)], [])
+    high = _stored(db, [_item("mining", "Mine", 1_000_000, 60)], [])
+    assert [p.plan_id for p in planner.who_should_play([low, high])] == [high.plan_id, low.plan_id]
+    assert planner.plan_value(low) == pytest.approx(500_000)
