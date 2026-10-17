@@ -26,6 +26,9 @@
   </main>
   <footer>
     <div class="wrap">
+      <p class="auto-status">{% if auto.enabled %}Updates from EVE automatically while this page's server runs{% if auto.last_run %} · last check {{ auto.last_run|when }}{% else %} · starting{% endif %}.
+        {% if auto.problems %}<span class="error-text">{{ auto.problems|length }} problem{{ "s" if auto.problems|length != 1 }}: {{ auto.problems|first }}</span>{% endif %}
+        {% else %}Automatic updates are off; press Refresh on the Characters page.{% endif %}</p>
       EVE Online and the EVE logo are the trademarks or registered trademarks of CCP hf.
       This tool is not affiliated with or endorsed by CCP.
     </div>

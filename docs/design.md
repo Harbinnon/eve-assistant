@@ -725,6 +725,28 @@ In order; each box is ticked in this document when done.
 
 ## 9. Technical design
 
+### Keeping data current
+
+While the dashboard runs, a background task wakes every minute and fetches
+whatever is due, judged from when each kind was last checked (so restarts
+don't matter). ESI caches most data anyway, so asking more often gains
+nothing:
+
+| Data | Online character | Otherwise |
+|---|---|---|
+| Wallet, location, ship | every 2 minutes | hourly |
+| Online status | every 2 minutes | every 5 minutes (to notice a login) |
+| Mining ledger, industry jobs, orders, skill queue | every 15 minutes | hourly |
+| Everything else (journal, assets, skills, ...) | hourly | hourly |
+| Market prices | every 6 hours | |
+
+Game logs are read on every tick. A rate limit stops the tick and the next
+one waits as long as ESI asked. All ESI work (the background, the Refresh
+button, session snapshots, planning) shares one lock, so login tokens are
+never refreshed twice at once. Every page footer says when the last check
+ran and shows its first problem, if any. `[app] auto_refresh = false` in
+`config/local.toml` turns it off.
+
 ### Data sources
 
 - **ESI**, the player's own data. Versioned by date (`X-Compatibility-Date`;

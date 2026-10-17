@@ -203,3 +203,5 @@ form.stack .checks label { flex-direction: row; align-items: center; gap: 6px; }
 footer { color: var(--muted); font-size: 12px; border-top: 1px solid var(--line); padding-block: 16px 24px; }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+.auto-status { margin: 0 0 6px; }
+.error-text { color: var(--bad); }

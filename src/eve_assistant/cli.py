@@ -134,9 +134,17 @@ def _cmd_serve(args) -> int:
     def do_snapshot(character_id: int) -> list[str]:
         return refresh.snapshot_character(config, secrets, character_id)
 
+    def do_auto_refresh():
+        return refresh.auto_refresh_once(config, secrets)
+
     print(f"Dashboard: http://127.0.0.1:{args.port}  (Ctrl+C to stop)")
     uvicorn.run(
-        create_app(refresh=do_refresh, make_plan=do_plan, snapshot=do_snapshot),
+        create_app(
+            refresh=do_refresh,
+            make_plan=do_plan,
+            snapshot=do_snapshot,
+            auto_refresh=do_auto_refresh if config.auto_refresh else None,
+        ),
         host="127.0.0.1",
         port=args.port,
         log_level="warning",
