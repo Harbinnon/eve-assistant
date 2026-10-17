@@ -110,6 +110,17 @@ def test_add_and_close_a_goal(client):
     assert "Fly a Big Barge" not in closed.text
 
 
+def test_isk_goal_shows_progress(client):
+    token = _token(client.get("/goals").text)
+    client.post(
+        "/goals",
+        data={"token": token, "kind": "isk", "target": "50000000", "character": "Test Pilot"},
+    )
+    page = client.get("/goals").text
+    assert 'aria-label="25% of the target"' in page  # 12.3M of 50M
+    assert '<progress class="isk"' in page
+
+
 def test_bad_goal_input_is_explained(client):
     token = _token(client.get("/goals").text)
     page = client.post("/goals", data={"token": token, "kind": "isk", "target": "lots"})
@@ -318,6 +329,8 @@ def test_open_projects_show_on_today_and_can_be_closed(planning_client, db_path)
     page = planning_client.get("/today").text
     assert "Open projects" in page
     assert "Haul &lt;ore&gt;" in page
+    assert '<progress value="0.0" max="120.0"' in page
+    assert 'aria-label="0 of 120 minutes done"' in page
     token = _token(page)
     done = planning_client.post(f"/projects/{project_id}/done", data={"token": token})
     assert "Project marked done." in done.text

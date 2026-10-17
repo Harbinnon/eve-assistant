@@ -125,13 +125,15 @@
 <h2>Open projects</h2>
 <div class="table-wrap">
   <table>
-    <thead><tr><th>Project</th><th>Character</th><th class="num">Done</th><th class="num">ISK at the end</th><th>Deadline</th><th></th></tr></thead>
+    <thead><tr><th>Project</th><th>Character</th><th>Done</th><th class="num">ISK at the end</th><th>Deadline</th><th></th></tr></thead>
     <tbody>
     {% for who, p in open_projects %}
       <tr>
         <td>{{ p.title }}</td>
         <td>{{ who }}</td>
-        <td class="num">{{ p.minutes_done|round|int }} / {{ p.total_minutes|round|int }} min</td>
+        <td><span class="progress"><progress value="{{ p.minutes_done }}" max="{{ p.total_minutes or 1 }}"
+          aria-label="{{ p.minutes_done|round|int }} of {{ p.total_minutes|round|int }} minutes done"></progress>
+          <span class="small-print">{{ p.minutes_done|round|int }} / {{ p.total_minutes|round|int }} min</span></span></td>
         <td class="num">{{ p.isk|isk }}</td>
         <td>{{ p.deadline|when if p.deadline else "none" }}</td>
         <td>

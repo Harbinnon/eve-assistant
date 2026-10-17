@@ -1,8 +1,13 @@
-/* EVE Assistant dashboard: the "capsuleer console" look (prototype, roadmap 2.1).
+/* EVE Assistant dashboard: the "capsuleer console" look.
    Dark first. Cyan marks what you can do, amber marks ISK and what needs
    attention, and system security uses EVE's own colours. Self-hosted: no web
-   fonts or third-party CSS. The light theme comes back with the design
-   system (2.2). Layout: a top bar with the page links, then one column. */
+   fonts or third-party CSS. Layout: a top bar with the page links, then one
+   column.
+
+   Themes: <html data-theme="dark|light|system">, chosen with the form in the
+   footer (a cookie, no JavaScript). Every colour is a token below; the light
+   tokens appear twice (light, and system on a light OS) and a test keeps the
+   two copies identical and every text colour at 4.5:1 or more. */
 :root {
   color-scheme: dark;
   --bg: #070b10;
@@ -25,17 +30,80 @@
   --ok-soft: rgb(77 208 138 / 12%);
   --bad: #ff6f61;
   --bad-soft: rgb(255 111 97 / 12%);
+  --bar-top: #0c131b;
+  --bar-bottom: #091017;
+  --glow: rgb(60 200 222 / 7%);
+  --row-hover: rgb(60 200 222 / 4%);
+  --sec-edge: transparent;
   /* Bahnschrift and Segoe UI ship with Windows; elsewhere the system font is used. */
   --display: Bahnschrift, "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
   --sans: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
   --mono: "Cascadia Mono", Consolas, ui-monospace, monospace;
+}
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f2f5f8;
+  --surface: #ffffff;
+  --raised: #eef2f6;
+  --field: #ffffff;
+  --line: #d5dde6;
+  --line-strong: #b6c2cf;
+  --fg: #16212c;
+  --heading: #0a131c;
+  --muted: #536170;
+  --action: #087286;
+  --action-hover: #055766;
+  --on-action: #ffffff;
+  --action-soft: rgb(8 114 134 / 9%);
+  --isk: #965800;
+  --attention: #965800;
+  --attention-soft: rgb(241 181 69 / 20%);
+  --ok: #1b7643;
+  --ok-soft: rgb(27 118 67 / 10%);
+  --bad: #b3261e;
+  --bad-soft: rgb(179 38 30 / 9%);
+  --bar-top: #ffffff;
+  --bar-bottom: #f6f8fb;
+  --glow: rgb(8 114 134 / 6%);
+  --row-hover: rgb(8 114 134 / 5%);
+  --sec-edge: rgb(0 0 0 / 30%);
+}
+@media (prefers-color-scheme: light) {
+  [data-theme="system"] {
+    color-scheme: light;
+    --bg: #f2f5f8;
+    --surface: #ffffff;
+    --raised: #eef2f6;
+    --field: #ffffff;
+    --line: #d5dde6;
+    --line-strong: #b6c2cf;
+    --fg: #16212c;
+    --heading: #0a131c;
+    --muted: #536170;
+    --action: #087286;
+    --action-hover: #055766;
+    --on-action: #ffffff;
+    --action-soft: rgb(8 114 134 / 9%);
+    --isk: #965800;
+    --attention: #965800;
+    --attention-soft: rgb(241 181 69 / 20%);
+    --ok: #1b7643;
+    --ok-soft: rgb(27 118 67 / 10%);
+    --bad: #b3261e;
+    --bad-soft: rgb(179 38 30 / 9%);
+    --bar-top: #ffffff;
+    --bar-bottom: #f6f8fb;
+    --glow: rgb(8 114 134 / 6%);
+    --row-hover: rgb(8 114 134 / 5%);
+    --sec-edge: rgb(0 0 0 / 30%);
+  }
 }
 
 * { box-sizing: border-box; }
 body {
   margin: 0;
   background:
-    radial-gradient(1200px 420px at 50% -120px, rgb(60 200 222 / 7%), transparent 70%),
+    radial-gradient(1200px 420px at 50% -120px, var(--glow), transparent 70%),
     var(--bg);
   background-attachment: fixed;
   color: var(--fg);
@@ -54,7 +122,7 @@ a:hover { color: var(--action-hover); }
 /* Top bar */
 header.bar {
   position: relative;
-  background: linear-gradient(180deg, #0c131b, #091017);
+  background: linear-gradient(180deg, var(--bar-top), var(--bar-bottom));
   border-bottom: 1px solid var(--line);
 }
 header.bar::after {
@@ -88,7 +156,7 @@ header.bar .wrap {
   height: 11px;
   border: 2px solid var(--action);
   transform: rotate(45deg);
-  box-shadow: 0 0 10px rgb(60 200 222 / 45%);
+  box-shadow: 0 0 10px var(--action-soft);
 }
 .brand span { color: var(--action); }
 .brand:hover { color: var(--heading); }
@@ -189,7 +257,14 @@ dl.facts dd { margin: 0; font-variant-numeric: tabular-nums; min-width: 0; overf
 /* System security: a bar in EVE's colour beside the number. The number stays
    in the text colour because EVE's low and null reds are too dark to read. */
 .sec { display: inline-flex; align-items: center; gap: 5px; font-family: var(--display); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--heading); }
-.sec::before { content: ""; width: 4px; height: 1em; border-radius: 1px; background: var(--sec, var(--muted)); }
+.sec::before {
+  content: "";
+  width: 4px;
+  height: 1em;
+  border-radius: 1px;
+  background: var(--sec, var(--muted));
+  box-shadow: inset 0 0 0 1px var(--sec-edge); /* keeps EVE's yellow visible on white */
+}
 .sec-10 { --sec: #2fefef; }
 .sec-09 { --sec: #48f0c0; }
 .sec-08 { --sec: #00ef47; }
@@ -218,7 +293,7 @@ th {
   color: var(--muted);
   background: var(--raised);
 }
-tbody tr:hover td { background: rgb(60 200 222 / 4%); }
+tbody tr:hover td { background: var(--row-hover); }
 tr:last-child td { border-bottom: 0; }
 td.num { text-align: right; font-family: var(--display); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
@@ -336,6 +411,38 @@ details.why ul { margin: 6px 0 0; padding-left: 20px; color: var(--muted); }
 .notes { margin: 18px 0 0; padding-left: 20px; color: var(--muted); font-size: 14px; }
 .history-title { margin-top: 0; font-size: 1.1rem; }
 .card > .figures { color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; }
+
+/* Progress bars: <progress value max>, cyan, or amber for ISK */
+progress {
+  appearance: none;
+  width: 100%;
+  max-width: 200px;
+  height: 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 1px;
+  background: var(--field);
+  color: var(--action);
+  vertical-align: middle;
+  overflow: hidden;
+}
+progress::-webkit-progress-bar { background: var(--field); }
+progress::-webkit-progress-value { background: var(--action); }
+progress::-moz-progress-bar { background: var(--action); }
+progress.isk::-webkit-progress-value { background: var(--isk); }
+progress.isk::-moz-progress-bar { background: var(--isk); }
+.progress { display: inline-flex; align-items: center; gap: 10px; }
+.progress progress { flex: none; width: 160px; }
+.progress span { white-space: nowrap; }
+
+/* Theme switch in the footer */
+.theme-switch { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 12px; }
+.theme-switch .label {
+  font: 600 11px/1 var(--display);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-right: 4px;
+}
+.theme-switch button[aria-pressed="true"] { border-color: var(--action); color: var(--action); background: var(--action-soft); }
 
 /* Small helpers (no inline styles: the Content-Security-Policy forbids them) */
 .spaced { margin-top: 12px; }

@@ -56,6 +56,8 @@ AutoRefresher = Callable[[], object]
 AUTO_TICK_SECONDS = 60.0
 log = logging.getLogger(__name__)
 TODAY = "/today"
+GOALS = "/goals"
+PREFERENCES = "/preferences"
 UNKNOWN_ACTION = "Unknown action."
 
 HERE = Path(__file__).parent
@@ -82,6 +84,19 @@ SECURITY_HEADERS = {
     "Cross-Origin-Resource-Policy": "same-origin",
     "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
     "Cache-Control": "no-store",
+}
+
+# Colour themes, kept in a cookie set by the form in every page's footer.
+THEMES = ("dark", "light", "system")
+# The cookie gets one of these constants, never the posted text itself.
+THEME_VALUES = {theme: theme for theme in THEMES}
+DEFAULT_THEME = "dark"
+THEME_COOKIE = "theme"
+THEME_MAX_AGE = 365 * 24 * 3600
+# Pages the theme form may return to; anything else goes to Today.
+# Each maps to itself, so the redirect is always one of these constants.
+RETURN_PAGES = {
+    page: page for page in (TODAY, "/characters", GOALS, "/skills", "/history", PREFERENCES)
 }
 
 BAND_LABELS = {
@@ -219,6 +234,7 @@ def create_app(
 
     def render(request: Request, name: str, **context) -> HTMLResponse:
         message = MESSAGES.get(request.query_params.get("msg", ""))
+        theme = request.cookies.get(THEME_COOKIE, DEFAULT_THEME)
         conn = db()
         try:
             static_data = sde.update_status(conn)
@@ -233,6 +249,8 @@ def create_app(
                 "auto": auto_status,
                 "static_data": static_data,
                 "page": name.split(".")[0],
+                "theme": theme if theme in THEMES else DEFAULT_THEME,
+                "here": request.url.path,  # where the theme form returns to
                 **context,
             },  # fmt: skip
         )
@@ -251,6 +269,30 @@ def create_app(
     @app.get("/")
     def home():
         return back(TODAY)
+
+    @app.post("/theme")
+    def choose_theme(
+        request: Request, token: str = Form(...), theme: str = Form(...), return_to: str = Form("")
+    ):
+        check_form(request, token)
+        chosen = THEME_VALUES.get(theme)
+        if chosen is None:
+            raise HTTPException(400, "Unknown theme.")
+        # Back to one of the dashboard's own pages, never an address from the form.
+        target = RETURN_PAGES.get(return_to, TODAY)
+        response = RedirectResponse(target, status_code=303)
+        # Secure is fine over plain http here: browsers treat 127.0.0.1 and localhost
+        # as secure, and hosted mode will use HTTPS.
+        response.set_cookie(
+            THEME_COOKIE,
+            chosen,
+            max_age=THEME_MAX_AGE,
+            path="/",
+            secure=True,
+            httponly=True,
+            samesite="strict",
+        )
+        return response
 
     def _names(conn) -> list[str]:
         return [r["name"] for r in conn.execute("SELECT name FROM characters ORDER BY name")]
@@ -437,7 +479,7 @@ def create_app(
             conn.close()
         return back(f"/plans/{row['plan_id']}", msg=response)
 
-    @app.get("/preferences", response_class=HTMLResponse)
+    @app.get(PREFERENCES, response_class=HTMLResponse)
     def preferences_page(request: Request):
         conn = db()
         try:
@@ -478,7 +520,7 @@ def create_app(
             raise HTTPException(400, str(exc)) from None
         finally:
             conn.close()
-        return back("/preferences", msg="play_time")
+        return back(PREFERENCES, msg="play_time")
 
     @app.post("/preferences/{action}")
     def change_preference(
@@ -497,7 +539,7 @@ def create_app(
             raise HTTPException(400, str(exc)) from None
         finally:
             conn.close()
-        return back("/preferences", msg=f"{action}d")
+        return back(PREFERENCES, msg=f"{action}d")
 
     @app.get("/history", response_class=HTMLResponse)
     def history_page(request: Request):
@@ -540,7 +582,7 @@ def create_app(
             conn.close()
         return render(request, "characters.html", characters=summaries, problems=problems)
 
-    @app.get("/goals", response_class=HTMLResponse)
+    @app.get(GOALS, response_class=HTMLResponse)
     def goals_page(request: Request, error: str | None = None):
         conn = db()
         try:
@@ -562,7 +604,7 @@ def create_app(
             error=error,
         )
 
-    @app.post("/goals")
+    @app.post(GOALS)
     def add_goal(
         request: Request,
         token: str = Form(...),
@@ -597,7 +639,7 @@ def create_app(
             return goals_page(request, error=message)
         finally:
             conn.close()
-        return back("/goals", msg="goal_added")
+        return back(GOALS, msg="goal_added")
 
     @app.post("/goals/{goal_id}/status")
     def close_goal(request: Request, goal_id: int, token: str = Form(...), status: str = Form(...)):
@@ -611,7 +653,7 @@ def create_app(
             raise HTTPException(404, str(exc)) from None
         finally:
             conn.close()
-        return back("/goals", msg=f"goal_{status}")
+        return back(GOALS, msg=f"goal_{status}")
 
     @app.get("/skills", response_class=HTMLResponse)
     def skills_page(request: Request, character: str = "", item: str = ""):
