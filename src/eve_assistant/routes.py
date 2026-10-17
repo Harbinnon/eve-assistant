@@ -60,6 +60,14 @@ def _neighbours(db, here: int, allowed: set | None):
             yield there
 
 
+def _path(previous: dict, end: int) -> list[int]:
+    """The systems from the start to `end`, following `previous` back."""
+    path = [end]
+    while previous[path[-1]] is not None:
+        path.append(previous[path[-1]])
+    return path[::-1]
+
+
 def _weighted(db, origin: int, destination: int, allowed: set | None, hot: set) -> list | None:
     """Fewest jumps, a hotspot counting as HOTSPOT_JUMPS more."""
     best = {origin: 0}
@@ -68,10 +76,7 @@ def _weighted(db, origin: int, destination: int, allowed: set | None, hot: set) 
     while queue:
         cost, here = heapq.heappop(queue)
         if here == destination:
-            path = [here]
-            while previous[path[-1]] is not None:
-                path.append(previous[path[-1]])
-            return path[::-1]
+            return _path(previous, here)
         if cost > best[here]:
             continue
         for there in _neighbours(db, here, allowed):
@@ -93,10 +98,7 @@ def _shortest(db, origin: int, destination: int, allowed: set | None) -> list | 
                 continue
             previous[there] = here
             if there == destination:
-                path = [there]
-                while previous[path[-1]] is not None:
-                    path.append(previous[path[-1]])
-                return path[::-1]
+                return _path(previous, there)
             queue.append(there)
     return None
 

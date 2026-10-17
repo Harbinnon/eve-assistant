@@ -122,10 +122,10 @@ def test_learned_chances_count_trips_and_losses_per_band(db):
     low, medium = learned.chances["low"], learned.chances["medium"]
     assert (low.trips, low.losses) == (2, 0)
     assert (medium.trips, medium.losses) == (1, 1)
-    assert medium.chance == pytest.approx((0.03 * 100 + 1) / 101)
-    assert low.chance == pytest.approx(0.005 * 100 / 102)
+    assert medium.per_trip == pytest.approx((0.03 * 100 + 1) / 101)
+    assert low.per_trip == pytest.approx(0.005 * 100 / 102)
     assert learned.chances["very_low"].trips == 0
-    assert learned.chances["none"].chance == 0.0
+    assert learned.chances["none"].per_trip == 0.0
     assert learned.losses_outside_sessions == 2
 
 

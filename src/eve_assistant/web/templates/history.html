@@ -89,7 +89,7 @@ options”. The chance of a loss on each trip starts as a guess and learns from 
     {% for band, cells in risk_matrix.items() %}
       {% set c = risk_model.chances[band] %}
       <tr><th scope="row">{{ band_labels[band] }}</th>
-        <td class="num">{{ "%.2f"|format(c.chance * 100) }}%<br><span class="muted small-print">{% if band == "none" %}no player risk{% elif c.learned %}{{ c.losses }} loss{{ "es" if c.losses != 1 }} in {{ c.trips }} trip{{ "s" if c.trips != 1 }}{% else %}starting guess{% endif %}</span></td>
+        <td class="num">{{ "%.2f"|format(c.per_trip * 100) }}%<br><span class="muted small-print">{% if band == "none" %}no player risk{% elif c.learned %}{{ c.losses }} loss{{ "es" if c.losses != 1 }} in {{ c.trips }} trip{{ "s" if c.trips != 1 }}{% else %}starting guess{% endif %}</span></td>
         {% for cell in cells %}<td><span class="pill risk {{ cell }}">{{ risk_labels[cell] }}</span></td>{% endfor %}</tr>
     {% endfor %}
     </tbody>

@@ -75,6 +75,7 @@ SETTINGS = "/settings"
 CHARACTERS = "/characters"
 # Every character, by name: the switch, History and the learning lines.
 CHARACTERS_BY_NAME = "SELECT character_id, name FROM characters ORDER BY name"
+CHARACTER_NAMES = "SELECT character_id, name FROM characters"
 UNKNOWN_ACTION = "Unknown action."
 COMMIT_WITH_THE_PLAN = (
     "Steps aren't taken on one by one: press “Start this plan” to start the whole "
@@ -199,7 +200,7 @@ def _when(value) -> str:
 
 def _losses(conn) -> list[SimpleNamespace]:
     """Your losses for History: who, where, what, its value, and the session's band."""
-    names = dict(conn.execute("SELECT character_id, name FROM characters").fetchall())
+    names = dict(conn.execute(CHARACTER_NAMES).fetchall())
     _trips, attributed = risk.trips_and_losses(conn)
     rows = []
     for loss in losses.all_losses(conn):
@@ -410,7 +411,7 @@ def create_app(
     def active_character(request: Request, conn) -> tuple[int, str] | None:
         """The header switch's character: the cookie's if it names one of
         ours, else whoever is online, else the first; None without any."""
-        names = dict(conn.execute("SELECT character_id, name FROM characters").fetchall())
+        names = dict(conn.execute(CHARACTER_NAMES).fetchall())
         chosen = request.cookies.get(CHARACTER_COOKIE, "")
         character_id = int(chosen) if chosen.isdigit() and int(chosen) in names else None
         if character_id is None:
@@ -638,7 +639,7 @@ def create_app(
         return back(TODAY, anchor=f"session-{session.session_id}")
 
     def _open_projects(conn) -> list[tuple[str, projects.Project]]:
-        names = dict(conn.execute("SELECT character_id, name FROM characters").fetchall())
+        names = dict(conn.execute(CHARACTER_NAMES).fetchall())
         return [(names.get(p.character_id, "?"), p) for p in projects.open_projects(conn)]
 
     @app.post("/projects/{project_id}/{status}")

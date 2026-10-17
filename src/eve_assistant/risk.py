@@ -89,7 +89,7 @@ class Chance:
     """A band's chance of loss per trip, and what it was learned from."""
 
     band: str
-    chance: float
+    per_trip: float
     trips: int = 0
     losses: int = 0
 
@@ -205,7 +205,7 @@ def rate(
     """payout: what EVE pays for the hull if it's lost, taken off the expected loss.
     model: learned chances and columns; the starting guesses without one."""
     model = model or Model()
-    chance = model.chances[band]
+    learned = model.chances[band]
     if net_worth > 0:
         share = exposure / net_worth
     elif exposure > 0:
@@ -218,10 +218,10 @@ def rate(
         rating=MATRIX[band][column],
         exposure=exposure,
         share_of_net_worth=share,
-        expected_loss=chance.chance * max(0.0, exposure - payout),
+        expected_loss=learned.per_trip * max(0.0, exposure - payout),
         payout=payout,
-        chance=chance.chance,
-        trips=chance.trips,
+        chance=learned.per_trip,
+        trips=learned.trips,
     )
 
 

@@ -46,6 +46,15 @@ def _and(parts: list[str]) -> str:
     return parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " and " + parts[-1]
 
 
+def _where_most(most: list) -> str:
+    """ ", most in Sivala (63) and Jita (44)", or ", in Jufvitte" for one system."""
+    if not most:
+        return ""
+    if len(most) == 1:
+        return f", in {most[0][0]}"
+    return ", most in " + _and([f"{name} ({n})" for name, n in most])
+
+
 def _same_stack(d: dict) -> str:
     step, isk = d["step"], numbers.isk
     extra_isk = d["isk"] - d["rival_isk"]
@@ -200,15 +209,7 @@ def describe(code: str, detail: dict | None = None) -> str:
         ),
         "recent_kills": lambda: (
             f"{d.get('kills', 0)} {'ship or pod' if d.get('kills', 0) == 1 else 'ships or pods'}"
-            " destroyed in the last hour along the way"
-            + (
-                ", most in " + _and([f"{name} ({n})" for name, n in d["most"]])
-                if len(d.get("most", [])) > 1
-                else f", in {d['most'][0][0]}"
-                if d.get("most")
-                else ""
-            )
-            + "."
+            f" destroyed in the last hour along the way{_where_most(d.get('most', []))}."
         ),
         "hotspot": lambda: (
             f"Gank hotspot or busy hub: {d.get('kills', 0)} ships and pods destroyed in "
