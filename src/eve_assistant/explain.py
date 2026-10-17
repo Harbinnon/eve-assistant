@@ -22,6 +22,7 @@ LEARNED = {
     "mining_rate": "Mining speed",
     "sale_price": "Sale prices",
     "minutes_per_jump": "Travel time",
+    "gas_rate": "Gas harvesting speed",
 }
 # What a plan uses until a correction has sessions to learn from, and where it learns from.
 NOT_LEARNED = {
@@ -32,6 +33,10 @@ NOT_LEARNED = {
     "sale_price": (
         "so plans expect what buyers' orders pay now. It learns from what your market sales "
         "in recorded sessions actually got."
+    ),
+    "gas_rate": (
+        "so this is the published figure. It learns from the gas in EVE's mining ledger, "
+        "if the ledger records it."
     ),
     "minutes_per_jump": (
         "so plans assume about a minute a jump. It learns from your travel in recorded "
@@ -203,6 +208,30 @@ def describe(code: str, detail: dict | None = None) -> str:
         "ores_assumed": lambda: (
             f"No mining here on record; assumed common ores: {', '.join(d.get('ores', []))}."
         ),
+        "gas_estimate": lambda: (
+            f"{d.get('ship')}: about {d.get('m3_per_minute', 0):,.0f} m3 of gas a minute with "
+            f"{d.get('harvesters', 0)} harvester{'s' if d.get('harvesters', 0) != 1 else ''} "
+            "(the published figures; Gas Cloud Harvesting allows one active harvester a level)."
+        ),
+        "gas_site_search": lambda: (
+            f"Gas sites (nebulae) have to be scanned down first: about {d.get('minutes', 0):.0f} "
+            "minutes allowed. A Venture can't fit a probe launcher, so use a scanning ship or "
+            "a bookmark."
+        ),
+        "gas_valued_as": lambda: (
+            f"Valued at {d.get('isk_per_m3', 0):,.0f} ISK a m3, the average CCP price of the "
+            f"highsec booster gases, after {d.get('tax', 0):.1%} sales tax; which gas a site "
+            "holds depends on the site."
+        ),
+        "gas_skill_limit": lambda: (
+            f"{d.get('fitted')} gas harvesters fitted but only {d.get('active')} can run at your "
+            "Gas Cloud Harvesting level (or turret slots)."
+        ),
+        "gas_needs_scoops": lambda: (
+            "Gas harvesting: fit Gas Cloud Scoops to a mining frigate to see gas sites in plans."
+        ),
+        "gas_unpriced": lambda: "Gas isn't in plans: no market prices for it yet.",
+        "no_gas_modules": lambda: "No gas harvesters this character can use are fitted.",
         "no_live_signals": lambda: (
             "No fresh kill data from EVE, so the chance of loss comes from security alone "
             "(highsec low, lowsec medium). It's read every hour while the dashboard runs."

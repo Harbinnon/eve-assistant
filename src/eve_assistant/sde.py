@@ -48,6 +48,7 @@ ATTRIBUTE_NAMES = frozenset(
         "miningCritBonusYield",
         "generalMiningHoldCapacity",
         "specialOreHoldCapacity",
+        "specialGasHoldCapacity",
         # Milestone 5: slots for fitting, industry and exploration skills.
         "turretSlotsLeft",
         "launcherSlotsLeft",

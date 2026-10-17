@@ -11,7 +11,7 @@ ACTIVITY_MODELS = {"couriers", "fittings", "mining", "ore", "routes", "structure
 
 def test_every_activity_has_the_interface():
     names = [a.__name__.rsplit(".", 1)[1] for a in activities.ALL]
-    assert names == ["skills", "projects", "selling", "mining", "couriers"]
+    assert names == ["skills", "projects", "selling", "mining", "gas", "couriers"]
     for activity in activities.ALL:
         assert callable(activity.candidates), activity.__name__
         assert callable(activity.learned), activity.__name__
@@ -30,5 +30,10 @@ def test_learning_is_collected_from_the_activities():
     db = store.connect(":memory:")
     snapshots.ensure_character(db, 7, "Miner")
     learned = activities.learned(db, 7)
-    assert [c.what for c in learned] == ["sale_price", "mining_rate", "minutes_per_jump"]
+    assert [c.what for c in learned] == [
+        "sale_price",
+        "mining_rate",
+        "gas_rate",
+        "minutes_per_jump",
+    ]
     db.close()

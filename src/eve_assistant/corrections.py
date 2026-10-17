@@ -21,6 +21,9 @@ Corrections learned so far:
 - **sale_price**: what the session's market sales got (before tax, from
   the wallet transactions) against the unit prices its plan expected for
   the same items and units. Only items a step of the plan priced count.
+- **gas_rate**: gas m3 a minute from the mining ledger (the session's gas,
+  over the minutes the plan gave to harvesting) against the plan's estimate.
+  Only if EVE's mining ledger records gas; otherwise it stays at 1.
 - **minutes_per_jump**: minutes a jump in the session's travel (from the
   location checks, see travel.py) against the minutes a jump its plan
   assumed (MINUTES_PER_JUMP before plans recorded it). Needs at least
@@ -37,7 +40,8 @@ from eve_assistant.skills import Reason
 PRIOR_SESSIONS = 3.0  # how many sessions' weight the starting guess keeps
 LIMITS = (0.5, 1.5)
 MIN_ACTIVE_MINUTES = 10.0  # shorter mining stretches are too noisy to learn from
-WHATS = ("mining_rate", "sale_price", "minutes_per_jump")
+WHATS = ("mining_rate", "sale_price", "minutes_per_jump", "gas_rate")
+GAS_GROUP = "Harvestable Cloud"  # the gas types
 
 
 @dataclass(frozen=True)
@@ -172,8 +176,39 @@ def travel_observations(db: sqlite3.Connection, character_id: int) -> list[Obser
     return found
 
 
+def gas_observations(db: sqlite3.Connection, character_id: int) -> list[Observation]:
+    """Sessions with a gas step the player didn't decline, whose mining ledger
+    shows gas: m3 a minute over the harvesting minutes, against the estimate."""
+    gas_types = {
+        r[0]
+        for r in db.execute(
+            "SELECT t.type_id FROM sde_types t JOIN sde_groups g USING (group_id) WHERE g.name = ?",
+            (GAS_GROUP,),
+        )
+    }
+    found = []
+    for outcome in _latest_outcomes(db, character_id):
+        steps = [
+            step
+            for step in _steps_done(db, outcome.get("plan"))
+            if step.get("inputs", {}).get("gas_minutes")
+        ]
+        gas_m3 = sum(
+            m.get("m3") or 0 for m in outcome.get("mined") or [] if m["type_id"] in gas_types
+        )
+        if steps and gas_m3 > 0:
+            inputs = steps[0]["inputs"]
+            found.append(
+                Observation(
+                    outcome["session_id"], inputs["m3_per_minute"], gas_m3 / inputs["gas_minutes"]
+                )
+            )
+    return found
+
+
 OBSERVATIONS = {
     "mining_rate": mining_observations,
+    "gas_rate": gas_observations,
     "sale_price": sale_observations,
     "minutes_per_jump": travel_observations,
 }

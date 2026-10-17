@@ -40,7 +40,9 @@ from eve_assistant.skills import Reason
 from eve_assistant.store import utc_now
 
 # What can be "new to you"; reminders never are.
-ACTIVITY_KINDS = ("mining", "courier", "project_start")
+ACTIVITY_KINDS = ("mining", "courier", "project_start", "gas")
+# Main activities sized to the time left (the rest take the minutes they need).
+SIZED_KINDS = ("mining", "project_start", "gas")
 
 
 class PlanError(Exception):
@@ -193,7 +195,7 @@ def _open_projects(fit: _Fitting, usable: list[PlanItem]) -> None:
 
 def _main_pool(fit: _Fitting, usable: list[PlanItem], open_count: int) -> list[PlanItem]:
     def eligible(i: PlanItem) -> bool:
-        if i.kind in ("mining", "courier"):
+        if i.kind == "courier" or (i.kind in SIZED_KINDS and i.kind != "project_start"):
             return True
         if i.kind == "project_start":
             return open_count < projects.MAX_OPEN and not (
@@ -209,20 +211,20 @@ def _main_pool(fit: _Fitting, usable: list[PlanItem], open_count: int) -> list[P
 
 
 def _fits_main(fit: _Fitting, item: PlanItem) -> bool:
-    if item.kind not in ("mining", "project_start") and item.minutes > fit.time_left + 1e-9:
+    if item.kind not in SIZED_KINDS and item.minutes > fit.time_left + 1e-9:
         return False
-    if item.kind in ("mining", "project_start") and fit.time_left < MIN_MINING_MINUTES:
+    if item.kind in SIZED_KINDS and fit.time_left < MIN_MINING_MINUTES:
         return False
     return not (item.new_to_you and fit.new_used)
 
 
 def _main_activity(fit: _Fitting, pool: list[PlanItem]) -> PlanItem | None:
     """3. One main activity for the remaining time, by ISK after expected losses.
-    Mining and project starts are sized to the time left."""
+    Mining, gas and project starts are sized to the time left."""
     for item in pool:
         if not _fits_main(fit, item):
             continue
-        if item.kind in ("mining", "project_start"):
+        if item.kind in SIZED_KINDS:
             item = _resized(item, fit.time_left)
         fit.take(item)
         return item
