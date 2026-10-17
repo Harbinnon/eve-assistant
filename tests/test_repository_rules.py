@@ -13,6 +13,11 @@ def test_package_imports():
     assert eve_assistant.__version__
 
 
+def test_version_is_the_same_in_both_places():
+    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    assert pyproject["project"]["version"] == eve_assistant.__version__
+
+
 def test_dependencies_are_pinned_exactly():
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     project = pyproject["project"]

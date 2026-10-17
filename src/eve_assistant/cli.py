@@ -2,6 +2,7 @@
 
 import argparse
 import sys
+from pathlib import Path
 
 from eve_assistant import (
     __version__,
@@ -14,6 +15,7 @@ from eve_assistant import (
     explain,
     gamelogs,
     goals,
+    launcher,
     market,
     mining,
     ore,
@@ -126,6 +128,14 @@ def _cmd_serve(args) -> int:
     if config.mode != "local":
         print("Hosted mode is not built yet: the dashboard has no login, so it only runs locally.")
         return 2
+    if args.open:
+        if launcher.dashboard_running(args.port):
+            print(f"The dashboard is already running: {launcher.url(args.port)}")
+            launcher.open_in_browser(args.port)
+            return 0
+        if launcher.listening(args.port):
+            print(f"Something else is using port {args.port}. Close it or pass --port.")
+            return 2
     secrets = default_store()
 
     def do_refresh() -> list[str]:
@@ -140,7 +150,9 @@ def _cmd_serve(args) -> int:
     def do_auto_refresh():
         return refresh.auto_refresh_once(config, secrets)
 
-    print(f"Dashboard: http://127.0.0.1:{args.port}  (Ctrl+C to stop)")
+    print(f"Dashboard: http://127.0.0.1:{args.port}  (Ctrl+C or close this window to stop)")
+    if args.open:
+        launcher.open_when_listening(args.port)
     uvicorn.run(
         create_app(
             refresh=do_refresh,
@@ -153,6 +165,13 @@ def _cmd_serve(args) -> int:
         port=args.port,
         log_level="warning",
     )
+    return 0
+
+
+def _cmd_shortcut(args) -> int:
+    path = launcher.create_shortcut(args.folder, args.port)
+    print(f"Made {path}. Double-click it to start the dashboard and open it.")
+    print("Its window starts minimised; close that window to stop the dashboard.")
     return 0
 
 
@@ -906,8 +925,17 @@ def build_parser() -> argparse.ArgumentParser:
     cancel_cmd.set_defaults(func=_cmd_session_end, how="cancelled")
 
     serve = commands.add_parser("serve", help="run the dashboard on this PC")
-    serve.add_argument("--port", type=int, default=8700)
+    serve.add_argument("--port", type=int, default=launcher.DEFAULT_PORT)
+    serve.add_argument(
+        "--open", action="store_true", help="open it in the browser (only that, if it's running)"
+    )
     serve.set_defaults(func=_cmd_serve)
+    shortcut = commands.add_parser(
+        "shortcut", help="put a shortcut that starts the dashboard on the desktop (Windows)"
+    )
+    shortcut.add_argument("--folder", type=Path, help="another folder to put it in")
+    shortcut.add_argument("--port", type=int, default=launcher.DEFAULT_PORT)
+    shortcut.set_defaults(func=_cmd_shortcut)
 
     commands.add_parser("goals", help="show goals and how far away they are").set_defaults(
         func=_cmd_goals
@@ -949,6 +977,7 @@ def main(argv: list[str] | None = None) -> int:
         projects.ProjectError,
         sessions.SessionError,
         backups.BackupError,
+        launcher.LauncherError,
     ) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 2

@@ -340,6 +340,15 @@ A **web dashboard** is the main interface.
 Server-rendered pages with a small amount of self-written JavaScript,
 everything self-hosted, **no third-party scripts or CDNs**.
 
+**Starting it:** `eve-assistant shortcut` puts a shortcut on the Windows
+desktop that runs `serve --open`: it starts the dashboard and opens it in
+the browser, or only opens it if it is already running. "Already running"
+is checked by fetching the page, so another program on the port isn't
+mistaken for it. The shortcut runs the package with Python rather than
+`eve-assistant.exe`, so a running dashboard doesn't lock the file pip
+replaces on reinstall. Its window starts minimised; closing it stops the
+dashboard.
+
 **Discord** (optional, via webhook) gets alerts that need action in game:
 job finished, order undercut, skill queue empty, goal reached, each linking
 back to the dashboard. **Health of the tool itself** (token refresh

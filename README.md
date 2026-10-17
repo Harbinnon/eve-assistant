@@ -5,11 +5,12 @@ and haul. Set a goal, say how long you can play, and it reads your
 characters through CCP's API (ESI) and suggests the best use of that time,
 then learns from what actually happened.
 
-**Status: phases 1 and 2 are built: login, snapshots, skill plans, goals,
-the dashboard, and the session planner (mining, ore, couriers, your whole
-fleet, multi-session projects, risk ratings, decline buttons). Phase 3,
-learning from results, is under way: play sessions and their outcomes are
-recorded.** The design is in
+**Status: version 0.4. Built: login, snapshots, skill plans, goals, the
+dashboard, the session planner (mining, ore, couriers, your whole fleet,
+multi-session projects, risk ratings, decline buttons) and learning from
+results (play sessions, noticed from EVE's login times; outcomes; mining
+game logs; planner corrections; History). Next: the dashboard's look and
+flow.** The design is in
 [docs/design.md](docs/design.md) and the plan from here in
 [docs/roadmap.md](docs/roadmap.md).
 
@@ -41,6 +42,40 @@ backend that doesn't exist yet.)
    .venv\Scripts\pre-commit install
    .venv\Scripts\python -m pytest
    ```
+
+## First run
+
+Once, after setup:
+
+1. `eve-assistant sde-update` downloads CCP's static data (about 100 MB).
+   A banner on every page says when CCP has published a newer build.
+2. `eve-assistant login` logs a character in. Repeat for each character.
+3. `eve-assistant account assign <character id> <account name>` groups
+   characters by account, and `eve-assistant account state <account name>
+   alpha` (or `omega`) says which accounts are Alpha, so plans respect
+   Alpha limits.
+4. Optional: set `[logs] gamelogs_dir` in `config/local.toml` to EVE's
+   Gamelogs folder (usually `Documents\EVE\logs\Gamelogs`), so mining
+   rates are learned cycle by cycle.
+5. `eve-assistant shortcut` puts an **EVE Assistant** shortcut on the
+   desktop.
+
+## Every time you play
+
+1. Double-click **EVE Assistant** on the desktop (or run
+   `eve-assistant serve --open`). It starts the dashboard and opens
+   <http://127.0.0.1:8700> in your browser; if it is already running, it
+   just opens it. Its window starts minimised: closing that window stops
+   the dashboard.
+2. On **Today**, pick a character, say how long you have and press
+   **Plan my time**. Press **Start this plan** when you begin and
+   **I'm done** when you stop.
+3. Forgot to press them? While the dashboard runs it notices when you log
+   in and out of EVE, and Today offers to record that session.
+
+While it runs, the dashboard keeps your data current from EVE and backs
+the database up once a day. **History** shows each plan against what
+happened.
 
 ## Commands so far
 
@@ -76,7 +111,8 @@ eve-assistant detected [record|dismiss <n>]  sessions noticed from EVE's login t
 eve-assistant outcomes                 what happened in recent sessions, against the plan
 eve-assistant gamelogs                 read mining cycles from EVE's game logs (optional)
 eve-assistant learned                  what the planner has learned from your sessions
-eve-assistant serve [--port 8700]      run the dashboard at http://127.0.0.1:8700
+eve-assistant serve [--port 8700] [--open]   run the dashboard at http://127.0.0.1:8700
+eve-assistant shortcut [--folder <path>]     a desktop shortcut that starts it (Windows)
 ```
 
 Data lives in `var/` (the database and downloaded static data) and is
