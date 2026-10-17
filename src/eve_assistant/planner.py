@@ -32,6 +32,7 @@ from eve_assistant import (
     routes,
     skills,
     snapshots,
+    structures,
 )
 from eve_assistant.esi.client import EsiClient
 from eve_assistant.risk import RiskRating
@@ -103,10 +104,37 @@ class Plan:
         return sum(i.minutes for i in self.items)
 
 
+def _accessible_structure(db: sqlite3.Connection, location_id: int | None) -> int | None:
+    known = structures.get(db, location_id) if location_id else None
+    return location_id if known is not None and known.accessible else None
+
+
+def _place(db: sqlite3.Connection, location_id: int):
+    """(system_id, system name, is_structure) for an NPC station or an accessible
+    structure; None for anything else."""
+    row = db.execute(
+        "SELECT st.system_id, s.name FROM sde_npc_stations st JOIN sde_solar_systems s "
+        "USING (system_id) WHERE st.station_id = ?",
+        (location_id,),
+    ).fetchone()
+    if row:
+        return row["system_id"], row["name"], False
+    known = structures.get(db, location_id)
+    if known is None or not known.accessible or not known.solar_system_id:
+        return None
+    name = db.execute(
+        "SELECT name FROM sde_solar_systems WHERE system_id = ?", (known.solar_system_id,)
+    ).fetchone()
+    return known.solar_system_id, name["name"] if name else "?", True
+
+
 def _selling_station(db: sqlite3.Connection, character_id: int, notes: list[Reason]) -> int | None:
-    """Where to sell: the NPC station the character is docked at, or else the
-    first NPC station in its current system."""
+    """Where to sell: where the character is docked (an NPC station, or a player
+    structure it can access), or else the first NPC station in its system."""
     location = snapshots.latest(db, character_id, "location") or {}
+    if _accessible_structure(db, location.get("structure_id")):
+        notes.append(Reason("selling_at_structure_here"))
+        return location["structure_id"]
     station = location.get("station_id")
     if (
         station
@@ -181,7 +209,9 @@ def hangar_candidates(
     owned ship can carry the load."""
     location = snapshots.latest(db, character_id, "location") or {}
     here_system = location.get("solar_system_id")
-    docked_at = location.get("station_id")
+    docked_at = location.get("station_id") or _accessible_structure(
+        db, location.get("structure_id")
+    )
     here_location = docked_at or location.get("structure_id")
     active_value = next((s.value for s in ships if s.is_active), 0.0)
     assets = snapshots.latest(db, character_id, "assets") or []
@@ -192,14 +222,12 @@ def hangar_candidates(
             by_type[item["type_id"]] = by_type.get(item["type_id"], 0) + item.get("quantity", 1)
     items = []
     for station_id, by_type in stacks.items():
-        station = db.execute(
-            "SELECT st.system_id, s.name FROM sde_npc_stations st JOIN sde_solar_systems s "
-            "USING (system_id) WHERE st.station_id = ?",
-            (station_id,),
-        ).fetchone()
-        if station is None:
+        place = _place(db, station_id)
+        if place is None:
             notes.append(Reason("ore_in_structure_skipped"))
             continue
+        station = {"system_id": place[0], "name": place[1]}
+        kind_of_place = "structure" if place[2] else "station"
         if station_id == docked_at:
             travel_path = [here_system]
         else:
@@ -243,7 +271,10 @@ def hangar_candidates(
                 if station_id == docked_at:
                     where = ""
                 elif travel_jumps == 0:
-                    where = f"Dock at the station in {station['name']} where it is stored, then: "
+                    where = (
+                        f"Dock at the {kind_of_place} in {station['name']} where it is stored, "
+                        "then: "
+                    )
                 else:
                     where = f"Go to {station['name']} ({travel_jumps} jumps), then: "
                 ship_note = f" (in your {hauler.name})" if hauler is not None else ""
@@ -511,8 +542,11 @@ def mining_candidates(
             continue
         any_miner = True
         system_id = location.get("solar_system_id") if board.jumps == 0 else ship.system_id
-        if ship.is_active and location.get("station_id") and board.jumps == 0:
-            station_id = location["station_id"]
+        docked = location.get("station_id") or _accessible_structure(
+            db, location.get("structure_id")
+        )
+        if ship.is_active and docked and board.jumps == 0:
+            station_id = docked
         else:
             station_id = _first_station(db, system_id)
         if station_id is None:

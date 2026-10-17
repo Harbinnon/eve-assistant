@@ -10,8 +10,8 @@ import math
 import sqlite3
 from dataclasses import dataclass, field
 
-from eve_assistant import fees, market, routes, sde, skills
-from eve_assistant.esi.client import EsiClient
+from eve_assistant import fees, market, routes, sde, skills, structures
+from eve_assistant.esi.client import EsiClient, EsiError
 from eve_assistant.skills import Reason
 
 # Rough until learned from real trips (phase 3).
@@ -96,7 +96,8 @@ def refine_yield(
     )
 
 
-def _station(db: sqlite3.Connection, station_id: int):
+def _station(db: sqlite3.Connection, station_id: int) -> dict:
+    """Where the ore is: an NPC station, or a player structure the character can access."""
     row = db.execute(
         "SELECT st.system_id, s.name AS system_name, s.region_id, r.name AS region_name, "
         "st.reprocessing_efficiency, st.reprocessing_station_take "
@@ -104,11 +105,25 @@ def _station(db: sqlite3.Connection, station_id: int):
         "JOIN sde_regions r USING (region_id) WHERE st.station_id = ?",
         (station_id,),
     ).fetchone()
-    if row is None:
-        raise OreError(
-            "That location is not an NPC station. Player structures are not supported yet."
-        )
-    return row
+    if row is not None:
+        return {**dict(row), "is_structure": False}
+    known = structures.get(db, station_id)
+    if known is not None and known.accessible and known.solar_system_id:
+        place = db.execute(
+            "SELECT s.system_id, s.name AS system_name, s.region_id, r.name AS region_name "
+            "FROM sde_solar_systems s JOIN sde_regions r USING (region_id) WHERE s.system_id = ?",
+            (known.solar_system_id,),
+        ).fetchone()
+        if place is not None:
+            return {
+                **dict(place),
+                "reprocessing_efficiency": None,
+                "reprocessing_station_take": None,
+                "is_structure": True,
+            }
+    raise OreError(
+        "That location is neither an NPC station nor a structure this character can access."
+    )
 
 
 def analyse(
@@ -127,6 +142,7 @@ def analyse(
     character = skills.load_character_skills(db, character_id)
     standings = fees.load_standings(db, character_id)
     here = _station(db, station_id)
+    at_structure = here["is_structure"]
     owner_corp, _ = fees.station_owner(db, station_id)
 
     item = db.execute(
@@ -183,6 +199,16 @@ def analyse(
     )
 
     books: dict[tuple[int, int], list[market.Order]] = {}
+    structure_book: list[market.Order] | None = None
+    if at_structure:
+        reasons.append(Reason("selling_at_structure"))
+        reasons.append(Reason("refining_at_structure_not_modelled"))
+        try:
+            structure_book = market.structure_orders(
+                esi, station_id, here["system_id"], character_id
+            )
+        except EsiError:
+            reasons.append(Reason("structure_market_unavailable"))
 
     def book(region_id: int, item_id: int) -> list[market.Order]:
         if (region_id, item_id) not in books:
@@ -190,7 +216,10 @@ def analyse(
         return books[(region_id, item_id)]
 
     def instant_value(region_id, station, system, item_id, qty) -> tuple[float, int]:
-        fill = market.sell_into_buy_orders(book(region_id, item_id), qty, station, system)
+        orders = book(region_id, item_id)
+        if structure_book is not None and station == station_id:
+            orders = market.merge(orders, [o for o in structure_book if o.type_id == item_id])
+        fill = market.sell_into_buy_orders(orders, qty, station, system)
         return fill.gross * (1 - tax_rate), qty - fill.quantity
 
     options: list[Option] = []
@@ -212,6 +241,8 @@ def analyse(
                 hauled_m3=ore_m3 if jumps else 0.0,
             )
         )
+        if at_structure:
+            return  # refining here would be at the structure: not modelled
         refined, unsold = 0.0, 0
         for mineral, amount in minerals.items():
             value, left = instant_value(region_id, station, system, mineral, amount)

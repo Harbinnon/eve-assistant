@@ -4,6 +4,11 @@ Order books are fetched per region and item, on demand, through the ESI
 client (which respects the 5-minute cache). Selling into buy orders walks
 down the book, so a large sale gets the price it would actually get, not
 the single best order.
+
+The regional book includes orders in player structures whose market is
+public. A structure's own book (needs the structure-markets scope and
+access to the structure) adds the rest: markets that aren't public.
+Merging the two by order ID never counts an order twice.
 """
 
 from dataclasses import dataclass
@@ -37,6 +42,8 @@ class Order:
     location_id: int
     system_id: int
     range: str
+    order_id: int = 0
+    type_id: int = 0
 
 
 @dataclass(frozen=True)
@@ -60,9 +67,45 @@ def order_book(esi: EsiClient, region_id: int, type_id: int) -> list[Order]:
             location_id=o["location_id"],
             system_id=o["system_id"],
             range=o.get("range", "station"),
+            order_id=o.get("order_id", 0),
+            type_id=type_id,
         )
         for o in result.data
     ]
+
+
+def structure_orders(
+    esi: EsiClient, structure_id: int, system_id: int, character_id: int
+) -> list[Order]:
+    """Every order in one structure's market (all items). Needs the character's
+    structure-markets scope and access to the structure; raises EsiError if not."""
+    result = esi.get(f"/markets/structures/{structure_id}", character_id=character_id)
+    return [
+        Order(
+            price=o["price"],
+            volume=o["volume_remain"],
+            is_buy=o["is_buy_order"],
+            location_id=o["location_id"],
+            system_id=system_id,
+            range=o.get("range", "station"),
+            order_id=o.get("order_id", 0),
+            type_id=o["type_id"],
+        )
+        for o in result.data
+    ]
+
+
+def merge(*books: list[Order]) -> list[Order]:
+    """Books joined, each order once (by order ID)."""
+    seen: set[int] = set()
+    merged = []
+    for book in books:
+        for order in book:
+            if order.order_id and order.order_id in seen:
+                continue
+            seen.add(order.order_id)
+            merged.append(order)
+    return merged
 
 
 def _buy_order_reaches(order: Order, station_id: int, system_id: int) -> bool:
