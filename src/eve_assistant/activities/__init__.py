@@ -10,10 +10,18 @@ the time; it knows nothing about how any activity works. A new activity is a
 new module here, added to ALL.
 """
 
-from eve_assistant.activities import couriers, gas, mining, projects, selling, skills
+from eve_assistant.activities import (
+    couriers,
+    gas,
+    manufacturing,
+    mining,
+    projects,
+    selling,
+    skills,
+)
 
 # In the order candidates are gathered (ties keep this order).
-ALL = (skills, projects, selling, mining, gas, couriers)
+ALL = (skills, projects, selling, manufacturing, mining, gas, couriers)
 
 
 def learned(db, character_id: int) -> list:

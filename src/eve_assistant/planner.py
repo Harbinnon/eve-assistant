@@ -40,7 +40,7 @@ from eve_assistant.skills import Reason
 from eve_assistant.store import utc_now
 
 # What can be "new to you"; reminders never are.
-ACTIVITY_KINDS = ("mining", "courier", "project_start", "gas")
+ACTIVITY_KINDS = ("mining", "courier", "project_start", "gas", "manufacturing")
 # Main activities sized to the time left (the rest take the minutes they need).
 SIZED_KINDS = ("mining", "project_start", "gas")
 
@@ -163,9 +163,14 @@ def _promised_stacks(db, character_id) -> set[tuple]:
 
 
 def _quick_jobs(fit: _Fitting, usable: list[PlanItem]) -> None:
-    """1. Quick jobs where the character is docked: skills, then selling here."""
+    """1. Quick jobs where the character is docked: skills, the best build job,
+    then selling here."""
     for item in [i for i in usable if i.kind == "skill"]:
         fit.take(item)
+    builds = sorted((i for i in usable if i.kind == "manufacturing"), key=lambda i: -i.adjusted_isk)
+    for item in builds[:1]:
+        if item.minutes <= fit.time_left and not (item.new_to_you and fit.new_used):
+            fit.take(item)
     sells = sorted(
         (
             i

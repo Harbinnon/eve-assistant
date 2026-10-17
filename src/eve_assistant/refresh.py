@@ -19,6 +19,7 @@ from eve_assistant import (
     freelance,
     gamelogs,
     goals,
+    industry,
     losses,
     outcomes,
     planner,
@@ -278,7 +279,12 @@ def _refresh_signals(db, esi: EsiClient, now: datetime) -> list[str]:
 
 
 def _public_due(db, now: datetime) -> bool:
-    return _prices_due(db, now) or _freelance_due(db, now) or signals.due(db, now)
+    return (
+        _prices_due(db, now)
+        or _freelance_due(db, now)
+        or signals.due(db, now)
+        or industry.due(db, now)
+    )
 
 
 def _refresh_public(db, esi: EsiClient, now: datetime) -> list[str]:
@@ -293,6 +299,11 @@ def _refresh_public(db, esi: EsiClient, now: datetime) -> list[str]:
         problems.extend(_refresh_freelance(db, esi, now))
     if signals.due(db, now):
         problems.extend(_refresh_signals(db, esi, now))
+    if industry.due(db, now):
+        try:
+            industry.refresh(db, esi, now)
+        except EsiError as exc:
+            problems.append(f"Industry cost indices: {exc}")
     return problems
 
 

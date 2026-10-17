@@ -12,6 +12,7 @@ KNOWN = {
     "kind:sell_hangar": "selling ore from your hangar",
     "kind:mining": "mining",
     "kind:gas": "gas harvesting",
+    "kind:manufacturing": "manufacturing",
     "kind:courier": "courier contracts",
     "kind:skill": "skill training reminders",
     "route:lowsec": "anything that goes through lowsec",

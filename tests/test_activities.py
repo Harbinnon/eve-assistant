@@ -11,7 +11,15 @@ ACTIVITY_MODELS = {"couriers", "fittings", "mining", "ore", "routes", "structure
 
 def test_every_activity_has_the_interface():
     names = [a.__name__.rsplit(".", 1)[1] for a in activities.ALL]
-    assert names == ["skills", "projects", "selling", "mining", "gas", "couriers"]
+    assert names == [
+        "skills",
+        "projects",
+        "selling",
+        "manufacturing",
+        "mining",
+        "gas",
+        "couriers",
+    ]
     for activity in activities.ALL:
         assert callable(activity.candidates), activity.__name__
         assert callable(activity.learned), activity.__name__

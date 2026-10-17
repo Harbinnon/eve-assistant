@@ -208,6 +208,27 @@ def describe(code: str, detail: dict | None = None) -> str:
         "ores_assumed": lambda: (
             f"No mining here on record; assumed common ores: {', '.join(d.get('ores', []))}."
         ),
+        "manufacture_costs": lambda: (
+            f"Materials {numbers.isk(d.get('materials'))} ISK and job fee "
+            f"{numbers.isk(d.get('job_fee'))} ISK against {numbers.isk(d.get('value'))} ISK "
+            f"when sold (after tax): {numbers.isk(d.get('profit'))} ISK profit over "
+            f"{d.get('runs', 1)} run{'s' if d.get('runs', 1) != 1 else ''}"
+            + (
+                f", {d['profit'] / (d['materials'] + d['job_fee']):.0%} on what it costs"
+                if d.get("materials", 0) + d.get("job_fee", 0) > 0
+                else ""
+            )
+            + ". Prices are CCP averages, not hub quotes"
+            + (f"; to buy first: {', '.join(d['to_buy'])}" if d.get("to_buy") else "")
+            + "."
+        ),
+        "job_slots_full": lambda: (
+            f"No build suggested: all {d.get('slots')} of your job slots are busy."
+        ),
+        "no_cost_index": lambda: (
+            "No build suggested yet: the system's industry cost index hasn't been read "
+            "(once a day while the dashboard runs)."
+        ),
         "gas_estimate": lambda: (
             f"{d.get('ship')}: about {d.get('m3_per_minute', 0):,.0f} m3 of gas a minute with "
             f"{d.get('harvesters', 0)} harvester{'s' if d.get('harvesters', 0) != 1 else ''} "

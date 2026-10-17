@@ -45,6 +45,7 @@ KINDS = (
     Kind("standings", "/characters/{id}/standings"),
     Kind("orders", "/characters/{id}/orders"),
     Kind("industry_jobs", "/characters/{id}/industry/jobs"),
+    Kind("blueprints", "/characters/{id}/blueprints"),
     Kind("contracts", "/characters/{id}/contracts", names_others=True),
     Kind("fittings", "/characters/{id}/fittings"),
     Kind(
