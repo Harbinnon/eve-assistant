@@ -82,6 +82,15 @@ shows both "what you can do now" and "what Omega would unlock".
 | **ISK** (one-off or monthly) | 2.4B a month for Omega; 50M for a ship | The gap, the ISK per hour needed at the player's pace, whether it is realistic |
 | **Own and fly a ship** | "a Retriever", later "an Orca" | ISK to buy and fit it (from a fit chosen in Pyfa or EVEShip.fit), skills needed with training time, whether it needs Omega |
 | **Skills** | "Mining Barge IV" | Training time, order, what it unlocks |
+| **Omega via PLEX** | "Omega for 1 month (500 PLEX)" | The ISK it comes to at today's PLEX price (so the target follows the price), the gap and the date at the player's pace |
+
+**What Omega would change** (Goals page): for the active character, the
+best mining ship it can fly now as Alpha against the best one it owns and
+could fly as Omega, each as fitted now, in m³ a minute (the published
+figures) and in ISK an hour at the latest plan's price for its ore; what a
+month of Omega costs in PLEX; and the hours of mining a month at which
+Omega's extra pays for itself. Training speed as Alpha is assumed to be
+half of Omega's, not confirmed.
 
 Goals can stack ("Retriever, then a month of Omega"). Progress is reported
 every session, and arrival dates are re-estimated as the tool learns how
@@ -134,6 +143,11 @@ Rules:
 - When two options are close, it says so rather than pretending to be
   precise.
 
+**Who should play today.** Characters on one account can't play at the same
+time, so "Compare characters" builds the best plan for each (up to ten) and
+puts them side by side, by ISK after expected losses for the same time,
+with a button to play the best one.
+
 ### 4.4 Projects that span several sessions
 
 Some of the best options don't fit in an hour: mining enough for a full
@@ -171,8 +185,16 @@ stopping point.
 - **Can I do this?** Prerequisite chains from the static data; training
   time from attributes, implants and clone state.
 - **What should I train next?** Skills ranked by how much they shorten the
-  time to the goal (yield skills against hours mined, refining skills
-  against ore volume…).
+  time to the goal. Built for mining (roadmap 3.6): each skill the mining
+  estimate reads, one level up, with the ship as fitted now and within
+  Alpha's limits, gives extra m³ a minute, extra ISK an hour (at the latest
+  plan's ore price), weeks off the first ISK or Omega goal (if all the
+  player's usual play time were mining) and, for an untrained skill, the
+  book's price and the hours of mining that pay for it. The Skills page
+  shows the top three with a "Set as goal" button. An Alpha past the 5M
+  skill-point limit can't train at all: its suggestions show the time as
+  Omega and say Omega is needed. Refining skills against ore volume come
+  later.
 - **Alpha limits are part of every answer.** "This needs Omega" is a real
   result, not an error.
 
@@ -271,25 +293,42 @@ refresh and session snapshot reads new lines first:
   On the owner's real logs the per-type totals matched the mining ledger
   exactly.
 
-**Corrections** (built so far: mining speed). Each session whose plan had
-a mining step the player didn't decline, with at least ten minutes of
-mining in the game logs, gives a ratio: m³ per minute while actually
-mining, against the plan's static-data estimate. The factor applied to new
-plans starts at 1 and moves towards the average ratio as sessions agree:
-`1 + (average − 1) × n / (n + 3)`, kept between 0.5 and 1.5. So one session
-moves it a quarter of the way, four sessions a little over half.
+**Corrections** (built: mining speed, sale prices, travel time). Each
+session gives a ratio of what happened to what its plan assumed:
 
-- Plans record the **uncorrected** estimate, and the correction as a
-  separate reason ("adjusted ×0.86 from 4 of your sessions"). Each new
-  session is compared with the static data, never with an already
-  corrected figure, so the correction can't feed on itself.
+- **Mining speed:** a session whose plan had a mining step the player
+  didn't decline, with at least ten minutes of mining in the game logs: m³
+  per minute while actually mining, against the plan's static-data
+  estimate.
+- **Sale prices:** a session whose market sales (wallet transactions,
+  before tax) include items a step of its plan priced: the ISK they got
+  against the plan's unit prices for the same items and units. Selling and
+  mining steps record the unit price each item sold was expected to fetch.
+- **Travel time:** a session with at least three timed jumps: minutes a
+  jump against the minutes a jump its plan assumed. The travel comes from
+  the location checks EVE answers every couple of minutes while the
+  character is online: a run of checks that each find a new system is a
+  stretch of travel, its jumps the shortest route through the systems
+  seen, timed from midway between its first two checks to midway between
+  its last two. Stretches seen by only two checks, with a gap of over ten
+  minutes, or without a route (a death, a wormhole) are left out.
+
+The factor applied to new plans starts at 1 and moves towards the average
+ratio as sessions agree: `1 + (average − 1) × n / (n + 3)`, kept between 0.5
+and 1.5. So one session moves it a quarter of the way, four sessions a
+little over half. Mining speed scales the m³ a minute; sale prices scale
+selling and mining ISK; travel time scales the minute a jump that selling,
+mining, boarding another ship and couriers start from.
+
+- Plans record the **uncorrected** figures (the static-data mining speed,
+  the market's unit prices, the starting minute a jump), and each
+  correction as a separate reason ("adjusted ×0.86 from 4 of your
+  sessions"). Each new session is compared with those, never with an
+  already corrected figure, so a correction can't feed on itself.
 - Without game logs the mining correction stays at 1 and the plan says it
   is the published figure, with how to turn the logs on.
 - The History and learning page and `eve-assistant learned` show what has been
   learned per character.
-- Still to come: sale prices actually reached, and travel time. Plans
-  don't yet record the per-unit price and per-jump time they assumed, so
-  those need recording first.
 
 **History page.** Each played session, newest first, with its plan's steps
 set against the data:
@@ -349,8 +388,8 @@ A **web dashboard** is the main interface.
 |---|---|
 | **Today** | Pick a character, enter the time available, get the plan. Above it: what finished, expired or sold since last session; open projects. |
 | **Goals** | Progress, estimated arrival date, what is slowing it down, what Omega would change. |
-| **Characters** | All characters side by side: training, wallet, net worth, location, ship. |
-| **Skills** | Training plan for the current goal, with each skill's payback. |
+| **Characters** | All characters side by side: training, wallet, net worth (with its line over 90 days), location, ship. |
+| **Skills** | What a ship or module needs, in training order; what to train next, with each skill's payback. |
 | **History and learning** | Past plans against results, what the planner has learned from them, and the risk matrix, so the learning can be checked rather than trusted. |
 | **Settings** | Everything muted (with undo), play time, backups. The theme switch is at the bottom of every page. |
 
@@ -399,7 +438,8 @@ PvP switched off, so it is rated "no player risk" and always green. **Lawless hi
 
 **How much is exposed, compared with what the character owns?** Ship and
 fit, cargo and courier collateral as a share of **net worth** (wallet plus
-assets at market value). Losing 20M hurts a new character and barely
+assets at CCP's average prices; blueprint copies count as nothing, as their
+price is the original's). Losing 20M hurts a new character and barely
 registers for an established one.
 
 | Chance of loss \ Exposed share of net worth | under 2% | 2–10% | 10–25% | over 25% |
@@ -582,7 +622,7 @@ structured reasons and inputs; record where each piece of text came from
 | **0. Setup** | Register an ESI application ([setup guide](setup-esi.md)). | Client ID in local config. |
 | **1. Foundations and dashboard** | Store, ESI login for several characters, snapshots, static data, market prices, skill trees and training time, goals. Pages: Characters, Goals, Skills. | "To fly a Retriever you need Omega, these 6 skills (11 days) and ~32M ISK", correct per character. |
 | **2. First planner** | Mining, ore disposal and courier models; Today page with time limit and projects; risk matrix for highsec and Exordium; decline buttons; every plan recorded. | A 60-minute plan the player agrees is sensible. |
-| **3. Learning** | Reconciling plans with ledger, wallet and contracts; per-activity corrections; goal dates; moving risk lines; History page. Built: sessions, outcomes, game logs, mining-speed correction, History, real pace and goal dates. Left: moving risk lines (deferred until there's lowsec data), sale-price and travel-time corrections. | Predictions measurably improve after a few sessions. |
+| **3. Learning** | Reconciling plans with ledger, wallet and contracts; per-activity corrections; goal dates; moving risk lines; History page. Built: sessions, outcomes, game logs, mining-speed correction, History, real pace and goal dates; sale-price and travel-time corrections followed in milestone 3. Left: moving risk lines (milestone 4, once there's lowsec data). | Predictions measurably improve after a few sessions. |
 | **3.5 onwards** | Replaced by the milestones in [roadmap.md](roadmap.md) (17 October 2026): foundations (backups, automatic session detection, structure markets, contract tracking), the dashboard's look and flow, a planner restructure with Freelance Jobs and an Omega comparison, risk from real data, new activities (gas, exploration, missions, manufacturing), corporations, nullsec and PI, then alerts and hosted mode. | Each milestone ends with a version tag. |
 | **Later** | MCP server; officer corp data. | — |
 
@@ -839,6 +879,15 @@ button, session snapshots, planning) shares one lock, so login tokens are
 never refreshed twice at once. Every page footer says when the last check
 ran and shows its first problem, if any. `[app] auto_refresh = false` in
 `config/local.toml` turns it off.
+
+### Net worth over time
+
+`worth.py` works out wallet plus valued assets from the snapshots, one
+point a day (the day's last wallet and asset list, or the latest before
+them), over 90 days; several characters add up for a goal without one.
+Assets are valued at today's CCP average prices for every point, as no
+price history is kept, so the line shows what changed in wallets and
+hangars, not price moves. The line is a small SVG drawn on the server.
 
 ### Data sources
 
