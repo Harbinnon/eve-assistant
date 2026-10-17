@@ -348,6 +348,13 @@ A **web dashboard** is the main interface.
 Server-rendered pages with a small amount of self-written JavaScript,
 everything self-hosted, **no third-party scripts or CDNs**.
 
+**The look** ("capsuleer console", approved 17 October 2026): dark first;
+cyan marks what you can do, amber marks ISK and what needs attention;
+system security uses EVE's own colours, as a bar beside the number (EVE's
+low and null reds are too dark to read as text on dark). Headings, labels
+and numbers use Bahnschrift, text uses Segoe UI: both ship with Windows, so
+there are no font files; other systems fall back to their own font.
+
 **Starting it:** `eve-assistant shortcut` puts a shortcut on the Windows
 desktop that runs `serve --open`: it starts the dashboard and opens it in
 the browser, or only opens it if it is already running. "Already running"

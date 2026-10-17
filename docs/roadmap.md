@@ -116,8 +116,8 @@ data, not assumed.
 
 | Item | Decision |
 |---|---|
-| 1.7 | Use the fittings scope, or stop requesting it. |
-| 2.1 | Approve the style direction after seeing the prototype; whether to add self-hosted font files. |
+| 1.7 | Decided 17 Oct: use it (what-if notes from saved fits). |
+| 2.1 | Decided 17 Oct: the direction is approved, with Windows' own fonts (Bahnschrift, Segoe UI); no font files. |
 | 3.2 | The new read-only scopes, and when to log in again. |
 | 5.5 | Build trade hauling in, or keep external tools. |
 | 7.1 | Whether a minimal Discord alert should come earlier. |
