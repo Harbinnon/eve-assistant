@@ -7,14 +7,25 @@ security and, while they're fresh, the live signals (signals.py): ships
 lost along it in the last hour, camps and incursions. The payout EVE makes
 for a lost hull is taken off the expected loss.
 
-ALL loss probabilities below are starting guesses, flagged as such in every
-result, and are meant to be replaced by learned values.
+The loss chances below are starting guesses. loss_chances() learns from the
+player's own losses (losses.py) against the trips plans rated: each step of
+a finished session that wasn't declined, with something at stake, is a trip
+in its band, and a loss during that session counts against the riskiest of
+its steps. The starting guess keeps PRIOR_TRIPS trips' weight, so a single
+loss can't swing a chance far:
+
+    chance = (guess * PRIOR_TRIPS + losses) / (PRIOR_TRIPS + trips)
+
+Every rating says whether its chance is still a guess or how many trips it
+was learned from. "none" (Exordium) stays at zero: no player can attack there.
 """
 
+import json
 import sqlite3
-from dataclasses import dataclass
+from collections import Counter
+from dataclasses import dataclass, field
 
-from eve_assistant import goals, routes, signals, snapshots, worth
+from eve_assistant import goals, losses, routes, signals, snapshots, worth
 from eve_assistant.skills import Reason
 
 # "none": Exordium, where PvP is switched off, so other players cannot take anything.
@@ -28,6 +39,7 @@ SHARE_COLUMNS = (0.02, 0.10, 0.25)
 
 # Ships and pods lost in one system in the last hour from which it counts as camped.
 CAMP_KILLS = 5
+PRIOR_TRIPS = 100.0  # how many trips' weight the starting guesses keep
 
 MATRIX = {
     "none": ("green", "green", "green", "green"),
@@ -46,6 +58,8 @@ class RiskRating:
     share_of_net_worth: float
     expected_loss: float
     payout: float = 0.0  # what EVE pays for the hull if it's lost
+    chance: float = 0.0
+    trips: int = 0  # the chance was learned from this many trips; 0 = a starting guess
 
     def as_dict(self) -> dict:
         return {
@@ -55,8 +69,35 @@ class RiskRating:
             "share_of_net_worth": self.share_of_net_worth,
             "expected_loss": self.expected_loss,
             "payout": self.payout,
-            "chance_is_a_guess": True,
+            "chance": self.chance,
+            "trips": self.trips,
+            "chance_is_a_guess": self.trips == 0,
         }
+
+
+@dataclass(frozen=True)
+class Chance:
+    """A band's chance of loss per trip, and what it was learned from."""
+
+    band: str
+    chance: float
+    trips: int = 0
+    losses: int = 0
+
+    @property
+    def learned(self) -> bool:
+        return self.trips > 0
+
+
+@dataclass(frozen=True)
+class Model:
+    """What ratings use: each band's chance, and the net-worth columns."""
+
+    chances: dict[str, Chance] = field(
+        default_factory=lambda: {band: Chance(band, LOSS_CHANCE[band]) for band in BANDS}
+    )
+    columns: tuple[float, ...] = SHARE_COLUMNS
+    losses_outside_sessions: int = 0
 
 
 @dataclass(frozen=True)
@@ -135,23 +176,88 @@ def assess(
     return Assessment(band, tuple(reasons))
 
 
-def rate(band: str, exposure: float, net_worth: float, payout: float = 0.0) -> RiskRating:
-    """payout: what EVE pays for the hull if it's lost, taken off the expected loss."""
+def rate(
+    band: str, exposure: float, net_worth: float, payout: float = 0.0, model: Model | None = None
+) -> RiskRating:
+    """payout: what EVE pays for the hull if it's lost, taken off the expected loss.
+    model: learned chances and columns; the starting guesses without one."""
+    model = model or Model()
+    chance = model.chances[band]
     if net_worth > 0:
         share = exposure / net_worth
     elif exposure > 0:
         share = 1.0
     else:
         share = 0.0
-    column = sum(share > limit for limit in SHARE_COLUMNS)
+    column = sum(share > limit for limit in model.columns)
     return RiskRating(
         band=band,
         rating=MATRIX[band][column],
         exposure=exposure,
         share_of_net_worth=share,
-        expected_loss=LOSS_CHANCE[band] * max(0.0, exposure - payout),
+        expected_loss=chance.chance * max(0.0, exposure - payout),
         payout=payout,
+        chance=chance.chance,
+        trips=chance.trips,
     )
+
+
+def _steps_taken(db: sqlite3.Connection, plan_id: int) -> list[str]:
+    """The bands of a plan's steps the player didn't decline, with something at stake."""
+    rows = db.execute(
+        "SELECT i.details, (SELECT r.response FROM plan_responses r WHERE r.item_id = i.item_id "
+        " ORDER BY r.response_id DESC LIMIT 1) AS response "
+        "FROM plan_items i WHERE i.plan_id = ? AND i.position IS NOT NULL",
+        (plan_id,),
+    )
+    bands = []
+    for row in rows:
+        stake = json.loads(row["details"]).get("risk", {})
+        if row["response"] in (None, "do") and stake.get("band") in BANDS and stake.get("exposure"):
+            bands.append(stake["band"])
+    return bands
+
+
+def trips_and_losses(db: sqlite3.Connection) -> tuple[Counter, dict[int, str | None]]:
+    """Trips per band, and each loss's band: the riskiest step of the session
+    it happened in, or None outside any recorded session."""
+    trips: Counter = Counter()
+    windows = []
+    for session in db.execute(
+        "SELECT s.character_id, s.plan_id, s.started_at, e.ended_at FROM play_sessions s "
+        "JOIN play_session_ends e USING (session_id) "
+        "WHERE e.how = 'finished' AND s.plan_id IS NOT NULL"
+    ).fetchall():
+        bands = _steps_taken(db, session["plan_id"])
+        trips.update(bands)
+        if bands:
+            riskiest = max(bands, key=BANDS.index)
+            windows.append((session["character_id"], session["started_at"], session["ended_at"],
+                            riskiest))  # fmt: skip
+    attributed = {
+        loss.killmail_id: next(
+            (
+                b
+                for who, start, end, b in windows
+                if who == loss.character_id and start <= loss.killed_at <= end
+            ),
+            None,
+        )  # fmt: skip
+        for loss in losses.all_losses(db)
+    }
+    return trips, attributed
+
+
+def model(db: sqlite3.Connection) -> Model:
+    """Ratings as learned so far: chances from your losses and trips."""
+    trips, attributed = trips_and_losses(db)
+    lost = Counter(band for band in attributed.values() if band)
+    outside = sum(band is None for band in attributed.values())
+    chances = {}
+    for band in BANDS:
+        learned = (LOSS_CHANCE[band] * PRIOR_TRIPS + lost[band]) / (PRIOR_TRIPS + trips[band])
+        chances[band] = Chance(band, 0.0 if band == "none" else learned, trips[band], lost[band])
+    return Model(chances, SHARE_COLUMNS, outside)
 
 
 def item_value(db: sqlite3.Connection, type_id: int) -> float:

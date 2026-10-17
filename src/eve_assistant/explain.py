@@ -206,6 +206,11 @@ def describe(code: str, detail: dict | None = None) -> str:
             f"Incursion in {', '.join(d.get('systems', []))}: Sansha's ships there attack "
             "anyone, miners included."
         ),
+        "loss_chances_learned": lambda: (
+            f"Loss chances are learned from {d.get('trips', 0)} of your trips and "
+            f"{d.get('losses', 0)} loss{'es' if d.get('losses', 0) != 1 else ''}, starting "
+            "from guesses that keep 100 trips' weight."
+        ),
         "loss_chances_are_guesses": lambda: (
             "Loss chances are starting guesses until kill data and your own history refine them."
         ),
@@ -309,5 +314,10 @@ def risk_summary(risk: dict) -> str:
             if risk.get("payout")
             else "."
         )
-        + (" The chance is a starting guess." if risk.get("chance_is_a_guess") else "")
+        + (
+            " The chance is a starting guess."
+            if risk.get("chance_is_a_guess")
+            else f" The chance ({risk.get('chance', 0):.2%} a trip) is learned from "
+            f"{risk.get('trips', 0)} of your trips."
+        )
     )

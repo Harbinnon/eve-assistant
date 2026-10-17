@@ -649,6 +649,25 @@ def test_risk_is_a_word_and_a_shape(planning_client):
     assert '<span class="pill risk amber">Caution</span>' in prefs
 
 
+def test_history_shows_loss_chances_and_your_losses(client, db_path):
+    page = client.get("/history").text
+    assert "starting guess" in page
+    assert "No losses recorded" in page
+    conn = store.connect(db_path)
+    conn.execute("INSERT INTO market_prices VALUES (32880, 400000, NULL, 'x')")
+    conn.execute(
+        "INSERT INTO own_losses VALUES (1, 7, '2026-10-16T21:05:00+00:00', 30000142, 32880, "
+        "'[]', 'x')"
+    )
+    conn.commit()
+    conn.close()
+    page = client.get("/history").text
+    assert "2026-10-16 21:05 UTC" in page
+    assert "Venture" in page
+    assert "400k" in page
+    assert "outside a recorded session" in page
+
+
 def test_characters_with_the_same_learning_share_one_line(db_path):
     conn = store.connect(db_path)
     snapshots.ensure_character(conn, 8, "Second Pilot")

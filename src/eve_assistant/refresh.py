@@ -19,6 +19,7 @@ from eve_assistant import (
     freelance,
     gamelogs,
     goals,
+    losses,
     outcomes,
     planner,
     sde,
@@ -121,6 +122,12 @@ def _snapshot_one(
     results = snapshots.collect(db, esi, character_id, kinds, granted)
     if kinds is None or "location" in kinds or "assets" in kinds:
         structures.refresh(db, esi, character_id)
+    problems = []
+    if kinds is None or "killmails" in kinds:
+        try:
+            losses.update(db, esi, character_id)
+        except EsiError as exc:
+            problems.append(f"{name}, losses: {exc}")
     contracts.sync_projects(db, character_id)  # delivered couriers close their projects
     outcomes.update(db, character_id)  # newer data may settle earlier sessions
     failed = [r for r in results if r.outcome == "failed"]
@@ -129,7 +136,7 @@ def _snapshot_one(
         f"{name}: {changed} changed, "
         f"{len(results) - changed - len(failed)} unchanged, {len(failed)} failed"
     )
-    return line, [f"{name}, {r.kind}: {r.detail}" for r in failed]
+    return line, [*(f"{name}, {r.kind}: {r.detail}" for r in failed), *problems]
 
 
 @_one_at_a_time
