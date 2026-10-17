@@ -25,6 +25,7 @@ from eve_assistant import (
     history,
     outcomes,
     overview,
+    pace,
     planner,
     preferences,
     projects,
@@ -384,6 +385,8 @@ def create_app(
                 (r["name"], corrections.correction(conn, r["character_id"], "mining_rate"))
                 for r in conn.execute("SELECT character_id, name FROM characters ORDER BY name")
             ]
+            play_time = pace.weekly_play(conn)
+            finish = pace.finish_rate(conn)
         finally:
             conn.close()
         return render(
@@ -395,6 +398,8 @@ def create_app(
             band_labels=BAND_LABELS,
             weekly_hours=weekly / 60,
             learned=learned,
+            play_time=play_time,
+            finish=finish,
         )
 
     @app.post("/preferences-play-time")

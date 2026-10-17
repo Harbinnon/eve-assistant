@@ -1,14 +1,15 @@
 """Goals and how far each character is from them.
 
-Phase 1 answers "what would it take": skills (with training time and Alpha
-limits) and ISK (price against wallet). Earning rates, and so arrival dates,
-come with the planner in phase 2.
+Answers "what would it take": skills (with training time and Alpha limits)
+and ISK (price against wallet). Once a character has a few settled
+sessions, ISK goals also get a rough date: ISK banked per hour played times
+the learned play time per week (see pace.py).
 """
 
 import sqlite3
 from dataclasses import dataclass, field
 
-from eve_assistant import skills, snapshots
+from eve_assistant import pace, skills, snapshots
 from eve_assistant.esi.client import EsiClient
 from eve_assistant.skills import Reason, Requirement
 from eve_assistant.store import utc_now
@@ -40,6 +41,8 @@ class GoalStatus:
     isk_needed: float | None
     is_alpha: bool | None = None
     reasons: tuple[Reason, ...] = field(default_factory=tuple)
+    weeks_to_isk: float | None = None  # at the character's real pace, if known
+    earning: "pace.EarningRate | None" = None
 
 
 def update_prices(db: sqlite3.Connection, esi: EsiClient) -> int:
@@ -179,4 +182,12 @@ def evaluate(db: sqlite3.Connection, goal: Goal) -> GoalStatus:
     isk_needed = None
     if target_isk is not None and wallet is not None:
         isk_needed = max(0.0, target_isk - wallet)
-    return GoalStatus(goal, name, requirement, price, wallet, isk_needed, is_alpha, tuple(reasons))
+    weeks, earning = None, None
+    if isk_needed and goal.character_id is not None:
+        earning = pace.banked_per_hour(db, goal.character_id)
+        weeks = pace.weeks_to(isk_needed, earning, pace.weekly_play(db).minutes)
+        if earning is None:
+            reasons.append(Reason("goal_date_needs_sessions"))
+    return GoalStatus(
+        goal, name, requirement, price, wallet, isk_needed, is_alpha, tuple(reasons), weeks, earning
+    )

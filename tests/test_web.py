@@ -249,6 +249,8 @@ def test_responding_records_and_mute_shows_in_preferences(planning_client):
     assert "kind:mining" in prefs
     assert "What it has learned" in prefs
     assert "Mining speed: not yet checked" in prefs
+    assert "Play time: 6.0 hours a week, your setting" in prefs
+    assert "assumed 10% are not finished" in prefs
     assert "Unmute" in prefs
 
     unmuted = planning_client.post(

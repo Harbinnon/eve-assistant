@@ -2,7 +2,7 @@
 {% block title %}Goals · EVE Assistant{% endblock %}
 {% block content %}
 <h1>Goals</h1>
-<p class="lede">What each goal would take in skills and ISK. Arrival dates come once the planner knows how you earn.</p>
+<p class="lede">What each goal would take in skills and ISK. ISK goals get a rough date once you've recorded a few sessions.</p>
 
 {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
 {% if problems %}
@@ -21,11 +21,14 @@
     {% if s.goal.isk %}<dt>Target</dt><dd>{{ s.goal.isk|isk }} ISK</dd>{% endif %}
     {% if s.wallet is not none %}<dt>Wallet</dt><dd>{{ s.wallet|isk }} ISK{% if not s.character_name %} <span class="muted">(all characters)</span>{% endif %}</dd>{% endif %}
     {% if s.isk_needed is not none %}<dt>Still needed</dt><dd>{% if s.isk_needed == 0 %}<span class="pill good">covered</span>{% else %}{{ s.isk_needed|isk }} ISK{% endif %}</dd>{% endif %}
+    {% if s.earning %}<dt>At your pace</dt><dd>{% if s.weeks_to_isk is not none %}about {{ s.weeks_to_isk|round(1) }} weeks{% else %}not yet: your sessions haven't banked ISK{% endif %}
+      <span class="muted">({{ s.earning.isk_per_hour|isk }} ISK an hour banked over {{ s.earning.sessions }} sessions; ore still in the hangar isn't counted)</span></dd>{% endif %}
   </dl>
   {% endif %}
   {% for r in s.reasons %}
     {% if r.code == "no_price" %}<p class="muted">No market price yet: press Refresh on the Characters page.</p>
-    {% elif r.code == "clone_state_unknown" %}<p class="muted">Account clone state not set; assumed Alpha.</p>{% endif %}
+    {% elif r.code == "clone_state_unknown" %}<p class="muted">Account clone state not set; assumed Alpha.</p>
+    {% elif r.code == "goal_date_needs_sessions" %}<p class="muted">A date comes after two settled sessions for this character (Start this plan, then I'm done).</p>{% endif %}
   {% endfor %}
   <div class="actions">
     {% for status, label in [("done", "Mark done"), ("dropped", "Drop")] %}
