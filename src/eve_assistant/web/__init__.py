@@ -566,14 +566,15 @@ def create_app(
             raise HTTPException(404, UNKNOWN_ACTION)
         conn = db()
         try:
-            checklist.mark(conn, session_id, item_id, done=action == "done")
+            session = checklist.mark(conn, session_id, item_id, done=action == "done")
         except sessions.SessionNotFound as exc:
             raise HTTPException(404, str(exc)) from None
         except (checklist.ChecklistError, planner.PlanError, projects.ProjectError) as exc:
             raise HTTPException(400, str(exc)) from None
         finally:
             conn.close()
-        return RedirectResponse(f"{TODAY}#session-{session_id}", status_code=303)
+        # The anchor uses the session's ID as stored, not the one in the address.
+        return back(TODAY, anchor=f"session-{session.session_id}")
 
     def _open_projects(conn) -> list[tuple[str, projects.Project]]:
         names = dict(conn.execute("SELECT character_id, name FROM characters").fetchall())

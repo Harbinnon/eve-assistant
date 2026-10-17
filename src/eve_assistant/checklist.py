@@ -120,9 +120,9 @@ def views(db: sqlite3.Connection) -> list[SessionView]:
 
 def mark(
     db: sqlite3.Connection, session_id: int, item_id: int, done: bool, now: str | None = None
-) -> None:
+) -> PlaySession:
     """Tick a step off (done=True) or put it back. Only for a running
-    session, and only for a step of its own plan."""
+    session, and only for a step of its own plan. Returns the session."""
     session = sessions.get(db, session_id)
     if not session.is_open:
         raise ChecklistError("That session has already ended.")
@@ -143,3 +143,4 @@ def mark(
         ).fetchone()
         if started is None:  # "Start project" wasn't pressed: log the minutes now
             planner.respond(db, item_id, "do")
+    return session

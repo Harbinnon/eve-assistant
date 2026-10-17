@@ -7,6 +7,7 @@ are fetched only for the owner's own characters. A missing image is
 remembered for a day so it isn't asked for on every page view.
 """
 
+import os
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -21,6 +22,8 @@ KINDS = {
     "portrait": "/characters/{id}/portrait?size={size}",
     "render": "/types/{id}/render?size={size}",
 }
+# Each kind's folder under the cache: fixed names, never text from a request.
+FOLDERS = {kind: kind for kind in KINDS}
 
 # Shown when an image isn't available: a plain hexagon, no CCP artwork.
 PLACEHOLDER_SVG = (
@@ -51,9 +54,14 @@ def download(address: str, user_agent: str, timeout: float = 5.0) -> bytes | Non
 
 def cached(cache_dir: Path, kind: str, item_id: int, fetch: Fetch | None) -> Path | None:
     """The image's file, downloading it if needed; None if it isn't available."""
-    if kind not in KINDS:
+    folder = FOLDERS.get(kind)
+    if folder is None:
         return None
-    path = cache_dir / kind / f"{int(item_id)}.png"
+    base = os.path.realpath(cache_dir)
+    full = os.path.realpath(os.path.join(base, folder, f"{int(item_id)}.png"))
+    if not full.startswith(base + os.sep):  # stays inside the cache, whatever it's given
+        return None
+    path = Path(full)
     missing = path.with_suffix(".missing")
     now = time.time()
     if path.exists() and now - path.stat().st_mtime < KEEP_SECONDS:
