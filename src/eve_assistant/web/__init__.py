@@ -24,7 +24,7 @@ from urllib.parse import urlencode, urlsplit
 
 from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -38,6 +38,7 @@ from eve_assistant import (
     explain,
     goals,
     history,
+    images,
     numbers,
     outcomes,
     overview,
@@ -282,6 +283,7 @@ def create_app(
     auto_tick_seconds: float = AUTO_TICK_SECONDS,
     backups_dir: Path | str | None = None,
     add_character: Callable[[], str] | None = None,
+    fetch_image: images.Fetch | None = None,
 ) -> FastAPI:
     """refresh: called by the Refresh button; returns problem lines, empty when all went well.
     make_plan: builds and records a plan (needs ESI), returning its ID.
@@ -320,6 +322,7 @@ def create_app(
         title="EVE Assistant", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan
     )
     app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
+    images_dir = Path(db_path).parent / "images"
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(allowed_hosts))
 
     @app.middleware("http")
@@ -529,6 +532,9 @@ def create_app(
             active = active_character(request, conn)
             latest = planner.latest_plan_id(conn, active[0] if active else None)
             recent = planner.load_plan(conn, latest) if latest else None
+            ship_type_id = (
+                overview.summarize(conn, recent.character_id).ship_type_id if recent else None
+            )
             open_projects = _open_projects(conn)
             playing = sessions.open_sessions(conn)
             session_views = checklist.views(conn)
@@ -548,6 +554,7 @@ def create_app(
             open_sessions=playing,
             session_views=session_views,  # while playing, Today is the session view
             noticed=noticed,
+            ship_type_id=ship_type_id,
         )
 
     @app.post("/sessions/{session_id}/steps/{item_id}/{action}")
@@ -638,6 +645,7 @@ def create_app(
             open_sessions=playing,
             session_views=[],  # a plan you opened is shown even while playing
             noticed=noticed,
+            ship_type_id=None,
         )
 
     def _after_session(request: Request, result: session_flow.Result, msg: str):
@@ -836,6 +844,32 @@ def create_app(
             can_add=add_character is not None,
             # While EVE's login page is open, check back every few seconds.
             **({"reload": LOGIN_RELOAD_SECONDS} if login["state"] == "waiting" else {}),
+        )
+
+    @app.get("/images/{kind}/{item_id}.png")
+    def image(kind: str, item_id: int):
+        """A portrait (own characters only) or ship render, kept in var/images."""
+        if kind not in images.KINDS:
+            raise HTTPException(404, NO_PAGE)
+        if kind == "portrait":
+            conn = db()
+            try:
+                ours = conn.execute(
+                    "SELECT 1 FROM characters WHERE character_id = ?", (item_id,)
+                ).fetchone()
+            finally:
+                conn.close()
+            if ours is None:
+                raise HTTPException(404, NO_PAGE)
+        path = images.cached(images_dir, kind, item_id, fetch_image)
+        if path is None:
+            return Response(
+                images.PLACEHOLDER_SVG,
+                media_type="image/svg+xml",
+                headers={"Cache-Control": "private, max-age=3600"},
+            )
+        return FileResponse(
+            path, media_type="image/png", headers={"Cache-Control": "private, max-age=86400"}
         )
 
     @app.post("/characters/add")

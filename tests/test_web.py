@@ -996,3 +996,43 @@ def test_adding_needs_the_dashboard_to_offer_it(client):
     response = client.post("/characters/add", data={"token": _token(page)})
     assert response.status_code == 400
     assert "eve-assistant login" in response.text
+
+
+# --- Portraits and ship renders (roadmap 2.11) ----------------------------------
+
+
+def test_images_are_served_by_the_dashboard(db_path):
+    png = b"\x89PNG\r\n\x1a\nfake"
+    asked = []
+
+    def fetch(address):
+        asked.append(address)
+        return png
+
+    with TestClient(create_app(db_path, fetch_image=fetch), base_url=LOCAL) as client:
+        portrait = client.get("/images/portrait/7.png")
+        assert portrait.status_code == 200
+        assert portrait.headers["content-type"] == "image/png"
+        assert portrait.headers["cache-control"] == "private, max-age=86400"
+        assert portrait.content == png
+        assert client.get("/images/portrait/999.png").status_code == 404  # not our character
+        assert client.get("/images/logo/1.png").status_code == 404
+        page = client.get("/characters").text
+        assert '<img class="portrait" src="/images/portrait/7.png"' in page
+        assert '<img class="render" src="/images/render/32880.png"' in page
+    assert asked == ["https://images.evetech.net/characters/7/portrait?size=128"]
+
+
+def test_a_placeholder_when_no_image_is_available(client):
+    response = client.get("/images/render/32880.png")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("image/svg+xml")
+    assert "<polygon" in response.text
+
+
+def test_today_shows_the_next_step_and_a_timeline(planning_client):
+    _token_value, plan_url = _new_plan(planning_client)
+    page = planning_client.get("/today").text
+    assert "Next up · step 1 of 1" in page
+    assert '<ol class="steps timeline">' in page
+    assert '<img class="render" src="/images/render/32880.png"' in page  # the ship it flies

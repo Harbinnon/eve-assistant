@@ -27,6 +27,7 @@ class CharacterSummary:
     queue_length: int
     training: str | None  # e.g. "Mining 4", when the queue is running
     last_checked: str | None
+    ship_type_id: int | None = None
 
 
 def _system(db: sqlite3.Connection, system_id: int | None):
@@ -93,6 +94,7 @@ def summarize(db: sqlite3.Connection, character_id: int) -> CharacterSummary:
         queue_length=len(queue),
         training=training,
         last_checked=checked,
+        ship_type_id=ship.get("ship_type_id"),
     )
 
 

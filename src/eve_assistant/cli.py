@@ -15,6 +15,7 @@ from eve_assistant import (
     explain,
     gamelogs,
     goals,
+    images,
     launcher,
     market,
     mining,
@@ -34,6 +35,7 @@ from eve_assistant import (
 )
 from eve_assistant.accounts import AccountError
 from eve_assistant.config import ConfigError, load_config
+from eve_assistant.esi import user_agent
 from eve_assistant.esi.client import EsiClient, EsiError
 from eve_assistant.esi.sso import SSOError
 from eve_assistant.goals import GoalError
@@ -167,6 +169,7 @@ def _cmd_serve(args) -> int:
             auto_refresh=do_auto_refresh if config.auto_refresh else None,
             backups_dir=config.backups_dir,
             add_character=do_add_character,
+            fetch_image=lambda address: images.download(address, user_agent(config.contact)),
         ),
         host="127.0.0.1",
         port=args.port,

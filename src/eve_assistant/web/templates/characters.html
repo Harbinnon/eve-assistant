@@ -43,7 +43,10 @@
 <div class="cards">
   {% for c in characters %}
   <article class="card">
-    <h3>{{ c.name }} <span class="pill {{ c.clone_state }}">{{ c.clone_state|capitalize }}</span></h3>
+    <div class="who">
+      <img class="portrait" src="/images/portrait/{{ c.character_id }}.png" alt="" width="56" height="56">
+      <h3>{{ c.name }} <span class="pill {{ c.clone_state }}">{{ c.clone_state|capitalize }}</span></h3>
+    </div>
     <p class="sub">{% if c.account %}Account: {{ c.account }}{% else %}No account set{% endif %}
       {% if c.online %} · <span class="pill good">online</span>{% endif %}</p>
     <dl class="facts">
@@ -56,7 +59,7 @@
         {% if c.structure_name %}<span class="muted player-text" title="Name chosen by the structure's owner">at “{{ c.structure_name }}”</span>{% endif %}
         {% else %}<span class="muted">unknown</span>{% endif %}</dd>
       <dt>Ship</dt>
-      <dd>{{ c.ship_type or "unknown" }}{% if c.ship_name %}
+      <dd>{% if c.ship_type_id %}<img class="render" src="/images/render/{{ c.ship_type_id }}.png" alt="" width="40" height="40">{% endif %}{{ c.ship_type or "unknown" }}{% if c.ship_name %}
         <span class="muted player-text" title="Name chosen by the player">“{{ c.ship_name }}”</span>{% endif %}</dd>
       <dt>Training</dt>
       <dd>{% if c.training %}{{ c.training }}{% if c.queue_length > 1 %} <span class="muted">+{{ c.queue_length - 1 }} queued</span>{% endif %}

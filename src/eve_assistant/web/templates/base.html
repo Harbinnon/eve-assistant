@@ -23,6 +23,7 @@
       <form class="character-switch" method="post" action="/character">
         <input type="hidden" name="token" value="{{ form_token }}">
         <input type="hidden" name="return_to" value="{{ here }}">
+        {% if active %}<img class="portrait tiny" src="/images/portrait/{{ active.id }}.png" alt="" width="26" height="26">{% endif %}
         <label for="active-character">Character</label>
         <select id="active-character" name="character_id">
           {% for character_id, name in switch_characters %}<option value="{{ character_id }}" {% if active and active.id == character_id %}selected{% endif %}>{{ name }}</option>{% endfor %}

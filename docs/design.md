@@ -852,6 +852,11 @@ ran and shows its first problem, if any. `[app] auto_refresh = false` in
   (12,000 tokens per 15 minutes for orders, 5-minute cache). Fuzzwork
   aggregates as a fallback.
 - **zKillboard**: kills per system, for risk.
+- **CCP's image server** (`images.evetech.net`): portraits of the owner's
+  own characters and ship renders, downloaded the first time a page needs
+  them into `var/images` (never committed) and served by the dashboard
+  itself, so pages still load images only from their own address. A
+  missing image is remembered for a day; a plain placeholder shows meanwhile.
 - **Local logs** (local mode only): game logs for activity history, Local
   chat logs for the player's own location history. Market logs are not
   used (only written on manual export, and can be blocked by Windows

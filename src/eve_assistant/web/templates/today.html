@@ -67,7 +67,7 @@
 {% for v in session_views %}
 {% set s = v.session %}
 <section class="card session-view" id="session-{{ s.session_id }}" aria-label="Playing now: {{ s.character_name }}">
-  <h2 class="history-title">Playing now · {{ s.character_name }}
+  <h2 class="history-title"><img class="portrait small" src="/images/portrait/{{ s.character_id }}.png" alt="" width="32" height="32"> Playing now · {{ s.character_name }}
     {% if s.plan_id %}<span class="heading-note">· following <a href="/plans/{{ s.plan_id }}">plan {{ s.plan_id }}</a></span>{% endif %}</h2>
   <div class="readout">
     <div><span class="label">Playing for</span><span class="value">{{ s.minutes()|round|int }}<small>min</small></span></div>
@@ -242,7 +242,21 @@
     {% if plan.total_minutes %}<div><span class="label">Per hour</span><span class="value minor">{{ (plan.total_isk / plan.total_minutes * 60)|isk }}<small>ISK</small></span></div>{% endif %}
     {% if plan.net_worth %}<div><span class="label">Net worth</span><span class="value minor">{{ plan.net_worth|isk }}<small>ISK</small></span></div>{% endif %}
   </div>
-  <ol class="steps">
+  {% set first = plan.items[0] %}
+  <div class="next-up">
+    {% if ship_type_id %}<img class="render" src="/images/render/{{ ship_type_id }}.png" alt="" width="72" height="72">{% endif %}
+    <div class="next-what">
+      <span class="label">Next up · step 1 of {{ plan.items|length }}</span>
+      <p class="now-title">{{ first.title }}</p>
+      <div class="next-figures">
+        <span><b>{{ first.isk|isk }}</b> ISK</span>
+        {% if per_hour(first.isk, first.minutes) %}<span><b>{{ per_hour(first.isk, first.minutes)|isk }}</b> an hour</span>{% endif %}
+        <span><b>{{ first.minutes|round|int }}</b> min</span>
+        <span class="pill risk {{ first.risk_rating }}">{{ risk_labels[first.risk_rating] }}</span>
+      </div>
+    </div>
+  </div>
+  <ol class="steps timeline">
     {% for item in plan.items %}
     <li class="step" id="item-{{ item.item_id }}">
       <span class="num" aria-hidden="true">{{ loop.index }}</span>

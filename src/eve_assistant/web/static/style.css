@@ -419,6 +419,49 @@ form.stack .checks label {
 .readout .value.isk { color: var(--isk); }
 .readout .value.minor { font-size: 1.35rem; padding-top: 0.5rem; display: inline-block; }
 
+/* Portraits and ship renders (from CCP's image server, kept in var/images) */
+.portrait, .render { display: inline-block; vertical-align: middle; border: 1px solid var(--line-strong); border-radius: 2px; background: var(--field); }
+.portrait.tiny { width: 26px; height: 26px; }
+.portrait.small { width: 32px; height: 32px; margin-right: 6px; }
+.render { margin-right: 8px; }
+.who { display: flex; align-items: center; gap: 12px; }
+
+/* Today: the next step, big, above the timeline */
+.next-up {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  border-left: 3px solid var(--action);
+  background: var(--action-soft);
+  padding: 12px 16px;
+  margin: 4px 0 8px;
+}
+.next-up .label {
+  font: 600 11px/1.6 var(--display);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--action);
+}
+.next-up .render { margin: 0; }
+.next-what { min-width: 0; }
+.next-figures { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; color: var(--muted); font-size: 14px; }
+.next-figures b { font: 600 1.15rem/1 var(--display); color: var(--heading); }
+.next-figures span:first-child b { color: var(--isk); }
+
+/* Steps as a timeline: a line through the step numbers */
+.steps.timeline { position: relative; }
+.steps.timeline::before {
+  content: "";
+  position: absolute;
+  left: calc(1.05em - 0.5px);
+  top: 24px;
+  bottom: 24px;
+  width: 1px;
+  background: var(--line-strong);
+}
+.steps.timeline .step .num { position: relative; background: var(--surface); }
+.steps.timeline .step .num::after { content: ""; position: absolute; inset: 0; background: var(--action-soft); }
+
 /* Today while playing: the session view */
 .session-view { margin-bottom: 18px; }
 .session-view .now {
