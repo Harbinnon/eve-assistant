@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from eve_assistant import (
     corrections,
     couriers,
+    fittings,
     fleet,
     mining,
     ore,
@@ -541,6 +542,7 @@ def mining_candidates(
         if estimate.m3_per_minute <= 0:
             continue
         any_miner = True
+        fit_note = _better_saved_fit(db, character_id, character, ship, estimate, implants)
         system_id = location.get("solar_system_id") if board.jumps == 0 else ship.system_id
         docked = location.get("station_id") or _accessible_structure(
             db, location.get("structure_id")
@@ -608,6 +610,7 @@ def mining_candidates(
                             {"m3_per_minute": estimate.m3_per_minute, "ship": estimate.ship_name},
                         ),
                         learned.reason(),
+                        *([fit_note] if fit_note else []),
                         *estimate.reasons,
                     ),
                     inputs={
@@ -623,6 +626,35 @@ def mining_candidates(
     if not any_miner:
         notes.append(Reason("no_mining_ship"))
     return items
+
+
+def _better_saved_fit(db, character_id, character, ship, current, implants) -> Reason | None:
+    """A saved fit for this hull that would mine noticeably more than what is
+    fitted now, as a what-if note; None if there isn't one."""
+    best = None
+    for fit in fittings.for_hull(db, character_id, ship.type_id):
+        try:
+            with_fit = mining.estimate(db, character, ship.type_id, list(fit.modules), implants)
+        except mining.MiningError:
+            return None
+        if with_fit.m3_per_minute >= current.m3_per_minute * fittings.BETTER_BY and (
+            best is None or with_fit.m3_per_minute > best[1].m3_per_minute
+        ):
+            best = (fit, with_fit)
+    if best is None:
+        return None
+    fit, with_fit = best
+    return Reason(
+        "better_saved_fit",
+        {
+            "fit_name": fit.name,  # player-written
+            "now": current.m3_per_minute,
+            "with_fit": with_fit.m3_per_minute,
+            "missing": fittings.missing_modules(
+                db, character_id, fit, ship.item_id, ship.location_id
+            ),
+        },
+    )
 
 
 def courier_candidates(db, esi, character_id, ships, minutes, net_worth, highsec_only, notes):

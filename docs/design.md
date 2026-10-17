@@ -406,7 +406,11 @@ done, marked "new to you", and only from activities the tool can model.
 
 - **Mining yield** depends on ship, modules, skills and boosts. The main
   multipliers come from the static data, not a Pyfa reimplementation; the
-  mining ledger corrects the rest.
+  mining ledger corrects the rest. Plans predict with what is actually
+  fitted; a saved fit for the same hull that would mine 5% or more is
+  mentioned beside it as a what-if, with any modules that aren't on the
+  ship or in its hangar. Fit names are the player's own text and shown as
+  such; descriptions aren't kept.
 - **Selling moves prices.** The tool reads order-book depth and assumes
   the price falls as volume rises.
 - **Risk is an estimate** from public kill data, and is presented as one.
@@ -829,7 +833,7 @@ refresh, and the new one is always saved. Read-only scopes:
 | `esi-markets.read_character_orders.v1` | Own orders; whether sales happened |
 | `esi-contracts.read_character_contracts.v1` | Courier outcomes |
 | `esi-location.read_location.v1`, `esi-location.read_ship_type.v1`, `esi-location.read_online.v1` | Where, in what, whether a session is happening |
-| `esi-fittings.read_fittings.v1` | Fits for ship goals |
+| `esi-fittings.read_fittings.v1` | Saved fits: "what if you used this fit" notes in mining plans (owner's decision, 17 Oct 2026); later the Omega comparison and ship goals |
 | `esi-universe.read_structures.v1` | Naming player stations |
 | `esi-characters.read_standings.v1` | Standings lower broker fees and refining tax |
 | `esi-markets.structure_markets.v1` | Prices in player-owned markets |

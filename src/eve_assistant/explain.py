@@ -80,6 +80,16 @@ def describe(code: str, detail: dict | None = None) -> str:
                 else ""
             )
         ),
+        "better_saved_fit": lambda: (
+            f"What if: your saved fit \u201c{d.get('fit_name', '')}\u201d (your own name for it) "
+            f"would mine about {d.get('with_fit', 0):,.0f} m3 per minute instead of "
+            f"{d.get('now', 0):,.0f}. "
+            + (
+                f"Not where the ship is: {', '.join(d['missing'])}."
+                if d.get("missing")
+                else "Everything it needs is on the ship or in that hangar."
+            )
+        ),
         "not_modelled": lambda: f"Not counted: {', '.join(d.get('items', []))}.",
         "crystals_not_modelled": lambda: "Mining crystals are not counted yet.",
         "modules_not_usable": lambda: (
