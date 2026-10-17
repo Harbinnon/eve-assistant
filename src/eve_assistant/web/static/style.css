@@ -571,4 +571,83 @@ progress.isk::-moz-progress-bar { background: var(--isk); }
 footer { color: var(--muted); font-size: 12px; border-top: 1px solid var(--line); padding-block: 18px 28px; }
 .auto-status { margin: 0 0 6px; }
 
+/* Phones and narrow windows */
+.nav-narrow { display: none; }
+.nav-narrow summary {
+  cursor: pointer;
+  list-style: none;
+  font: 600 13px/1 var(--display);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--fg);
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
+  padding: 8px 12px;
+}
+.nav-narrow summary::-webkit-details-marker { display: none; }
+.nav-narrow summary::after { content: " \25BE"; color: var(--action); }
+.nav-narrow[open] summary::after { content: " \25B4"; }
+.nav-narrow { position: relative; margin-left: auto; }
+.nav-narrow nav {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 10;
+  min-width: 200px;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
+  padding: 4px 0;
+}
+.nav-narrow nav a { border-bottom: 0; border-left: 2px solid transparent; padding: 10px 12px; }
+.nav-narrow nav a[aria-current="page"] { border-left-color: var(--action); }
+
+@media (max-width: 720px) {
+  .nav-wide { display: none; }
+  .nav-narrow { display: block; }
+  header.bar .wrap { gap: 10px 16px; }
+  .character-switch { margin-left: 0; width: 100%; }
+  .character-switch select { flex: 1; min-width: 0; }
+  h1 { font-size: 1.6rem; }
+  main { padding-block: 20px 48px; }
+  .readout { gap: 10px 24px; }
+  .readout .value { font-size: 1.7rem; }
+  .readout .value.minor { font-size: 1.15rem; padding-top: 0.35rem; }
+  .next-up { align-items: flex-start; }
+  .next-up .render { width: 48px; height: 48px; }
+}
+
+/* Tables become cards: one block per row, each value under its heading. */
+@media (max-width: 640px) {
+  .table-wrap table:not(.keep-grid),
+  .table-wrap table:not(.keep-grid) tbody,
+  .table-wrap table:not(.keep-grid) tr,
+  .table-wrap table:not(.keep-grid) td { display: block; width: 100%; }
+  .table-wrap table:not(.keep-grid) thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .table-wrap table:not(.keep-grid) tr { padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .table-wrap table:not(.keep-grid) tr:last-child { border-bottom: 0; }
+  .table-wrap table:not(.keep-grid) td { border: 0; padding: 4px 14px; text-align: left; white-space: normal; }
+  /* Numbers two to a line, so a card isn't one long column */
+  .table-wrap table:not(.keep-grid) tr { display: flex; flex-wrap: wrap; }
+  .table-wrap table:not(.keep-grid) td.num { width: 50%; }
+  .table-wrap table:not(.keep-grid) td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    font: 600 11px/1.6 var(--display);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .table-wrap table.keep-grid { font-size: 12px; }
+  .table-wrap table.keep-grid th, .table-wrap table.keep-grid td { padding: 6px; }
+}
+
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }

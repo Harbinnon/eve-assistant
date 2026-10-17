@@ -1036,3 +1036,70 @@ def test_today_shows_the_next_step_and_a_timeline(planning_client):
     assert "Next up · step 1 of 1" in page
     assert '<ol class="steps timeline">' in page
     assert '<img class="render" src="/images/render/32880.png"' in page  # the ship it flies
+
+
+# --- Phone layout (roadmap 2.12) -------------------------------------------------
+
+
+class _Tables(__import__("html.parser").parser.HTMLParser):
+    """Each table's headings, and each body cell's data-label."""
+
+    def __init__(self):
+        super().__init__()
+        self.tables: list[dict] = []
+        self._in_head = self._in_th = False
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if tag == "table":
+            self.tables.append({"grid": "keep-grid" in (attrs.get("class") or ""),
+                                "heads": [], "rows": []})  # fmt: skip
+        elif tag == "thead":
+            self._in_head = True
+        elif tag == "th" and self._in_head:
+            self._in_th = True
+            self.tables[-1]["heads"].append("")
+        elif tag == "tr" and not self._in_head and self.tables:
+            self.tables[-1]["rows"].append([])
+        elif tag == "td" and self.tables and self.tables[-1]["rows"]:
+            self.tables[-1]["rows"][-1].append(attrs.get("data-label"))
+
+    def handle_endtag(self, tag):
+        if tag == "thead":
+            self._in_head = False
+        elif tag == "th":
+            self._in_th = False
+
+    def handle_data(self, data):
+        if self._in_th and self._in_head:
+            self.tables[-1]["heads"][-1] += data.strip()
+
+
+def test_tables_can_become_cards_on_a_phone(planning_client, db_path):
+    from eve_assistant import projects
+
+    _token_value, plan_url = _new_plan(planning_client)
+    conn = store.connect(db_path)
+    projects.start(conn, 7, "haul", "1:2:x", "Haul ore", 120, 5e6, {})
+    conn.close()
+    checked = 0
+    for path in (plan_url, "/today", "/history", "/settings", "/skills?item=Big%20Barge"):
+        reader = _Tables()
+        reader.feed(planning_client.get(path).text)
+        for table in reader.tables:
+            if table["grid"]:
+                continue
+            for row in table["rows"]:
+                for head, label in zip(table["heads"], row, strict=False):
+                    if head:
+                        assert label == head, (path, head, label)
+                        checked += 1
+    assert checked > 10
+
+
+def test_a_compact_menu_for_narrow_screens(client):
+    page = client.get("/goals").text
+    assert '<details class="nav-narrow">' in page
+    assert "<summary>Menu</summary>" in page
+    assert page.count('<a href="/goals" aria-current="page">Goals</a>') == 2  # wide and narrow
+    assert page.startswith("<!doctype html>")

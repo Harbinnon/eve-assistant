@@ -5,12 +5,14 @@ and haul. Set a goal, say how long you can play, and it reads your
 characters through CCP's API (ESI) and suggests the best use of that time,
 then learns from what actually happened.
 
-**Status: version 0.4. Built: login, snapshots, skill plans, goals, the
+**Status: version 0.5. Built: login, snapshots, skill plans, goals, the
 dashboard, the session planner (mining, ore, couriers, your whole fleet,
 multi-session projects, risk ratings, decline buttons) and learning from
 results (play sessions, noticed from EVE's login times; outcomes; mining
-game logs; planner corrections; History). Next: the dashboard's look and
-flow.** The design is in
+game logs; planner corrections; History) and the dashboard's look and flow
+(a dark "capsuleer console" theme with a light one, a session view while
+you play, portraits and ships, a phone layout). Next: a planner ready to
+grow (Freelance Jobs and more).** The design is in
 [docs/design.md](docs/design.md) and the plan from here in
 [docs/roadmap.md](docs/roadmap.md).
 

@@ -11,8 +11,8 @@
     {% for category, label in categories.items() %}
       {% set muted = category in active %}
       <tr>
-        <td>{{ label|capitalize }}</td>
-        <td>{% if muted %}<span class="pill amber">muted</span>{% else %}<span class="pill green">suggested</span>{% endif %}</td>
+        <td data-label="Suggestions about">{{ label|capitalize }}</td>
+        <td data-label="State">{% if muted %}<span class="pill amber">muted</span>{% else %}<span class="pill green">suggested</span>{% endif %}</td>
         <td>
           <form class="inline" method="post" action="/settings/{{ 'unmute' if muted else 'mute' }}">
             <input type="hidden" name="token" value="{{ form_token }}">

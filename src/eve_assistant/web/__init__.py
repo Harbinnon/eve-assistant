@@ -631,6 +631,7 @@ def create_app(
             playing = sessions.open_sessions(conn)
             results = outcomes.recent(conn, 5)
             noticed = detection.suggestions(conn)
+            ship_type_id = overview.summarize(conn, stored.character_id).ship_type_id
         finally:
             conn.close()
         return render(
@@ -645,7 +646,7 @@ def create_app(
             open_sessions=playing,
             session_views=[],  # a plan you opened is shown even while playing
             noticed=noticed,
-            ship_type_id=None,
+            ship_type_id=ship_type_id,
         )
 
     def _after_session(request: Request, result: session_flow.Result, msg: str):
