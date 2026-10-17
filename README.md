@@ -5,17 +5,19 @@ and haul. Set a goal, say how long you can play, and it reads your
 characters through CCP's API (ESI) and suggests the best use of that time,
 then learns from what actually happened.
 
-**Status: version 0.6. Built: login, snapshots, skill plans, goals, the
+**Status: version 0.7. Built: login, snapshots, skill plans, goals, the
 dashboard, the session planner (mining, ore, couriers, Freelance Jobs, your
 whole fleet, multi-session projects, risk ratings, decline buttons),
 learning from results (play sessions, noticed from EVE's login times;
 outcomes; mining game logs; corrections to mining speed, sale prices and
 travel time; History), the dashboard's look and flow (a dark "capsuleer
 console" theme with a light one, a session view while you play, portraits
-and ships, a phone layout), and a planner ready to grow (activities as
+and ships, a phone layout), a planner ready to grow (activities as
 modules, who should play today, what Omega would change and Omega goals in
-PLEX, what to train next, net worth over time). Next: risk from real
-data.** The design is in
+PLEX, what to train next, net worth over time), and risk from real data
+(kills in the last hour, incursions, insurance payouts, your own losses,
+routes around camps, risk lines that move with your choices). Next: more
+things to do (gas, exploration, missions, manufacturing).** The design is in
 [docs/design.md](docs/design.md) and the plan from here in
 [docs/roadmap.md](docs/roadmap.md).
 
