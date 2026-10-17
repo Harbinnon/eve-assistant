@@ -28,7 +28,7 @@ iniconfig==2.3.0
 Jinja2==3.1.6
 license-expression==30.4.4
 markdown-it-py==4.2.0
-MarkupSafe==3.0.3
+MarkupSafe==3.0.4
 mdurl==0.1.2
 msgpack==1.2.3
 nodeenv==1.11.0
