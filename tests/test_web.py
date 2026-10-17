@@ -653,6 +653,8 @@ def test_history_shows_loss_chances_and_your_losses(client, db_path):
     page = client.get("/history").text
     assert "starting guess" in page
     assert "No losses recorded" in page
+    assert "The lines are where they started" in page
+    assert '<th scope="col">under 2%</th>' in page
     conn = store.connect(db_path)
     conn.execute("INSERT INTO market_prices VALUES (32880, 400000, NULL, 'x')")
     conn.execute(

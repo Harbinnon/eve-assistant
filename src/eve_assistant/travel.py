@@ -76,7 +76,10 @@ def session_travel(db: sqlite3.Connection, character_id: int, start: str, end: s
             b[0] - a[0] > MAX_CHECK_GAP for a, b in zip(run, run[1:], strict=False)
         ):
             continue
-        counts = [routes.jump_count(db, a[1], b[1]) for a, b in zip(run, run[1:], strict=False)]
+        counts = [
+            routes.jump_count(db, a[1], b[1], avoid_camps=False)
+            for a, b in zip(run, run[1:], strict=False)
+        ]
         if None in counts:
             continue
         left = run[0][0] + (run[1][0] - run[0][0]) / 2

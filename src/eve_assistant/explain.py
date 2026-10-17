@@ -212,7 +212,7 @@ def describe(code: str, detail: dict | None = None) -> str:
             "from guesses that keep 100 trips' weight."
         ),
         "loss_chances_are_guesses": lambda: (
-            "Loss chances are starting guesses until kill data and your own history refine them."
+            "Loss chances are starting guesses until your own trips and losses refine them."
         ),
         "no_couriers_fit": lambda: "No courier contracts fit your ships, wallet and time.",
         "selling_at_nearby_station": lambda: (

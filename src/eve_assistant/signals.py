@@ -22,6 +22,8 @@ from eve_assistant.store import utc_now
 SIGNALS_EVERY = timedelta(hours=1)  # ESI caches system kills for an hour
 INSURANCE_EVERY = timedelta(days=1)
 STALE_AFTER = timedelta(hours=3)
+# Ships and pods lost in one system in the last hour from which it counts as camped.
+CAMP_KILLS = 5
 UNINSURED_SHARE = 0.4  # of the Platinum payout, for a hull with no insurance
 SETTING = "signals_checked"
 INSURANCE_SETTING = "insurance_checked"
@@ -106,6 +108,18 @@ def kills_in(db: sqlite3.Connection, system_ids) -> dict[int, int]:
         if row and row[0]:
             found[system_id] = row[0]
     return found
+
+
+def camped_systems(db: sqlite3.Connection, now: str | None = None) -> set[int]:
+    """Systems that look camped right now; none when the signals are stale."""
+    if not fresh(db, now):
+        return set()
+    return {
+        r[0]
+        for r in db.execute(
+            "SELECT system_id FROM system_kills WHERE ship_kills + pod_kills >= ?", (CAMP_KILLS,)
+        )
+    }
 
 
 def incursions_in(db: sqlite3.Connection, system_ids) -> list[int]:

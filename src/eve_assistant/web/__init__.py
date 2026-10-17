@@ -185,6 +185,11 @@ def _isk(value) -> str:
     return numbers.isk(value)
 
 
+def _share(value: float) -> str:
+    """0.02 -> '2%', 0.0283 -> '2.83%'."""
+    return f"{value * 100:.3g}%"
+
+
 def _when(value) -> str:
     """ISO UTC timestamp -> '2026-10-16 02:50 UTC'."""
     if not value:
@@ -385,6 +390,7 @@ def create_app(
     templates.env.filters["when"] = _when
     templates.env.filters["ago"] = _ago
     templates.env.filters["when_ago"] = _when_ago
+    templates.env.filters["share"] = _share
     templates.env.globals["minutes_since"] = _minutes_since
     templates.env.globals["plan_stale_minutes"] = PLAN_STALE_MINUTES
     templates.env.globals["describe"] = skills.describe

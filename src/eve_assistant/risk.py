@@ -18,6 +18,16 @@ loss can't swing a chance far:
 
 Every rating says whether its chance is still a guess or how many trips it
 was learned from. "none" (Exordium) stays at zero: no player can attack there.
+
+The net-worth lines move with the player's choices (design 4.6, risk
+appetite). Each Caution or Risky step with something at stake is a vote:
+taken (answered "do", or left unanswered in a session that was played) or
+declined ("not now" or muted). The lines are scaled by
+
+    2 ** ((taken - declined) / (taken + declined + PRIOR_VOTES))
+
+so between half and twice where they started: wider (fewer cautions) for a
+player who takes such steps, narrower for one who declines them.
 """
 
 import json
@@ -37,9 +47,9 @@ LOSS_CHANCE = {"none": 0.0, "very_low": 0.001, "low": 0.005, "medium": 0.03, "hi
 # Exposed share of net worth: upper bounds of the four columns.
 SHARE_COLUMNS = (0.02, 0.10, 0.25)
 
-# Ships and pods lost in one system in the last hour from which it counts as camped.
-CAMP_KILLS = 5
+CAMP_KILLS = signals.CAMP_KILLS
 PRIOR_TRIPS = 100.0  # how many trips' weight the starting guesses keep
+PRIOR_VOTES = 5.0  # how many choices' weight the starting lines keep
 
 MATRIX = {
     "none": ("green", "green", "green", "green"),
@@ -98,6 +108,13 @@ class Model:
     )
     columns: tuple[float, ...] = SHARE_COLUMNS
     losses_outside_sessions: int = 0
+    taken: int = 0  # Caution or Risky steps taken
+    declined: int = 0  # and declined
+
+    @property
+    def lines_moved(self) -> float:
+        """How far the lines are from where they started (1 = not at all)."""
+        return self.columns[0] / SHARE_COLUMNS[0]
 
 
 @dataclass(frozen=True)
@@ -248,8 +265,40 @@ def trips_and_losses(db: sqlite3.Connection) -> tuple[Counter, dict[int, str | N
     return trips, attributed
 
 
+def votes(db: sqlite3.Connection) -> tuple[int, int]:
+    """Caution and Risky steps with something at stake: (taken, declined)."""
+    taken = declined = 0
+    played = {
+        r[0]
+        for r in db.execute(
+            "SELECT s.plan_id FROM play_sessions s JOIN play_session_ends e USING (session_id) "
+            "WHERE e.how = 'finished' AND s.plan_id IS NOT NULL"
+        )
+    }
+    rows = db.execute(
+        "SELECT i.plan_id, i.details, (SELECT r.response FROM plan_responses r "
+        " WHERE r.item_id = i.item_id ORDER BY r.response_id DESC LIMIT 1) AS response "
+        "FROM plan_items i WHERE i.position IS NOT NULL AND i.risk_rating IN ('amber', 'red')"
+    )
+    for row in rows:
+        if not json.loads(row["details"]).get("risk", {}).get("exposure"):
+            continue
+        if row["response"] == "do" or (row["response"] is None and row["plan_id"] in played):
+            taken += 1
+        elif row["response"] in ("not_now", "mute"):
+            declined += 1
+    return taken, declined
+
+
+def lines(taken: int, declined: int) -> tuple[float, ...]:
+    """The net-worth columns, moved by the player's choices."""
+    scale = 2 ** ((taken - declined) / (taken + declined + PRIOR_VOTES))
+    return tuple(limit * scale for limit in SHARE_COLUMNS)
+
+
 def model(db: sqlite3.Connection) -> Model:
-    """Ratings as learned so far: chances from your losses and trips."""
+    """Ratings as learned so far: chances from your losses and trips, and the
+    lines from your choices."""
     trips, attributed = trips_and_losses(db)
     lost = Counter(band for band in attributed.values() if band)
     outside = sum(band is None for band in attributed.values())
@@ -257,7 +306,8 @@ def model(db: sqlite3.Connection) -> Model:
     for band in BANDS:
         learned = (LOSS_CHANCE[band] * PRIOR_TRIPS + lost[band]) / (PRIOR_TRIPS + trips[band])
         chances[band] = Chance(band, 0.0 if band == "none" else learned, trips[band], lost[band])
-    return Model(chances, SHARE_COLUMNS, outside)
+    taken, declined = votes(db)
+    return Model(chances, lines(taken, declined), outside, taken, declined)
 
 
 def item_value(db: sqlite3.Connection, type_id: int) -> float:
