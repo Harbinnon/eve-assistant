@@ -297,9 +297,11 @@ def _refresh_public(db, esi: EsiClient, now: datetime) -> list[str]:
 
 
 def _check_static_data(config: Config, db_path, now: datetime) -> list[str]:
-    """Once a day, note which static data build CCP has published."""
+    """Reload the static data if a newer loader needs it (from the zip already on
+    disk), and once a day note which build CCP has published."""
     db = store.connect(db_path)
     try:
+        sde.reload_if_needed(db)
         if not sde.check_due(db, now):
             return []
         with auth.http_client(config) as http:
