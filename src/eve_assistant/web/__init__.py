@@ -84,6 +84,12 @@ SECURITY_HEADERS = {
     "Cache-Control": "no-store",
 }
 
+# Colour themes, kept in a cookie set by the form in every page's footer.
+THEMES = ("dark", "light", "system")
+DEFAULT_THEME = "dark"
+THEME_COOKIE = "theme"
+THEME_MAX_AGE = 365 * 24 * 3600
+
 BAND_LABELS = {
     "none": "No player risk (Exordium)",
     "very_low": "Very low",
@@ -127,6 +133,19 @@ def _when(value) -> str:
     if not value:
         return "never"
     return f"{value[:10]} {value[11:16]} UTC"
+
+
+def _safe_back(path: str) -> str:
+    """Where to return after a form: a path on this dashboard, else Today.
+    Never another site ("//host", "/\\host") or a header break."""
+    if (
+        not path.startswith("/")
+        or path.startswith("//")
+        or "\\" in path
+        or any(ord(ch) < 32 for ch in path)
+    ):
+        return TODAY
+    return path
 
 
 def _security_tenths(value: float) -> int:
@@ -219,6 +238,8 @@ def create_app(
 
     def render(request: Request, name: str, **context) -> HTMLResponse:
         message = MESSAGES.get(request.query_params.get("msg", ""))
+        theme = request.cookies.get(THEME_COOKIE, DEFAULT_THEME)
+        here = request.url.path + (f"?{request.url.query}" if request.url.query else "")
         conn = db()
         try:
             static_data = sde.update_status(conn)
@@ -233,6 +254,8 @@ def create_app(
                 "auto": auto_status,
                 "static_data": static_data,
                 "page": name.split(".")[0],
+                "theme": theme if theme in THEMES else DEFAULT_THEME,
+                "here": here,
                 **context,
             },  # fmt: skip
         )
@@ -251,6 +274,19 @@ def create_app(
     @app.get("/")
     def home():
         return back(TODAY)
+
+    @app.post("/theme")
+    def choose_theme(
+        request: Request, token: str = Form(...), theme: str = Form(...), return_to: str = Form("")
+    ):
+        check_form(request, token)
+        if theme not in THEMES:
+            raise HTTPException(400, "Unknown theme.")
+        response = RedirectResponse(_safe_back(return_to), status_code=303)
+        response.set_cookie(
+            THEME_COOKIE, theme, max_age=THEME_MAX_AGE, path="/", httponly=True, samesite="strict"
+        )
+        return response
 
     def _names(conn) -> list[str]:
         return [r["name"] for r in conn.execute("SELECT name FROM characters ORDER BY name")]

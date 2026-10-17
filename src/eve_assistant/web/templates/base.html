@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="{{ theme }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -42,6 +42,14 @@
   </main>
   <footer>
     <div class="wrap">
+      <form class="theme-switch" method="post" action="/theme">
+        <input type="hidden" name="token" value="{{ form_token }}">
+        <input type="hidden" name="return_to" value="{{ here }}">
+        <span class="label">Theme</span>
+        {% for value, label in [("dark", "Dark"), ("light", "Light"), ("system", "Match system")] %}
+        <button class="small" type="submit" name="theme" value="{{ value }}" aria-pressed="{{ 'true' if theme == value else 'false' }}">{{ label }}</button>
+        {% endfor %}
+      </form>
       <p class="auto-status">{% if auto.enabled %}Updates from EVE automatically while this page's server runs{% if auto.last_run %} · last check {{ auto.last_run|when }}{% else %} · starting{% endif %}.
         {% if auto.problems %}<span class="error-text">{{ auto.problems|length }} problem{{ "s" if auto.problems|length != 1 }}: {{ auto.problems|first }}</span>{% endif %}
         {% else %}Automatic updates are off; press Refresh on the Characters page.{% endif %}</p>
