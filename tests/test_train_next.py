@@ -97,7 +97,8 @@ def test_alpha_limits_and_the_skill_point_limit(db):
     skills_now = snapshots.latest(db, 7, "skills")
     snapshots.record(db, 7, "skills", {**skills_now, "total_sp": 6_000_000})
     blocked = train_next.suggestions(db, 7)
-    assert blocked and all(s.needs_omega for s in blocked)
+    assert blocked
+    assert all(s.needs_omega for s in blocked)
     assert blocked[0].training_minutes == pytest.approx(found[0].training_minutes / 2)  # Omega
 
 

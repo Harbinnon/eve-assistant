@@ -93,15 +93,18 @@ def test_characters_and_goals_show_net_worth(client, db_path):
     snapshots.record(conn, 7, "assets", [{"type_id": 32880, "quantity": 1}])
     conn.close()
     page = client.get("/characters").text
-    assert "Net worth" in page and "14.3M ISK" in page  # 12.3M wallet + a 2M Venture
-    assert '<svg class="worth-line"' in page and "<polyline points=" in page
+    assert "Net worth" in page
+    assert "14.3M ISK" in page  # 12.3M wallet + a 2M Venture
+    assert '<svg class="worth-line"' in page
+    assert "<polyline points=" in page
     client.post(
         "/goals",
         data={"token": _token(page), "kind": "isk", "target": "50000000", "character": ""},
         headers={"Origin": LOCAL},
     )
     goals_page = client.get("/goals").text
-    assert "Net worth" in goals_page and "14.3M ISK" in goals_page  # all characters
+    assert "Net worth" in goals_page
+    assert "14.3M ISK" in goals_page  # all characters
 
 
 def test_skills_page_shows_plan(client):
@@ -120,10 +123,12 @@ def test_skills_page_suggests_what_to_train_next(client, monkeypatch):
     monkeypatch.setattr(train_next, "goal_for", lambda db, cid: "Have 101M ISK")
     page = client.get("/skills").text
     assert "Train this next · Test Pilot" in page
-    assert "Astrogeology 1" in page and "+12.5 m³/min" in page and "+1.2M" in page
+    for shown in ("Astrogeology 1", "+12.5 m³/min", "+1.2M"):
+        assert shown in page
     assert "2.8 days" in page  # 0.4 weeks
     assert "pays back in 0.1 h" in page
-    assert "needs Omega" in page and "these times are as Omega" in page
+    assert "needs Omega" in page
+    assert "these times are as Omega" in page
     assert 'name="level" value="5"' in page  # Set as goal, per skill
     assert "Have 101M ISK" in page
 

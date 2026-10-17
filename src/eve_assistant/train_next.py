@@ -62,61 +62,95 @@ def _isk_still_needed(db: sqlite3.Connection, character_id: int) -> tuple[str, f
     return None
 
 
+@dataclass(frozen=True)
+class _Now:
+    """What every candidate is measured against."""
+
+    character: skills.CharacterSkills
+    fit: tuple  # ship type, fitted items, implants
+    m3_per_minute: float
+    isk_per_m3: float | None
+    hours_a_week: float
+    isk_needed: float | None  # for the first ISK or Omega goal still short
+
+
+def _skill_id(db: sqlite3.Connection, name: str) -> int | None:
+    row = db.execute(
+        "SELECT type_id FROM sde_types WHERE name = ? AND published = 1", (name,)
+    ).fetchone()
+    return row["type_id"] if row else None
+
+
+def _next_level(character: skills.CharacterSkills, caps: dict, skill_id: int) -> int | None:
+    """The next level this character could train, within Alpha's limits; None if none."""
+    trained = character.skills.get(skill_id, TrainedSkill(0, 0, 0))
+    level = (trained.active_level if character.is_alpha else trained.trained_level) + 1
+    if level > 5 or (character.is_alpha and level > caps.get(skill_id, 0)):
+        return None
+    return level
+
+
+def _weeks_sooner(now: _Now, isk_gain: float | None) -> float | None:
+    """Weeks off the goal if all the usual play time were mining."""
+    if not (now.isk_needed and now.isk_per_m3 and isk_gain and now.hours_a_week > 0):
+        return None
+    rate = now.m3_per_minute * 60 * now.isk_per_m3
+    return now.isk_needed / (rate * now.hours_a_week) - now.isk_needed / (
+        (rate + isk_gain) * now.hours_a_week
+    )
+
+
+def _suggest(db: sqlite3.Connection, now: _Now, name: str, skill_id: int, level: int):
+    """The suggestion for one skill one level up, or None if it adds nothing."""
+    character = now.character
+    boosted = dataclasses.replace(
+        character, skills={**character.skills, skill_id: TrainedSkill(level, level, 0)}
+    )
+    gain = mining.estimate(db, boosted, *now.fit).m3_per_minute - now.m3_per_minute
+    if gain <= 0:
+        return None
+    plan = skills.plan_skill(db, character, skill_id, level)
+    minutes = plan.minutes_as_alpha if character.is_alpha else plan.minutes_as_omega
+    isk_gain = gain * 60 * now.isk_per_m3 if now.isk_per_m3 else None
+    untrained = character.skills.get(skill_id, TrainedSkill(0, 0, 0)).trained_level == 0
+    return Suggestion(
+        skill=name,
+        level=level,
+        training_minutes=plan.minutes_as_omega if minutes is None else minutes,
+        m3_gain=gain,
+        isk_gain=isk_gain,
+        weeks_sooner=_weeks_sooner(now, isk_gain),
+        book_price=goals.price_of(db, skill_id) if untrained else None,
+        needs_omega=minutes is None,
+    )
+
+
 def suggestions(db: sqlite3.Connection, character_id: int, limit: int = 3) -> list[Suggestion]:
     try:
         character = skills.load_character_skills(db, character_id)
-        ship_type_id, fitted, implants = mining.current_fit(db, character_id)
-        now = mining.estimate(db, character, ship_type_id, fitted, implants).m3_per_minute
+        fit = mining.current_fit(db, character_id)
+        m3_per_minute = mining.estimate(db, character, *fit).m3_per_minute
     except (skills.SkillsError, mining.MiningError):
         return []
-    if now <= 0:
+    if m3_per_minute <= 0:
         return []
-    isk_per_m3 = omega.isk_per_m3(db, character_id)
-    hours_a_week = pace.weekly_play(db).minutes / 60
     goal = _isk_still_needed(db, character_id)
+    now = _Now(
+        character,
+        fit,
+        m3_per_minute,
+        omega.isk_per_m3(db, character_id),
+        pace.weekly_play(db).minutes / 60,
+        goal[1] if goal else None,
+    )
     caps = skills.alpha_caps(db, character.race_id)
     found = []
     for name in CANDIDATES:
-        row = db.execute(
-            "SELECT type_id FROM sde_types WHERE name = ? AND published = 1", (name,)
-        ).fetchone()
-        if row is None:
-            continue
-        skill_id = row["type_id"]
-        trained = character.skills.get(skill_id, TrainedSkill(0, 0, 0))
-        level = trained.active_level if character.is_alpha else trained.trained_level
-        next_level = level + 1
-        if next_level > 5 or (character.is_alpha and next_level > caps.get(skill_id, 0)):
-            continue
-        boosted = dataclasses.replace(
-            character,
-            skills={**character.skills, skill_id: TrainedSkill(next_level, next_level, 0)},
-        )
-        gain = mining.estimate(db, boosted, ship_type_id, fitted, implants).m3_per_minute - now
-        if gain <= 0:
-            continue
-        plan = skills.plan_skill(db, character, skill_id, next_level)
-        minutes = plan.minutes_as_alpha if character.is_alpha else plan.minutes_as_omega
-        needs_omega = minutes is None
-        if needs_omega:
-            minutes = plan.minutes_as_omega
-        isk_gain = gain * 60 * isk_per_m3 if isk_per_m3 else None
-        weeks = None
-        if goal and isk_per_m3 and hours_a_week > 0:
-            rate = now * 60 * isk_per_m3
-            weeks = goal[1] / (rate * hours_a_week) - goal[1] / ((rate + isk_gain) * hours_a_week)
-        found.append(
-            Suggestion(
-                skill=name,
-                level=next_level,
-                training_minutes=minutes,
-                m3_gain=gain,
-                isk_gain=isk_gain,
-                weeks_sooner=weeks,
-                book_price=goals.price_of(db, skill_id) if trained.trained_level == 0 else None,
-                needs_omega=needs_omega,
-            )
-        )
+        skill_id = _skill_id(db, name)
+        level = _next_level(character, caps, skill_id) if skill_id else None
+        suggestion = _suggest(db, now, name, skill_id, level) if level else None
+        if suggestion:
+            found.append(suggestion)
     found.sort(key=lambda s: (-(s.weeks_sooner or 0), -(s.isk_gain or 0), -s.m3_gain))
     return found[:limit]
 
@@ -133,13 +167,11 @@ def at_alpha_limits(db: sqlite3.Connection, character_id: int) -> bool:
     caps = skills.alpha_caps(db, character.race_id)
     capped = False
     for name in CANDIDATES:
-        row = db.execute(
-            "SELECT type_id FROM sde_types WHERE name = ? AND published = 1", (name,)
-        ).fetchone()
-        if row is None:
+        skill_id = _skill_id(db, name)
+        if skill_id is None:
             continue
-        cap = min(caps.get(row["type_id"], 0), 5)
-        level = character.skills.get(row["type_id"], TrainedSkill(0, 0, 0)).active_level
+        cap = min(caps.get(skill_id, 0), 5)
+        level = character.skills.get(skill_id, TrainedSkill(0, 0, 0)).active_level
         if level < cap:
             return False
         capped = capped or cap < 5

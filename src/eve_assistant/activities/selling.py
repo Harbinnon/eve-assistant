@@ -206,7 +206,7 @@ def _delivery_route(db, location, active, target, units_m3, highsec_only):
 
 
 def delivery_candidates(
-    db, character_id, ships, net_worth, highsec_only, minutes, notes
+    db, character_id, ships, net_worth, highsec_only, minutes
 ) -> list[PlanItem]:
     """Hangar stacks a Freelance Job wants delivered: where they already are, or
     carried there by the active ship. A stack is either sold or delivered."""
@@ -296,8 +296,7 @@ def candidates(ctx: Context) -> list[PlanItem]:
         ctx.db, ctx.esi, ctx.character_id, ctx.ships, ctx.net_worth, ctx.highsec_only,
         ctx.minutes, ctx.notes,
     ) + delivery_candidates(
-        ctx.db, ctx.character_id, ctx.ships, ctx.net_worth, ctx.highsec_only, ctx.minutes,
-        ctx.notes,
+        ctx.db, ctx.character_id, ctx.ships, ctx.net_worth, ctx.highsec_only, ctx.minutes
     )  # fmt: skip
 
 

@@ -1,6 +1,5 @@
-{# Shared: net worth now and its line. Needs `w` (from _worth()). #}
-<dt>Net worth</dt>
-<dd>{{ w.now.total|isk }} ISK <span class="muted">(wallet {{ w.now.wallet|isk }} + assets {{ w.now.assets|isk }} at CCP average prices)</span>
+{# Shared: net worth now and its line, for inside a <dd>. Needs `w` (from _worth()). #}
+{{ w.now.total|isk }} ISK <span class="muted">(wallet {{ w.now.wallet|isk }} + assets {{ w.now.assets|isk }} at CCP average prices)</span>
   {% if w.line %}
   {% set l = w.line %}
   <svg class="worth-line" viewBox="0 0 {{ l.width }} {{ l.height }}" preserveAspectRatio="none" role="img"
@@ -9,4 +8,3 @@
   {% else %}
   <span class="small-print muted">The line starts once EVE has been checked on two different days.</span>
   {% endif %}
-</dd>

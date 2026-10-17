@@ -116,7 +116,8 @@ def test_travel_is_checked_against_the_minutes_a_jump_assumed(db):
     assert [o.ratio for o in corrections.travel_observations(db, CHAR)] == [1.5, 1.5]
     used, reason = corrections.minutes_per_jump(db, CHAR)
     assert used == pytest.approx(1 + 0.5 * 2 / 5)
-    assert reason.detail["sessions"] == 2 and reason.detail["base"] == 1.0
+    assert reason.detail["sessions"] == 2
+    assert reason.detail["base"] == 1.0
     assert "learned from 2 of your sessions" in explain.describe(reason.code, reason.detail)
 
 
@@ -126,4 +127,5 @@ def test_before_any_sessions_plans_say_what_they_assume(db):
     assert "until the tool learns your pace" in explain.describe(reason.code, reason.detail)
     for what, words in (("sale_price", "market sales"), ("minutes_per_jump", "your travel")):
         text = explain.describe("not_learned_yet", {"what": what})
-        assert words in text and "published figure" not in text
+        assert words in text
+        assert "published figure" not in text

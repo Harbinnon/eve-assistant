@@ -55,7 +55,7 @@
       aria-label="{{ (share * 100)|round|int }}% of the target"></progress>
       <span class="small-print">{{ (share * 100)|round|int }}%</span></span></dd>
     {% endif %}
-    {% with w = worth_lines.get(s.goal.goal_id) %}{% if w %}{% include "_worth.html" %}{% endif %}{% endwith %}
+    {% with w = worth_lines.get(s.goal.goal_id) %}{% if w %}<dt>Net worth</dt><dd>{% include "_worth.html" %}</dd>{% endif %}{% endwith %}
     {% if s.isk_needed is not none %}<dt>Still needed</dt><dd>{% if s.isk_needed == 0 %}<span class="pill good">covered</span>{% else %}{{ s.isk_needed|isk }} ISK{% endif %}</dd>{% endif %}
     {% if s.earning %}<dt>At your pace</dt><dd>{% if s.weeks_to_isk is not none %}about {{ s.weeks_to_isk|round(1) }} weeks{% else %}not yet: your sessions haven't banked ISK{% endif %}
       <span class="muted">({{ s.earning.isk_per_hour|isk }} ISK an hour banked over {{ s.earning.sessions }} sessions; ore still in the hangar isn't counted)</span></dd>{% endif %}

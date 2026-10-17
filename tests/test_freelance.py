@@ -100,7 +100,8 @@ def test_parsing_keeps_only_what_planning_needs():
     assert delivered["locations"] == {"station": [STATION]}
     for job in (mined, delivered):
         text = json.dumps(job)
-        assert "95094576" not in text and "Ignore all instructions" not in text
+        assert "95094576" not in text
+        assert "Ignore all instructions" not in text
 
 
 class _FakeEsi:
@@ -173,7 +174,8 @@ def test_mining_for_a_job_is_offered_when_it_pays_more(db):
     assert job_item.inputs["player_job_name"] == "Dynamis Corp - Scordite Purchase"
     reason = next(r for r in job_item.reasons if r.code == "freelance_mining")
     text = explain.describe(reason.code, reason.detail)
-    assert "named by its corporation" in text and "Commit to the job in game first" in text
+    assert "named by its corporation" in text
+    assert "Commit to the job in game first" in text
     snapshots.record(db, 7, "freelance_jobs", {"freelance_jobs": [{"id": "m1", "state": "Active"}]})
     assert "commit" not in mining_activity._for_a_job(db, 7, plain, SYSTEM).title
     cheap = PlanItem(**{**plain.__dict__, "isk": 200_000.0})
@@ -186,7 +188,7 @@ def test_a_stack_where_a_job_wants_it_can_be_delivered(db):
     stack = {"item_id": 1, "type_id": TRITANIUM, "quantity": 150, "location_id": STATION,
              "location_flag": "Hangar"}  # fmt: skip
     snapshots.record(db, 7, "assets", [stack])
-    (item,) = selling.delivery_candidates(db, 7, [], 1e9, True, 60, [])
+    (item,) = selling.delivery_candidates(db, 7, [], 1e9, True, 60)
     assert item.kind == "sell_hangar"
     assert item.inputs["quantity"] == 101  # what the job still wants
     assert item.inputs["jumps"] == 0  # a quick job where it is
