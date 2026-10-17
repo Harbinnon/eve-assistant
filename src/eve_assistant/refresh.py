@@ -15,6 +15,7 @@ from pathlib import Path
 from eve_assistant import (
     auth,
     backups,
+    contracts,
     gamelogs,
     goals,
     outcomes,
@@ -107,6 +108,7 @@ def _snapshot_one(
     results = snapshots.collect(db, esi, character_id, kinds)
     if kinds is None or "location" in kinds or "assets" in kinds:
         structures.refresh(db, esi, character_id)
+    contracts.sync_projects(db, character_id)  # delivered couriers close their projects
     outcomes.update(db, character_id)  # newer data may settle earlier sessions
     failed = [r for r in results if r.outcome == "failed"]
     changed = sum(r.outcome == "changed" for r in results)
@@ -179,7 +181,7 @@ def plan_now(
 # anyway (wallet 2 minutes, mining ledger 10, journal and assets an hour), so
 # asking more often than this gains nothing.
 FAST_KINDS = frozenset({"wallet", "location", "ship"})
-MEDIUM_KINDS = frozenset({"mining_ledger", "industry_jobs", "orders", "skillqueue"})
+MEDIUM_KINDS = frozenset({"mining_ledger", "industry_jobs", "orders", "skillqueue", "contracts"})
 ONLINE_FAST = timedelta(minutes=2)
 ONLINE_MEDIUM = timedelta(minutes=15)
 EVERYTHING = timedelta(hours=1)

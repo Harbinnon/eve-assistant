@@ -42,6 +42,7 @@ KINDS = (
     Kind("standings", "/characters/{id}/standings"),
     Kind("orders", "/characters/{id}/orders"),
     Kind("industry_jobs", "/characters/{id}/industry/jobs"),
+    Kind("contracts", "/characters/{id}/contracts", names_others=True),
 )
 
 
@@ -73,6 +74,15 @@ JOURNAL_PARTIES = ("first_party_id", "second_party_id", "tax_receiver_id")
 PERSON_CONTEXTS = ("character_id", "corporation_id", "alliance_id")
 # Wallet transactions: everything except client_id (the other party).
 TRANSACTION_DROP = ("client_id",)
+# Contracts: what courier tracking and learning need. Titles are dropped
+# (player-written); party IDs are kept only for the owner or NPC corps.
+CONTRACT_FIELDS = (
+    "contract_id", "type", "status", "availability", "for_corporation",
+    "date_issued", "date_accepted", "date_completed", "date_expired", "days_to_complete",
+    "reward", "collateral", "price", "buyout", "volume",
+    "start_location_id", "end_location_id",
+)  # fmt: skip
+CONTRACT_PARTIES = ("issuer_id", "issuer_corporation_id", "acceptor_id", "assignee_id")
 
 
 def _known_parties(db: sqlite3.Connection) -> set[int]:
@@ -84,11 +94,21 @@ def _known_parties(db: sqlite3.Connection) -> set[int]:
 def sanitise(db: sqlite3.Connection, kind: str, payload):
     """Remove other players' IDs, names and player-written text from a payload.
     CLAUDE.md: never collect other players' data."""
-    if kind in ("wallet_journal", "wallet_transactions"):
+    if kind in ("wallet_journal", "wallet_transactions", "contracts"):
         # An unexpected shape is not stored as it is: it might name people.
         payload = [e for e in payload if isinstance(e, dict)] if isinstance(payload, list) else []
     if kind == "wallet_transactions":
         return [{k: v for k, v in t.items() if k not in TRANSACTION_DROP} for t in payload]
+    if kind == "contracts":
+        known = _known_parties(db)
+        cleaned = []
+        for contract in payload:
+            kept = {k: contract[k] for k in CONTRACT_FIELDS if k in contract}
+            for field in CONTRACT_PARTIES:
+                if contract.get(field) in known:
+                    kept[field] = contract[field]
+            cleaned.append(kept)
+        return cleaned
     if kind != "wallet_journal":
         return payload
     known = _known_parties(db)
