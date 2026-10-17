@@ -19,6 +19,9 @@ class Kind:
     name: str
     path: str  # {id} is replaced with the character ID
     needs_token: bool = True
+    # Kinds that name other players are cleaned before storing (see
+    # `sanitise`), and their raw responses are kept out of the ESI cache.
+    names_others: bool = False
 
 
 KINDS = (
@@ -32,8 +35,8 @@ KINDS = (
     Kind("ship", "/characters/{id}/ship"),
     Kind("online", "/characters/{id}/online"),
     Kind("wallet", "/characters/{id}/wallet"),
-    Kind("wallet_journal", "/characters/{id}/wallet/journal"),
-    Kind("wallet_transactions", "/characters/{id}/wallet/transactions"),
+    Kind("wallet_journal", "/characters/{id}/wallet/journal", names_others=True),
+    Kind("wallet_transactions", "/characters/{id}/wallet/transactions", names_others=True),
     Kind("mining_ledger", "/characters/{id}/mining"),
     Kind("assets", "/characters/{id}/assets"),
     Kind("standings", "/characters/{id}/standings"),
@@ -56,6 +59,52 @@ def ensure_character(db: sqlite3.Connection, character_id: int, name: str) -> No
         (character_id, name, utc_now()),
     )
     db.commit()
+
+
+# Wallet journal fields kept as they are. Everything else is dropped, in
+# particular `description` (CCP writes other players' names into it, e.g.
+# "Market: <buyer> bought stuff from <you>") and `reason` (player-written
+# for donations).
+JOURNAL_FIELDS = ("id", "date", "ref_type", "amount", "balance", "tax")
+# Journal fields holding a character or corporation ID: kept only when it is
+# one of the owner's characters or an NPC corporation.
+JOURNAL_PARTIES = ("first_party_id", "second_party_id", "tax_receiver_id")
+# context_id is kept unless it identifies a character, corporation or alliance.
+PERSON_CONTEXTS = ("character_id", "corporation_id", "alliance_id")
+# Wallet transactions: everything except client_id (the other party).
+TRANSACTION_DROP = ("client_id",)
+
+
+def _known_parties(db: sqlite3.Connection) -> set[int]:
+    owners = {r[0] for r in db.execute("SELECT character_id FROM characters")}
+    npcs = {r[0] for r in db.execute("SELECT corporation_id FROM sde_npc_corporations")}
+    return owners | npcs
+
+
+def sanitise(db: sqlite3.Connection, kind: str, payload):
+    """Remove other players' IDs, names and player-written text from a payload.
+    CLAUDE.md: never collect other players' data."""
+    if kind in ("wallet_journal", "wallet_transactions"):
+        # An unexpected shape is not stored as it is: it might name people.
+        payload = [e for e in payload if isinstance(e, dict)] if isinstance(payload, list) else []
+    if kind == "wallet_transactions":
+        return [{k: v for k, v in t.items() if k not in TRANSACTION_DROP} for t in payload]
+    if kind != "wallet_journal":
+        return payload
+    known = _known_parties(db)
+    cleaned = []
+    for entry in payload:
+        kept = {k: entry[k] for k in JOURNAL_FIELDS if k in entry}
+        for field in JOURNAL_PARTIES:
+            if entry.get(field) in known:
+                kept[field] = entry[field]
+        if "context_id" in entry:
+            context_type = entry.get("context_id_type")
+            if context_type not in PERSON_CONTEXTS or entry["context_id"] in known:
+                kept["context_id"] = entry["context_id"]
+                kept["context_id_type"] = context_type
+        cleaned.append(kept)
+    return cleaned
 
 
 def _hash(payload) -> str:
@@ -115,6 +164,7 @@ def collect(db: sqlite3.Connection, esi: EsiClient, character_id: int) -> list[C
             result = esi.get(
                 kind.path.format(id=character_id),
                 character_id=character_id if kind.needs_token else None,
+                remember=not kind.names_others,
             )
         except EsiRateLimited:
             raise
@@ -122,6 +172,6 @@ def collect(db: sqlite3.Connection, esi: EsiClient, character_id: int) -> list[C
             _record_failure(db, character_id, kind.name, str(exc))
             results.append(CheckResult(kind.name, "failed", str(exc)))
             continue
-        changed = record(db, character_id, kind.name, result.data)
+        changed = record(db, character_id, kind.name, sanitise(db, kind.name, result.data))
         results.append(CheckResult(kind.name, "changed" if changed else "unchanged"))
     return results

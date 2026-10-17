@@ -448,7 +448,11 @@ Not legal advice.
   (§2.3(c)); comply with privacy law (§9.5). **The tool reads only
   characters whose owners log in to it, and never collects other players'
   data.** From Local chat logs it keeps only the player's own system
-  changes, never other people's names or messages.
+  changes, never other people's names or messages. The owner's own wallet
+  data names other people too (who bought from you, who sent you ISK), so
+  wallet snapshots are cleaned before they are stored: other players' IDs,
+  journal descriptions (which carry names) and player-written reasons are
+  dropped; amounts, dates, item types and reference types are kept.
 - **Trademarks:** don't present the app as CCP's or suggest affiliation
   (§2.7, §7.3). README and dashboard footer carry: *"EVE Online and the
   EVE logo are the trademarks or registered trademarks of CCP hf."* (The
@@ -566,6 +570,7 @@ CI and pre-commit configuration.
 | Dashboard | DNS rebinding could let a website read pages | **Fixed** (Host check) |
 | Dashboard | No security headers | **Fixed** (CSP and others) |
 | Privacy | Public contracts, naming other players, were kept in the ESI cache | **Fixed** (not cached; old copies removed by migration 0008) |
+| Privacy | Wallet snapshots kept other players' IDs (transaction buyers, journal parties), their names inside journal descriptions, and player-written journal reasons | **Fixed** (`snapshots.sanitise` keeps only amounts, dates, types and the owner's own or NPC IDs; these endpoints are not cached; old rows cleaned by migration 0010, with the owner's approval) |
 | Supply chain | Pre-commit hooks pinned by tag, not commit | **Fixed** (pinned to commit SHAs) |
 | SQL | All queries parameterised; the few built strings use fixed table names or placeholder lists | No change needed |
 | Templates | Autoescaping on; no `|safe`; player text escaped (tests) | No change needed |
