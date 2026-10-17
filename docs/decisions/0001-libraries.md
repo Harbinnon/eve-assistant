@@ -30,6 +30,10 @@ real ESI.
 Added 2026-10-16 with the owner's approval: **pip-audit** 2.10.1, which checks
 every pinned library for known vulnerabilities in CI.
 
+Added 2026-10-16 with the owner's approval: **pytest-cov** 7.1.0 (brings
+**coverage** 7.16.2), which measures test coverage so SonarQube Cloud can
+report it.
+
 ## Standard library instead of a package
 
 | Need | Standard library | Instead of |

@@ -32,6 +32,7 @@ updates:
       - dependency-name: "detect-secrets"
       - dependency-name: "respx"
       - dependency-name: "pip-audit"
+      - dependency-name: "pytest-cov"
 
   - package-ecosystem: "github-actions"
     directory: "/"

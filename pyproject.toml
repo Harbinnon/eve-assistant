@@ -30,6 +30,7 @@ dev = [
     "detect-secrets==1.5.0",
     "respx==0.23.1",
     "pip-audit==2.10.1",
+    "pytest-cov==7.1.0",
 ]
 
 [project.scripts]
@@ -45,6 +46,11 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
+
+[tool.coverage.run]
+source = ["eve_assistant"]
+# Paths relative to the repository root, so SonarQube Cloud can match them.
+relative_files = true
 
 [tool.ruff]
 line-length = 100
