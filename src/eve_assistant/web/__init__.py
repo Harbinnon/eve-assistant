@@ -129,14 +129,12 @@ def _when(value) -> str:
 
 
 def _security_class(value) -> str:
+    """CSS classes for a system's security: 'sec' plus its tenth, 'sec-10'
+    (1.0) down to 'sec-00' (0.0 and below), for EVE's colour for it."""
     if value is None:
-        return "sec-unknown"
-    rounded = round(value, 1)
-    if rounded >= 0.5:
-        return "sec-high"
-    if rounded > 0.0:
-        return "sec-low"
-    return "sec-null"
+        return "sec"
+    tenth = max(0, min(10, round(value * 10)))
+    return f"sec sec-{tenth:02d}"
 
 
 def create_app(

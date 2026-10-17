@@ -118,7 +118,7 @@
     </tbody>
   </table>
 </div>
-<p class="muted small-print">Wallet change counts every wallet entry during the session; ore is valued at EVE's average prices. <a href="/history">History</a> compares each plan step.</p>
+<p class="muted small-print">Wallet change counts every wallet entry during the session; ore is valued at what buyers pay after tax, as plans value it. <a href="/history">History</a> compares each plan step.</p>
 {% endif %}
 
 {% if open_projects %}
@@ -167,6 +167,12 @@
   {% if not plan.items %}
     <p>Nothing fits right now. The alternatives below say why.</p>
   {% else %}
+  <div class="readout">
+    <div><span class="label">Total</span><span class="value isk">{{ plan.total_isk|isk }}<small>ISK</small></span></div>
+    <div><span class="label">Time</span><span class="value">{{ plan.total_minutes|round|int }}<small>min</small></span></div>
+    {% if plan.total_minutes %}<div><span class="label">Per hour</span><span class="value minor">{{ (plan.total_isk / plan.total_minutes * 60)|isk }}<small>ISK</small></span></div>{% endif %}
+    {% if plan.net_worth %}<div><span class="label">Net worth</span><span class="value minor">{{ plan.net_worth|isk }}<small>ISK</small></span></div>{% endif %}
+  </div>
   <ol class="steps">
     {% for item in plan.items %}
     <li class="step">
@@ -185,11 +191,6 @@
     </li>
     {% endfor %}
   </ol>
-  <div class="totals">
-    <div><span class="muted">Total</span> <span class="big">{{ plan.total_isk|isk }} ISK</span></div>
-    <div><span class="muted">Time</span> <span class="big">{{ plan.total_minutes|round|int }} min</span></div>
-    {% if plan.net_worth %}<div><span class="muted">Net worth</span> {{ plan.net_worth|isk }} ISK</div>{% endif %}
-  </div>
   {% endif %}
   {% if plan.notes %}
   <ul class="notes">{% for n in plan.notes %}<li>{{ explain(n.code, n) }}</li>{% endfor %}</ul>
