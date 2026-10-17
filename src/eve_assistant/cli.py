@@ -257,9 +257,9 @@ def _resolve_station(db, character_id: int, station: str | None) -> int:
     location = snapshots.latest(db, character_id, "location") or {}
     if location.get("station_id"):
         return location["station_id"]
-    raise ore.OreError(
-        "The character is not docked at an NPC station. Pass --station, e.g. --station Jita."
-    )
+    if location.get("structure_id"):
+        return location["structure_id"]  # ore.analyse checks the character can access it
+    raise ore.OreError("The character isn't docked. Pass --station, e.g. --station Jita.")
 
 
 def _cmd_ore(args) -> int:

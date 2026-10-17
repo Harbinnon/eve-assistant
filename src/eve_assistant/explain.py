@@ -100,7 +100,8 @@ def describe(code: str, detail: dict | None = None) -> str:
         ),
         "no_couriers_fit": lambda: "No courier contracts fit your ships, wallet and time.",
         "selling_at_nearby_station": lambda: (
-            "You are not docked at an NPC station; selling prices are for the nearest one here."
+            "You aren't docked where you can sell, so selling prices are for the nearest NPC "
+            "station in this system."
         ),
         "no_npc_station_here": lambda: "No NPC station in this system to sell at.",
         "no_mining_ship": lambda: "Your current ship has no mining modules.",
@@ -114,7 +115,19 @@ def describe(code: str, detail: dict | None = None) -> str:
             else f"This ore is stored at another station in {d.get('system')}."
         ),
         "ore_in_structure_skipped": lambda: (
-            "Ore stored in player structures is not considered yet."
+            "Ore in a structure this character can't access (or not looked up yet) is skipped."
+        ),
+        "selling_at_structure_here": lambda: (
+            "You're docked at a player structure: selling there counts its own market as well."
+        ),
+        "selling_at_structure": lambda: (
+            "Sold at a player structure: its own market is counted along with region-wide orders."
+        ),
+        "refining_at_structure_not_modelled": lambda: (
+            "Refining at a player structure isn't offered: its refinery bonuses aren't public."
+        ),
+        "structure_market_unavailable": lambda: (
+            "This structure's own market couldn't be read; only region-wide orders are counted."
         ),
         "multi_trip_haul": lambda: (
             f"{d.get('load_m3', 0):,.0f} m3 is more than your {d.get('ship')} holds, so it takes "

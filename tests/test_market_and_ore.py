@@ -178,3 +178,85 @@ def test_ore_analysis_refuses_non_ore(db):
         esi = EsiClient(http, db, base_url=BASE)
         with pytest.raises(ore.OreError, match="cannot be refined"):
             ore.analyse(db, esi, 7, MINERAL, 10, HOME_STATION)
+
+
+STRUCTURE = 1_050_000_000_001
+
+
+def test_merge_counts_each_order_once():
+    regional = [market.Order(9.0, 100, True, 1, 1, "10", order_id=1, type_id=ORE)]
+    own = [
+        market.Order(9.0, 100, True, 1, 1, "10", order_id=1, type_id=ORE),
+        market.Order(9.5, 50, True, 1, 1, "station", order_id=2, type_id=ORE),
+    ]
+    assert [o.order_id for o in market.merge(regional, own)] == [1, 2]
+
+
+def _structure(db, accessible=1):
+    db.execute(
+        "INSERT INTO structures (structure_id, accessible, player_name, solar_system_id, "
+        "checked_at) VALUES (?, ?, 'Player-named citadel', ?, 'x')",
+        (STRUCTURE, accessible, HOME),
+    )
+    db.commit()
+
+
+def _structure_markets(own_orders, status=200):
+    home_region = 10000032
+
+    def books(request):
+        region = int(request.url.path.split("/")[2])
+        type_id = int(request.url.params["type_id"])
+        data = []
+        if region == home_region and type_id == ORE:
+            data = [{"order_id": 1, "price": 9.0, "volume_remain": 1_000, "is_buy_order": True,
+                     "location_id": STRUCTURE, "system_id": HOME, "range": "10"}]  # fmt: skip
+        return httpx.Response(200, json=data)
+
+    respx.get(url__regex=rf"{BASE}/markets/\d+/orders").mock(side_effect=books)
+    respx.get(f"{BASE}/markets/structures/{STRUCTURE}").mock(
+        return_value=httpx.Response(status, json=own_orders)
+    )
+
+
+@respx.mock
+def test_selling_at_a_structure_counts_its_own_market(db):
+    _structure(db)
+    _structure_markets(
+        [
+            {"order_id": 1, "type_id": ORE, "price": 9.0, "volume_remain": 1_000,
+             "is_buy_order": True, "location_id": STRUCTURE, "range": "10"},
+            {"order_id": 2, "type_id": ORE, "price": 9.5, "volume_remain": 2_000,
+             "is_buy_order": True, "location_id": STRUCTURE, "range": "station"},
+            {"order_id": 3, "type_id": MINERAL, "price": 4.0, "volume_remain": 9,
+             "is_buy_order": True, "location_id": STRUCTURE, "range": "station"},
+        ]
+    )  # fmt: skip
+    esi = EsiClient(httpx.Client(), db, base_url=BASE, token_for=lambda _cid: "token")
+    result = ore.analyse(db, esi, 7, ORE, 3_000, STRUCTURE)
+    here = next(o for o in result.options if o.key == "sell_raw_here")
+    tax = fees.sales_tax(2)
+    assert here.isk == pytest.approx((2_000 * 9.5 + 1_000 * 9.0) * (1 - tax))  # order 1 once
+    assert not [o for o in result.options if o.key.startswith("refine_sell")]
+    codes = {r.code for r in result.reasons}
+    assert {"selling_at_structure", "refining_at_structure_not_modelled"} <= codes
+    assert "Player-named" not in " ".join(o.title for o in result.options)
+
+
+@respx.mock
+def test_a_structure_market_that_cannot_be_read_falls_back(db):
+    _structure(db)
+    _structure_markets({"error": "forbidden"}, status=403)
+    esi = EsiClient(httpx.Client(), db, base_url=BASE, token_for=lambda _cid: "token")
+    result = ore.analyse(db, esi, 7, ORE, 500, STRUCTURE)
+    here = next(o for o in result.options if o.key == "sell_raw_here")
+    assert here.isk == pytest.approx(500 * 9.0 * (1 - fees.sales_tax(2)))
+    assert "structure_market_unavailable" in {r.code for r in result.reasons}
+
+
+def test_structures_without_access_are_refused(db):
+    _structure(db, accessible=0)
+    with httpx.Client() as http:
+        esi = EsiClient(http, db, base_url=BASE)
+        with pytest.raises(ore.OreError, match="can access"):
+            ore.analyse(db, esi, 7, ORE, 500, STRUCTURE)

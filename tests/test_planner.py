@@ -302,3 +302,36 @@ def test_mining_uses_the_learned_speed_but_records_the_raw_estimate(db, monkeypa
     learned = next(r for r in slower.reasons if r.code == "learned_correction")
     assert learned.detail["factor"] == 0.5
     assert learned.detail["sessions"] == 4
+
+
+STRUCTURE = 1_050_000_000_002
+
+
+@respx.mock
+def test_ore_in_an_accessible_structure_is_offered_and_sold_there(db):
+    db.execute(
+        "INSERT INTO structures (structure_id, accessible, player_name, solar_system_id, "
+        "checked_at) VALUES (?, 1, 'Player-named', ?, 'x')",
+        (STRUCTURE, HOME),
+    )
+    snapshots.record(db, 7, "location", {"solar_system_id": HOME, "structure_id": STRUCTURE})
+    assets = [
+        {"type_id": LASER, "location_id": 9001, "location_flag": "HiSlot0", "quantity": 1},
+        {"type_id": ORE, "location_id": STRUCTURE, "location_flag": "Hangar", "quantity": 1000},
+    ]
+    snapshots.record(db, 7, "assets", assets)
+    _mock_market_and_contracts()
+    respx.get(f"{BASE}/markets/structures/{STRUCTURE}").mock(
+        return_value=httpx.Response(200, json=[
+            {"order_id": 77, "type_id": ORE, "price": 12.0, "volume_remain": 10_000,
+             "is_buy_order": True, "location_id": STRUCTURE, "range": "station"}])
+    )  # fmt: skip
+    with httpx.Client() as http:
+        esi = EsiClient(http, db, base_url=BASE, token_for=lambda _cid: "token")
+        plan = planner.build_plan(db, esi, 7, 60)
+    sell = next(i for i in plan.items if i.kind == "sell_hangar")
+    assert sell.inputs["station_id"] == STRUCTURE
+    assert sell.isk > 1000 * 10 * 0.9  # the structure's 12.00 order beats the station's 10.00
+    codes = {n.code for n in plan.notes}
+    assert "selling_at_structure_here" in codes
+    assert "ore_in_structure_skipped" not in codes

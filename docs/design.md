@@ -406,7 +406,11 @@ done, marked "new to you", and only from activities the tool can model.
 - **Risk is an estimate** from public kill data, and is presented as one.
 - **Market data is regional.** It watches the main hubs plus the
   character's region, and only items the activities use (a few hundred
-  types).
+  types). The regional book includes player structures whose market is
+  public; for a structure the character is docked at or stores goods in,
+  its own market (structure-markets scope) is merged in by order ID, which
+  adds station-range orders and markets that aren't public. Refining at a
+  structure isn't offered: its refinery bonuses aren't public.
 - **Patches change numbers.** Models read values from the static data, not
   hard-coded tables.
 - **The options are endless.** Starting with mining, industry and hauling
