@@ -54,6 +54,7 @@ from eve_assistant import (
     sessions,
     skills,
     store,
+    train_next,
 )
 from eve_assistant.goals import GoalError
 from eve_assistant.skills import SkillsError
@@ -1078,6 +1079,14 @@ def create_app(
                 active = active_character(request, conn)
                 character = active[1] if active else ""
             requirement, error, clone_state = None, None, None
+            train, train_goal = [], None
+            if character:
+                try:
+                    character_id = goals.resolve_character(conn, character)
+                    train = train_next.suggestions(conn, character_id)
+                    train_goal = train_next.goal_for(conn, character_id)
+                except GoalError:
+                    pass
             if character and item:
                 try:
                     character_id = goals.resolve_character(conn, character)
@@ -1097,6 +1106,8 @@ def create_app(
             item=item,
             requirement=requirement,
             clone_state=clone_state,
+            train=train,
+            train_goal=train_goal,
             error=error,
         )
 

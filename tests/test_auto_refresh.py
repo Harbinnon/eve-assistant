@@ -49,9 +49,10 @@ def test_due_kinds_follow_the_last_check(db_path):
     for kind in snapshots.KINDS:
         check(db, kind.name, minutes_ago=3)
     assert refresh.due_kinds(db, 7, NOW) == set()  # offline: only hourly (and online every 5)
-    snapshots.record(db, 7, "online", {"online": True})
-    for kind in snapshots.KINDS:  # record() checked "online" just now; put it back to 3 min
-        check(db, kind.name, minutes_ago=3)
+    # record() notes its check at the clock's time: pin it to 3 minutes before NOW.
+    three_ago = (NOW - timedelta(minutes=3)).isoformat(timespec="seconds")
+    with mock.patch.object(snapshots, "utc_now", return_value=three_ago):
+        snapshots.record(db, 7, "online", {"online": True})
     assert refresh.due_kinds(db, 7, NOW) == {"wallet", "location", "ship", "online"}
     db.close()
 

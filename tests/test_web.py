@@ -4,7 +4,7 @@ from unittest import mock
 import pytest
 from fastapi.testclient import TestClient
 
-from eve_assistant import cli, snapshots, store
+from eve_assistant import cli, snapshots, store, train_next
 from eve_assistant.config import Config
 from eve_assistant.web import create_app
 
@@ -88,6 +88,23 @@ def test_skills_page_shows_plan(client):
     assert page.status_code == 200
     assert "Mining" in page.text
     assert "Omega" in page.text
+
+
+def test_skills_page_suggests_what_to_train_next(client, monkeypatch):
+    found = [
+        train_next.Suggestion("Astrogeology", 1, 90.0, 12.5, 1_200_000.0, 0.4, 90_000.0),
+        train_next.Suggestion("Mining", 5, 9000.0, 8.0, None, None, None, needs_omega=True),
+    ]
+    monkeypatch.setattr(train_next, "suggestions", lambda db, cid, limit=3: found)
+    monkeypatch.setattr(train_next, "goal_for", lambda db, cid: "Have 101M ISK")
+    page = client.get("/skills").text
+    assert "Train this next · Test Pilot" in page
+    assert "Astrogeology 1" in page and "+12.5 m³/min" in page and "+1.2M" in page
+    assert "2.8 days" in page  # 0.4 weeks
+    assert "pays back in 0.1 h" in page
+    assert "needs Omega" in page and "these times are as Omega" in page
+    assert 'name="level" value="5"' in page  # Set as goal, per skill
+    assert "Have 101M ISK" in page
 
 
 def test_skills_page_explains_unknown_items(client):
