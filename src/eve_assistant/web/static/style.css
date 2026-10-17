@@ -190,6 +190,8 @@ details.why ul { margin: 6px 0 0; padding-left: 20px; color: var(--muted); }
 form.stack .checks label { flex-direction: row; align-items: center; gap: 6px; }
 .alt-why { color: var(--muted); font-size: 13px; }
 .notes { margin: 16px 0 0; padding-left: 20px; color: var(--muted); font-size: 14px; }
+.history-title { margin-top: 0; font-size: 1.1rem; }
+.card > .figures { color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; }
 
 /* Small helpers (no inline styles: the Content-Security-Policy forbids them) */
 .spaced { margin-top: 12px; }
