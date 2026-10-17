@@ -61,7 +61,8 @@ def test_fresh_cache_skips_the_request(esi, clock):
     esi.get("/x")
     clock.now += 100
     result = esi.get("/x")
-    assert result.from_cache and result.data == [1]
+    assert result.from_cache
+    assert result.data == [1]
     assert route.call_count == 1
 
 
@@ -76,7 +77,8 @@ def test_stale_cache_uses_etag_and_accepts_304(esi, clock):
     esi.get("/x")
     clock.now += 61
     result = esi.get("/x")
-    assert result.from_cache and result.data == [1]
+    assert result.from_cache
+    assert result.data == [1]
     assert route.calls.last.request.headers["if-none-match"] == '"v1"'
 
 

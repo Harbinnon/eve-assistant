@@ -21,7 +21,8 @@ def test_pkce_pairs_are_random_and_consistent():
     a, b = sso.make_pkce_pair(), sso.make_pkce_pair()
     assert a.verifier != b.verifier
     assert sso.challenge_for(a.verifier) == a.challenge
-    assert 43 <= len(a.verifier) <= 128
+    assert len(a.verifier) >= 43
+    assert len(a.verifier) <= 128
 
 
 def test_authorize_url_carries_pkce_and_scopes():
@@ -105,8 +106,9 @@ def test_single_scope_as_string(make_token, jwks):
     ],
 )
 def test_bad_tokens_are_rejected(make_token, jwks, overrides, message):
+    token = make_token(**overrides)
     with pytest.raises(sso.SSOError, match=message):
-        sso.verify_access_token(make_token(**overrides), jwks, CLIENT_ID)
+        sso.verify_access_token(token, jwks, CLIENT_ID)
 
 
 def test_token_signed_with_another_key_is_rejected(jwks):
@@ -131,5 +133,6 @@ def test_token_signed_with_another_key_is_rejected(jwks):
 
 def test_unknown_key_id_is_rejected(make_token, jwks):
     unknown = {"keys": [dict(jwks["keys"][0], kid="other")]}
+    token = make_token()
     with pytest.raises(sso.SSOError, match="does not publish"):
-        sso.verify_access_token(make_token(), unknown, CLIENT_ID)
+        sso.verify_access_token(token, unknown, CLIENT_ID)

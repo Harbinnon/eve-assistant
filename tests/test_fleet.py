@@ -91,7 +91,8 @@ def db():
 def test_owned_ships_read_holds_fits_values_and_skills(db):
     ships = {s.name: s for s in fleet.owned_ships(db, 7)}
     assert set(ships) == {"Venture", "Hauler", "Ore Hauler", "Barge"}
-    assert ships["Venture"].is_active and ships["Venture"].fitted == (LASER,)
+    assert ships["Venture"].is_active
+    assert ships["Venture"].fitted == (LASER,)
     assert ships["Venture"].value == pytest.approx(1.1e6)  # hull plus fitted laser
     assert ships["Ore Hauler"].capacity_for(is_ore=True) == 40500.0
     assert ships["Ore Hauler"].capacity_for(is_ore=False) == 500.0
@@ -104,7 +105,8 @@ def test_boarding_costs(db):
     assert fleet.boarding(db, 7, ships["Venture"]).minutes == 0
     assert fleet.boarding(db, 7, ships["Hauler"]).minutes == fleet.MINUTES_TO_SWITCH_SHIP
     away = fleet.boarding(db, 7, ships["Ore Hauler"])
-    assert away.jumps == 1 and away.minutes > fleet.MINUTES_TO_SWITCH_SHIP
+    assert away.jumps == 1
+    assert away.minutes > fleet.MINUTES_TO_SWITCH_SHIP
     assert fleet.boarding(db, 7, ships["Barge"]) is None
 
 
@@ -118,9 +120,11 @@ def test_hauler_choice_prefers_the_cheapest_ship_that_fits(db):
         )  # fmt: skip
 
     small = planner._pick_hauler(ships, STATION, STATION, option(4000))
-    assert small[0].name == "Venture" and small[1] == 0  # ore hold fits, already boarded
+    assert small[0].name == "Venture"  # ore hold fits, already boarded
+    assert small[1] == 0
     minerals = planner._pick_hauler(ships, STATION, STATION, option(3000, is_ore=False))
-    assert minerals[0].name == "Hauler" and minerals[1] == fleet.MINUTES_TO_SWITCH_SHIP
+    assert minerals[0].name == "Hauler"
+    assert minerals[1] == fleet.MINUTES_TO_SWITCH_SHIP
     big_ore = planner._pick_hauler(ships, AWAY_STATION, STATION, option(30000))
     assert big_ore[0].name == "Ore Hauler"  # waiting at the ore's station
     assert planner._pick_hauler(ships, STATION, STATION, option(99999)) is None
@@ -160,6 +164,9 @@ def test_loads_too_big_for_one_trip_pick_the_fewest_trips(db):
     )  # fmt: skip
     ship, switch, trips = planner._multi_trip_haul(ships, STATION, STATION, load)
     # the Hauler's 6,000 m3 cargo takes ore too: 2 trips beats the Venture's 3
-    assert ship.name == "Hauler" and trips == 2 and switch == fleet.MINUTES_TO_SWITCH_SHIP
+    assert ship.name == "Hauler"
+    assert trips == 2
+    assert switch == fleet.MINUTES_TO_SWITCH_SHIP
     ship, _switch, trips = planner._multi_trip_haul(ships, AWAY_STATION, STATION, load)
-    assert ship.name == "Ore Hauler" and trips == 1
+    assert ship.name == "Ore Hauler"
+    assert trips == 1

@@ -34,7 +34,8 @@ def test_start_progress_close_and_limits(db):
     assert projects.start(db, 7, "haul", "1:2:x", "Haul ore", 120, 5e6, {}) == first  # no dupes
     projects.record_progress(db, first, 45)
     (project,) = projects.open_projects(db, 7)
-    assert project.minutes_left == 75 and project.share_done == pytest.approx(0.375)
+    assert project.minutes_left == 75
+    assert project.share_done == pytest.approx(0.375)
     assert project.deadline is not None
 
     projects.start(db, 7, "courier", "99", "Courier", 90, 1e6, {})
@@ -75,7 +76,9 @@ def test_a_long_job_becomes_a_discounted_project_start():
 
 def test_a_job_that_fits_is_an_ordinary_item():
     item = _project_start_item(total_minutes=40)
-    assert item.kind == "sell_hangar" and item.minutes == 40 and item.isk == 9_000_000
+    assert item.kind == "sell_hangar"
+    assert item.minutes == 40
+    assert item.isk == 9_000_000
 
 
 def test_doing_a_project_start_creates_it_and_later_plans_continue_it(db):
@@ -93,7 +96,8 @@ def test_doing_a_project_start_creates_it_and_later_plans_continue_it(db):
 
     planner.respond(db, item_id, "do")
     (project,) = projects.open_projects(db, 7)
-    assert project.title == "Haul ore to Jita" and project.minutes_done == 60
+    assert project.title == "Haul ore to Jita"
+    assert project.minutes_done == 60
 
     notes = []
     (cont,) = planner.project_candidates(db, 7, 90, 100_000_000, notes)

@@ -174,5 +174,7 @@ def test_ore_analysis_compares_selling_refining_and_hauling(db):
 
 
 def test_ore_analysis_refuses_non_ore(db):
-    with httpx.Client() as http, pytest.raises(ore.OreError, match="cannot be refined"):
-        ore.analyse(db, EsiClient(http, db, base_url=BASE), 7, MINERAL, 10, HOME_STATION)
+    with httpx.Client() as http:
+        esi = EsiClient(http, db, base_url=BASE)
+        with pytest.raises(ore.OreError, match="cannot be refined"):
+            ore.analyse(db, esi, 7, MINERAL, 10, HOME_STATION)

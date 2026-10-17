@@ -591,7 +591,14 @@ In order; each box is ticked in this document when done.
   - [x] its GitHub Action pinned to a commit SHA like the others, and
     allowed by name in the repository's Actions settings. The step is
     skipped for forks and Dependabot, which do not get the secret;
-  - [ ] a first pass to fix real findings and mark the rest as reviewed.
+  - [x] a first pass to fix real findings and mark the rest as reviewed
+    (2026-10-16). Fixed: a float equality check, an unused variable,
+    duplicated strings, a nested conditional, suppression-comment syntax,
+    and test style (one check per assert, one call per `pytest.raises`).
+    Deliberate choices are ignored in `sonar-project.properties`, each with
+    its reason. Still open on purpose: 16 functions above SonarQube's
+    cognitive-complexity limit (the planner's main functions most of all),
+    to be split when that code is next changed for another reason.
 
   Run CodeQL and SonarQube side by side for a few weeks, then drop or tune
   whichever is noisy.

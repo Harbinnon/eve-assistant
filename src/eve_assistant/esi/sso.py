@@ -26,7 +26,7 @@ import httpx
 import jwt
 
 AUTHORIZE_URL = "https://login.eveonline.com/v2/oauth/authorize"
-TOKEN_URL = "https://login.eveonline.com/v2/oauth/token"  # noqa: S105 - a URL, not a password
+TOKEN_URL = "https://login.eveonline.com/v2/oauth/token"  # noqa: S105  # a URL, not a password
 JWKS_URL = "https://login.eveonline.com/oauth/jwks"
 
 # CCP's docs: accept either form of the issuer, reject anything else.

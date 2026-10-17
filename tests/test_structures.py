@@ -60,6 +60,7 @@ def test_lookups_are_remembered_including_refusals(db):
         assert structures.refresh(db, esi, 7) == 0  # both remembered for a week
     assert refused.call_count == 1
     known = structures.get(db, CITADEL)
-    assert known.accessible and known.solar_system_id == 30000142
+    assert known.accessible
+    assert known.solar_system_id == 30000142
     assert known.player_name == "Owner's <b>Base</b>"  # stored as-is, escaped when shown
     assert structures.system_of(db, NO_ACCESS) is None

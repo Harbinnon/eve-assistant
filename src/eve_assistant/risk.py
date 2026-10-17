@@ -65,7 +65,12 @@ def band_for_security(lowest_security: float | None, region_name: str | None = N
 
 
 def rate(band: str, exposure: float, net_worth: float) -> RiskRating:
-    share = exposure / net_worth if net_worth > 0 else (1.0 if exposure > 0 else 0.0)
+    if net_worth > 0:
+        share = exposure / net_worth
+    elif exposure > 0:
+        share = 1.0
+    else:
+        share = 0.0
     column = sum(share > limit for limit in SHARE_COLUMNS)
     return RiskRating(
         band=band,

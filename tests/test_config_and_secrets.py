@@ -54,5 +54,6 @@ def test_dpapi_round_trip_and_file_is_not_plaintext(tmp_path):
 def test_dpapi_rejects_a_damaged_file(tmp_path):
     path = tmp_path / "secrets.dpapi"
     path.write_bytes(b"not a dpapi blob")
+    store = DpapiFileStore(path)
     with pytest.raises(SecretStoreError, match="could not be decrypted"):
-        DpapiFileStore(path).load()
+        store.load()
