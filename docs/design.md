@@ -159,6 +159,12 @@ stopping point.
 - **Unattended work is scheduled around**, e.g. a job finishing between
   sessions.
 - **At most two open projects** to start with.
+- **Courier projects track themselves** from the character's own
+  contracts: delivered closes the project as done; failed, deleted,
+  cancelled, rejected or reversed closes it as dropped. A contract the
+  character never accepted isn't in its list, so that project stays open
+  until the player closes it. History reads planned couriers from the
+  contract too ("delivered", "accepted, not delivered yet").
 
 ### 4.5 Skills
 
@@ -562,8 +568,10 @@ Not legal advice.
   data names other people too (who bought from you, who sent you ISK), so
   wallet snapshots are cleaned before they are stored: other players' IDs,
   journal descriptions (which carry names) and player-written reasons are
-  dropped; amounts, dates, item types and reference types are kept. From
-  game logs (optional) only the owner's own mining lines are kept.
+  dropped; amounts, dates, item types and reference types are kept. The
+  owner's contracts are cleaned the same way: titles (player-written) and
+  other players' IDs are dropped. From game logs (optional) only the
+  owner's own mining lines are kept.
 - **Trademarks:** don't present the app as CCP's or suggest affiliation
   (§2.7, §7.3). README and dashboard footer carry: *"EVE Online and the
   EVE logo are the trademarks or registered trademarks of CCP hf."* (The

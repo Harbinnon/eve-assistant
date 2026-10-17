@@ -7,21 +7,22 @@ says happened. Matching is by what each step is about:
 - mining: ore of that type mined (game logs if read, else the mining
   ledger), and m3 per minute against the plan's estimate;
 - selling or hauling ore from the hangar: units of that type sold, and the ISK;
-- courier contracts: contract ISK in the session (rewards often arrive in
-  a later session, so a missing one isn't a failure);
+- courier contracts: the contract's own status (delivered in the session,
+  or accepted and still underway), else contract ISK in the session;
 - skill reminders and project steps aren't measured.
 """
 
 import sqlite3
 from dataclasses import dataclass
 
-from eve_assistant import outcomes, planner
+from eve_assistant import contracts, outcomes, planner
 from eve_assistant.outcomes import Outcome
 from eve_assistant.planner import StoredItem, StoredPlan
 from eve_assistant.sessions import PlaySession
 
 VERDICTS = {
     "seen": "happened",
+    "underway": "accepted, not delivered yet",
     "not_seen": "no sign of it",
     "waiting": "waiting for EVE's data",
     "not_measured": "not measured",
@@ -126,14 +127,24 @@ def _selling_step(item: StoredItem, outcome: Outcome) -> StepResult:
     )
 
 
-def _courier_step(item: StoredItem, outcome: Outcome) -> StepResult:
-    contracts = outcome.details["isk"].get("contracts", 0.0)
-    if contracts > 0:
-        return StepResult(item, "seen", actual_isk=contracts, source="journal")
+def _courier_step(item: StoredItem, outcome: Outcome, known: dict[int, dict]) -> StepResult:
+    contract = known.get(item.details.get("inputs", {}).get("contract_id"))
+    if contract is not None:
+        window = outcome.details["window"]
+        if contracts.delivered_between(contract, window["start"], window["end"]):
+            return StepResult(item, "seen", actual_isk=contract.get("reward"), source="contract")
+        # The acceptor ID is only kept when it is one of the owner's characters.
+        if contract.get("status") == "in_progress" and contract.get("acceptor_id"):
+            return StepResult(item, "underway", source="contract")
+    income = outcome.details["isk"].get("contracts", 0.0)
+    if income > 0:
+        return StepResult(item, "seen", actual_isk=income, source="journal")
     return StepResult(item, "unknown")
 
 
-def compare_step(item: StoredItem, outcome: Outcome | None) -> StepResult:
+def compare_step(
+    item: StoredItem, outcome: Outcome | None, known: dict[int, dict] | None = None
+) -> StepResult:
     if item.kind == "skill" or item.kind.startswith("project"):
         return StepResult(item, "not_measured")
     if outcome is None:
@@ -143,7 +154,7 @@ def compare_step(item: StoredItem, outcome: Outcome | None) -> StepResult:
     if item.kind in ("sell_hangar", "haul"):
         return _selling_step(item, outcome)
     if item.kind == "courier":
-        return _courier_step(item, outcome)
+        return _courier_step(item, outcome, known or {})
     return StepResult(item, "not_measured")
 
 
@@ -157,6 +168,7 @@ def sessions_history(db: sqlite3.Connection, limit: int = 20) -> list[SessionHis
                 plan = planner.load_plan(db, session.plan_id)
             except planner.PlanError:
                 plan = None
-        steps = [compare_step(item, outcome) for item in plan.items] if plan else []
+        known = contracts.mine(db, session.character_id)
+        steps = [compare_step(item, outcome, known) for item in plan.items] if plan else []
         found.append(SessionHistory(session, outcome, plan, steps))
     return found
