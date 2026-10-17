@@ -55,9 +55,11 @@ from eve_assistant import (
     skills,
     store,
     train_next,
+    worth,
 )
 from eve_assistant.goals import GoalError
 from eve_assistant.skills import SkillsError
+from eve_assistant.web import charts
 
 # make_plan(character_id, minutes, allow_lowsec, allow_risky) -> plan_id
 PlanMaker = Callable[[int, float, bool, bool], int]
@@ -187,6 +189,16 @@ def _when(value) -> str:
     if not value:
         return "never"
     return f"{value[:10]} {value[11:16]} UTC"
+
+
+def _worth(conn, character_ids) -> SimpleNamespace | None:
+    """Today's net worth and the line to it, for the Characters and Goals pages."""
+    points = worth.history(conn, character_ids)
+    if not points:
+        return None
+    return SimpleNamespace(
+        now=points[-1], line=charts.line([(p.at, p.total) for p in points]), days=worth.DAYS
+    )
 
 
 def _now() -> datetime:
@@ -858,6 +870,7 @@ def create_app(
         conn = db()
         try:
             summaries = overview.all_characters(conn)
+            worth_lines = {c.character_id: _worth(conn, [c.character_id]) for c in summaries}
         finally:
             conn.close()
         recent = login["at"] and (_minutes_since(login["at"]) or 0) < LOGIN_NEWS_MINUTES
@@ -870,6 +883,7 @@ def create_app(
             request,
             "characters.html",
             characters=summaries,
+            worth_lines=worth_lines,
             problems=[],
             missing=missing,
             login=login if login["state"] == "waiting" or recent else None,
@@ -938,20 +952,30 @@ def create_app(
         conn = db()
         try:
             summaries = overview.all_characters(conn)
+            worth_lines = {c.character_id: _worth(conn, [c.character_id]) for c in summaries}
         finally:
             conn.close()
-        return render(request, "characters.html", characters=summaries, problems=problems)
+        return render(
+            request,
+            "characters.html",
+            characters=summaries,
+            worth_lines=worth_lines,
+            problems=problems,
+        )
 
     @app.get(GOALS, response_class=HTMLResponse)
     def goals_page(request: Request, error: str | None = None):
         conn = db()
         try:
-            statuses, problems = [], []
+            statuses, problems, worth_lines = [], [], {}
             for goal in goals.active_goals(conn):
                 try:
                     statuses.append(goals.evaluate(conn, goal))
                 except SkillsError as exc:
                     problems.append(f"{goal.label}: {exc}")
+                if goal.kind in ("isk", "omega"):
+                    whose = [goal.character_id] if goal.character_id else worth.all_characters(conn)
+                    worth_lines[goal.goal_id] = _worth(conn, whose)
             names = _names(conn)
             suggestions = skills.names_in(conn, skills.SHIP_CATEGORY, skills.SKILL_CATEGORY)
             active = active_character(request, conn)
@@ -968,6 +992,7 @@ def create_app(
             suggestions=suggestions,
             omega_view=omega_view,
             hours_a_week=hours_a_week,
+            worth_lines=worth_lines,
             error=error,
         )
 

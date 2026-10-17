@@ -12,7 +12,7 @@ result, and are meant to be replaced by learned values.
 import sqlite3
 from dataclasses import dataclass
 
-from eve_assistant import goals, snapshots
+from eve_assistant import goals, snapshots, worth
 
 # "none": Exordium, where PvP is switched off, so other players cannot take anything.
 BANDS = ("none", "very_low", "low", "medium", "high")
@@ -88,11 +88,7 @@ def item_value(db: sqlite3.Connection, type_id: int) -> float:
 def net_worth(db: sqlite3.Connection, character_id: int) -> float:
     """Wallet plus assets at CCP's average prices (rough, but consistent)."""
     wallet = float(snapshots.latest(db, character_id, "wallet") or 0.0)
-    assets = snapshots.latest(db, character_id, "assets") or []
-    total = 0.0
-    for item in assets:
-        total += item_value(db, item["type_id"]) * item.get("quantity", 1)
-    return wallet + total
+    return wallet + worth.asset_value(db, snapshots.latest(db, character_id, "assets") or [])
 
 
 def ship_exposure(db: sqlite3.Connection, character_id: int) -> float:

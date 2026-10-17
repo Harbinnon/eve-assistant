@@ -552,6 +552,10 @@ progress.isk::-moz-progress-bar { background: var(--isk); }
 .progress progress { flex: none; width: 160px; }
 .progress span { white-space: nowrap; }
 
+/* Net worth over time: a server-drawn line (Characters, Goals). */
+.worth-line { display: block; width: 100%; height: 56px; margin: 6px 0 2px; }
+.worth-line polyline { fill: none; stroke: var(--isk); stroke-width: 2; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+
 /* Theme switch in the footer */
 .theme-switch { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 12px; }
 .theme-switch .label {

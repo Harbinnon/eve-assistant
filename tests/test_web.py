@@ -83,6 +83,27 @@ def test_characters_page_shows_state_and_escapes_player_text(client):
     assert "trademarks or registered trademarks of CCP hf." in page.text
 
 
+def test_characters_and_goals_show_net_worth(client, db_path):
+    conn = store.connect(db_path)
+    conn.execute("INSERT INTO market_prices VALUES (32880, 2000000, NULL, 'x')")
+    conn.execute(
+        "INSERT INTO snapshots (character_id, kind, taken_at, content_hash, payload) "
+        "VALUES (7, 'wallet', '2026-01-01T00:00:00+00:00', 'h', '10000000')"
+    )
+    snapshots.record(conn, 7, "assets", [{"type_id": 32880, "quantity": 1}])
+    conn.close()
+    page = client.get("/characters").text
+    assert "Net worth" in page and "14.3M ISK" in page  # 12.3M wallet + a 2M Venture
+    assert '<svg class="worth-line"' in page and "<polyline points=" in page
+    client.post(
+        "/goals",
+        data={"token": _token(page), "kind": "isk", "target": "50000000", "character": ""},
+        headers={"Origin": LOCAL},
+    )
+    goals_page = client.get("/goals").text
+    assert "Net worth" in goals_page and "14.3M ISK" in goals_page  # all characters
+
+
 def test_skills_page_shows_plan(client):
     page = client.get("/skills", params={"character": "Test Pilot", "item": "Big Barge"})
     assert page.status_code == 200

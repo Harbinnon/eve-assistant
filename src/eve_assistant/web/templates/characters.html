@@ -60,6 +60,7 @@
     <dl class="facts">
       <dt>Skill points</dt><dd>{{ "{:,}".format(c.total_sp) }}</dd>
       <dt>Wallet</dt><dd>{{ c.wallet|isk }} ISK</dd>
+      {% with w = worth_lines.get(c.character_id) %}{% if w %}{% include "_worth.html" %}{% endif %}{% endwith %}
       <dt>Location</dt>
       <dd>{% if c.system_name %}{{ c.system_name }}
         <span class="{{ c.security|security_class }}">{{ c.security|security }}</span>
