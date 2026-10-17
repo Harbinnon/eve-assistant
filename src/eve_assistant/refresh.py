@@ -1,4 +1,4 @@
-"""Refreshing from EVE: snapshots, prices, game logs.
+"""Refreshing from EVE: snapshots, prices, game logs (and the daily backup).
 
 `refresh_all` is the Refresh button and `eve-assistant snapshot`;
 `auto_refresh_once` is one tick of the dashboard's background refresh, which
@@ -12,7 +12,17 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from eve_assistant import auth, gamelogs, goals, outcomes, planner, snapshots, store, structures
+from eve_assistant import (
+    auth,
+    backups,
+    gamelogs,
+    goals,
+    outcomes,
+    planner,
+    snapshots,
+    store,
+    structures,
+)
 from eve_assistant.config import Config
 from eve_assistant.esi.client import EsiClient, EsiError, EsiRateLimited
 from eve_assistant.esi.sso import SSOError
@@ -220,6 +230,7 @@ def auto_refresh_once(
     """One background tick: fetch whatever is due for each logged-in character."""
     report = AutoReport()
     now = now or datetime.now(UTC)
+    report.problems.extend(backups.run_if_due(config.backups_dir, db_path, now))
     characters = auth.list_characters(secrets)
     if not characters:
         return report

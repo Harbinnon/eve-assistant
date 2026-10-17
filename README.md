@@ -81,6 +81,25 @@ eve-assistant serve [--port 8700]      run the dashboard at http://127.0.0.1:870
 Data lives in `var/` (the database and downloaded static data) and is
 gitignored. Tokens are stored encrypted outside the project.
 
+### Backups
+
+The dashboard backs the database up once a day into `var/backups` (or the
+folder set under `[backups]` in `config/local.toml`; another drive or a
+synced folder also survives a disk failure). It keeps the newest backup of
+each of the last 14 days and of each of the last 12 months. Backups leave out
+CCP's static data, which can be downloaded again, so they are small.
+
+```
+eve-assistant backup                   back up now
+eve-assistant backups                  list backups
+eve-assistant restore <file> --confirm put a backup back (close the dashboard first)
+eve-assistant sde-update               after a restore: reload the static data
+```
+
+A restore never deletes your current database; it is moved aside as
+`eve-assistant.before-restore-<time>.sqlite3`. Login tokens are never in a
+backup; on another PC, log in again.
+
 Contributing: see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Licence

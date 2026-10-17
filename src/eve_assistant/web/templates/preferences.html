@@ -39,6 +39,18 @@ goal dates. Your setting is the starting point; recorded sessions take over as w
   <button class="primary" type="submit">Save</button>
 </form>
 
+<h2>Backups</h2>
+<p class="lede">A copy of your history is saved once a day while the dashboard runs. It can't be
+downloaded from EVE again, so keep the folder somewhere safe; another drive or a synced folder is
+best (set <span class="mono">[backups] folder</span> in config/local.toml).</p>
+{% if backups_kept %}
+<p>Last backup {{ backups_kept[0].taken_at.isoformat()|when }} · {{ backups_kept|length }} kept in
+  <span class="mono">{{ backups_folder }}</span></p>
+{% else %}
+<p class="muted">No backup yet. The first one is made within a minute of the dashboard starting,
+or run <span class="mono">eve-assistant backup</span>.</p>
+{% endif %}
+
 <h2>What it has learned</h2>
 <p class="muted">Corrections to the planner's estimates, from your own sessions. They start at the published figures and move as sessions agree.</p>
 <ul>

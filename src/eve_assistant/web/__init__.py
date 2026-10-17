@@ -25,6 +25,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from eve_assistant import (
+    backups,
     corrections,
     explain,
     goals,
@@ -140,6 +141,7 @@ def create_app(
     allowed_hosts: tuple[str, ...] = LOCAL_HOSTS,
     auto_refresh: AutoRefresher | None = None,
     auto_tick_seconds: float = AUTO_TICK_SECONDS,
+    backups_dir: Path | str | None = None,
 ) -> FastAPI:
     """refresh: called by the Refresh button; returns problem lines, empty when all went well.
     make_plan: builds and records a plan (needs ESI), returning its ID.
@@ -431,6 +433,8 @@ def create_app(
             ]
             play_time = pace.weekly_play(conn)
             finish = pace.finish_rate(conn)
+            folder = Path(backups_dir) if backups_dir else backups.default_folder(db_path)
+            kept = backups.list_backups(folder)
         finally:
             conn.close()
         return render(
@@ -444,6 +448,8 @@ def create_app(
             learned=learned,
             play_time=play_time,
             finish=finish,
+            backups_folder=folder,
+            backups_kept=kept,
         )
 
     @app.post("/preferences-play-time")
