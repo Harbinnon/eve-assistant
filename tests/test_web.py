@@ -1155,3 +1155,28 @@ def test_the_compare_list_only_takes_plan_numbers(planning_client):
     page = planning_client.get("/today?compare=1,x,%3Cscript%3E").text
     assert "Who should play" not in page  # no such plans
     assert "<script>" not in page
+
+
+# --- Omega comparison and a PLEX goal (roadmap 3.5) -------------------------------
+
+
+def test_goals_say_what_omega_would_change(client, monkeypatch):
+    from eve_assistant import omega
+    from eve_assistant.omega import Mining, OmegaComparison
+
+    monkeypatch.setattr(
+        omega,
+        "compare",
+        lambda _db, _cid: OmegaComparison(
+            "Test Pilot", Mining("Venture", 384.0), Mining("Procurer", 833.0), 92.0, 4_735_090.0
+        ),
+    )
+    page = client.get("/goals").text
+    assert "What Omega would change · Test Pilot" in page
+    assert "m³/min · Procurer" in page
+    assert "it pays for itself only past about" in page
+    added = client.post(
+        "/goals",
+        data={"token": _token(page), "kind": "omega", "target": "1", "character": "Test Pilot"},
+    )
+    assert "Omega for 1 month (500 PLEX)" in added.text

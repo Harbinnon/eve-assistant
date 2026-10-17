@@ -41,6 +41,7 @@ from eve_assistant import (
     history,
     images,
     numbers,
+    omega,
     outcomes,
     overview,
     pace,
@@ -952,6 +953,9 @@ def create_app(
                     problems.append(f"{goal.label}: {exc}")
             names = _names(conn)
             suggestions = skills.names_in(conn, skills.SHIP_CATEGORY, skills.SKILL_CATEGORY)
+            active = active_character(request, conn)
+            omega_view = omega.compare(conn, active[0]) if active else None
+            hours_a_week = pace.weekly_play(conn).minutes / 60
         finally:
             conn.close()
         return render(
@@ -961,6 +965,8 @@ def create_app(
             problems=problems,
             character_names=names,
             suggestions=suggestions,
+            omega_view=omega_view,
+            hours_a_week=hours_a_week,
             error=error,
         )
 
@@ -1036,6 +1042,9 @@ def create_app(
             elif kind == "isk":
                 amount = float(target.replace(",", "").replace("_", "").strip() or 0)
                 goals.add_goal(conn, "isk", character_id, isk=amount)
+            elif kind == "omega":
+                months = int(target.strip() or 1) if target.strip().isdigit() else level or 1
+                goals.add_goal(conn, "omega", character_id, level=months)
             else:
                 raise GoalError("Choose a goal type.")
         except (GoalError, SkillsError, ValueError) as exc:
