@@ -277,6 +277,10 @@ def describe(code: str, detail: dict | None = None) -> str:
             "No build suggested yet: the system's industry cost index hasn't been read "
             "(once a day while the dashboard runs)."
         ),
+        "not_refinable": lambda: (
+            f"{d.get('name', 'This ore')} can't be refined (CCP's data lists nothing it refines "
+            "into), so only selling it raw is compared."
+        ),
         "gas_estimate": lambda: (
             f"{d.get('ship')}: about {d.get('m3_per_minute', 0):,.0f} m3 of gas a minute with "
             f"{d.get('harvesters', 0)} harvester{'s' if d.get('harvesters', 0) != 1 else ''} "
