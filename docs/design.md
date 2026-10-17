@@ -434,12 +434,17 @@ Each option is rated on two axes.
 milestone 4): ships and pods destroyed in each system on the way in the
 last hour, and active incursions, from ESI's public data, read every hour.
 Quiet highsec is "very low", busy highsec or quiet lowsec "low", active
-lowsec "medium"; five or more ships and pods lost in one system in the
-hour counts as camped ("high"), and an incursion makes it at least
-"medium". Each rating carries the reasons ("6 ships or pods destroyed in
-the last hour along the way (Uedama)"). When the signals are over three
-hours old, security alone decides (highsec low, lowsec medium) and the plan
-says so. Routes go around camped systems when there's another way.
+lowsec "medium". A highsec system with 20 or more ships and pods destroyed
+in the hour is a gank hotspot or busy hub ("medium"); elsewhere 10 or more
+is likely camped ("high"); an incursion makes it at least "medium". (On a
+real hour, 17 Oct 2026, 99% of highsec systems had under 14 and 95% of
+lowsec under 5; the top ones were Sivala, Jita, Uedama, Obe and Amamake.)
+Each rating carries the reasons ("163 ships or pods destroyed in the last
+hour along the way, most in Sivala (63), Jita (44) and Uedama (35)"). When
+the signals are over three hours old, security alone decides (highsec
+low, lowsec medium) and the plan says so. Routes weigh each hotspot on the
+way as five extra jumps, so a short detour around one is taken and a long
+one isn't.
 Exordium has PvP switched off, so it is rated "no player risk" and always
 green. **Lawless highsec systems cannot be detected** (section 10), which
 is stated on any route that leaves Exordium. Still to come: time of day,
