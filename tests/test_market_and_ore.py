@@ -256,5 +256,7 @@ def test_a_structure_market_that_cannot_be_read_falls_back(db):
 
 def test_structures_without_access_are_refused(db):
     _structure(db, accessible=0)
-    with httpx.Client() as http, pytest.raises(ore.OreError, match="can access"):
-        ore.analyse(db, EsiClient(http, db, base_url=BASE), 7, ORE, 500, STRUCTURE)
+    with httpx.Client() as http:
+        esi = EsiClient(http, db, base_url=BASE)
+        with pytest.raises(ore.OreError, match="can access"):
+            ore.analyse(db, esi, 7, ORE, 500, STRUCTURE)
