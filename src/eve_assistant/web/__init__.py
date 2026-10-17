@@ -66,6 +66,9 @@ log = logging.getLogger(__name__)
 TODAY = "/today"
 GOALS = "/goals"
 SETTINGS = "/settings"
+CHARACTERS = "/characters"
+# Every character, by name: the switch, History and the learning lines.
+CHARACTERS_BY_NAME = "SELECT character_id, name FROM characters ORDER BY name"
 UNKNOWN_ACTION = "Unknown action."
 COMMIT_WITH_THE_PLAN = (
     "Steps aren't taken on one by one: press “Start this plan” to start the whole "
@@ -138,9 +141,7 @@ THEME_COOKIE = "theme"
 THEME_MAX_AGE = 365 * 24 * 3600
 # Pages the theme form may return to; anything else goes to Today.
 # Each maps to itself, so the redirect is always one of these constants.
-RETURN_PAGES = {
-    page: page for page in (TODAY, "/characters", GOALS, "/skills", "/history", SETTINGS)
-}
+RETURN_PAGES = {page: page for page in (TODAY, CHARACTERS, GOALS, "/skills", "/history", SETTINGS)}
 
 BAND_LABELS = {
     "none": "No player risk (Exordium)",
@@ -371,7 +372,7 @@ def create_app(
         try:
             static_data = sde.update_status(conn)
             playing = bool(sessions.open_sessions(conn))
-            everyone = conn.execute("SELECT character_id, name FROM characters ORDER BY name")
+            everyone = conn.execute(CHARACTERS_BY_NAME)
             everyone = [(r["character_id"], r["name"]) for r in everyone]
             active = active_character(request, conn)
         finally:
@@ -806,11 +807,11 @@ def create_app(
             past = history.sessions_history(conn)
             speeds = [
                 (r["name"], corrections.mining_observations(conn, r["character_id"]))
-                for r in conn.execute("SELECT character_id, name FROM characters ORDER BY name")
+                for r in conn.execute(CHARACTERS_BY_NAME)
             ]
             # Characters with the same text share one line ("not yet checked" thrice is noise).
             learned_by_text: dict[str, list[str]] = {}
-            for r in conn.execute("SELECT character_id, name FROM characters ORDER BY name"):
+            for r in conn.execute(CHARACTERS_BY_NAME):
                 reason = corrections.correction(conn, r["character_id"], "mining_rate").reason()
                 text = explain.describe(reason.code, reason.detail)
                 learned_by_text.setdefault(text, []).append(r["name"])
@@ -829,7 +830,7 @@ def create_app(
             band_labels=BAND_LABELS,
         )
 
-    @app.get("/characters", response_class=HTMLResponse)
+    @app.get(CHARACTERS, response_class=HTMLResponse)
     def characters_page(request: Request):
         conn = db()
         try:
@@ -882,7 +883,7 @@ def create_app(
                 400, "Adding characters isn't available here; run eve-assistant login instead."
             )
         if not login_running.acquire(blocking=False):
-            return back("/characters")  # already waiting for one
+            return back(CHARACTERS)  # already waiting for one
 
         def run() -> None:
             try:
@@ -897,14 +898,14 @@ def create_app(
 
         login.update(state="waiting", message=None, at=store.utc_now())
         threading.Thread(target=run, daemon=True).start()
-        return back("/characters")
+        return back(CHARACTERS)
 
     @app.post("/refresh", response_class=HTMLResponse)
     def refresh_now(request: Request, token: str = Form(...)):
         check_form(request, token)
         problems = refresh() if refresh else ["Refreshing is not available here."]
         if not problems:
-            return back("/characters", msg="refreshed")
+            return back(CHARACTERS, msg="refreshed")
         conn = db()
         try:
             summaries = overview.all_characters(conn)

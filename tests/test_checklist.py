@@ -95,11 +95,12 @@ def test_ticks_are_append_only(db):
 def test_only_running_sessions_and_their_own_steps(db):
     plan, other = _plan(db), _plan(db)
     session = sessions.start(db, CHAR, plan.plan_id, now=START)
+    foreign_step, own_step = _items(db, other.plan_id)[0], _items(db, plan.plan_id)[0]
     with pytest.raises(checklist.ChecklistError, match="isn't part of"):
-        checklist.mark(db, session.session_id, _items(db, other.plan_id)[0], done=True)
+        checklist.mark(db, session.session_id, foreign_step, done=True)
     sessions.finish(db, session.session_id, now="2026-10-17T19:00:00+00:00")
     with pytest.raises(checklist.ChecklistError, match="already ended"):
-        checklist.mark(db, session.session_id, _items(db, plan.plan_id)[0], done=True)
+        checklist.mark(db, session.session_id, own_step, done=True)
 
 
 def test_ticking_a_project_step_logs_its_minutes_once(db):

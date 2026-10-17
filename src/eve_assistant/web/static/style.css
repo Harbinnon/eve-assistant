@@ -572,7 +572,7 @@ footer { color: var(--muted); font-size: 12px; border-top: 1px solid var(--line)
 .auto-status { margin: 0 0 6px; }
 
 /* Phones and narrow windows */
-.nav-narrow { display: none; }
+.nav-narrow { display: none; position: relative; margin-left: auto; }
 .nav-narrow summary {
   cursor: pointer;
   list-style: none;
@@ -587,7 +587,6 @@ footer { color: var(--muted); font-size: 12px; border-top: 1px solid var(--line)
 .nav-narrow summary::-webkit-details-marker { display: none; }
 .nav-narrow summary::after { content: " \25BE"; color: var(--action); }
 .nav-narrow[open] summary::after { content: " \25B4"; }
-.nav-narrow { position: relative; margin-left: auto; }
 .nav-narrow nav {
   position: absolute;
   right: 0;
@@ -632,11 +631,14 @@ footer { color: var(--muted); font-size: 12px; border-top: 1px solid var(--line)
     clip-path: inset(50%);
     white-space: nowrap;
   }
-  .table-wrap table:not(.keep-grid) tr { padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .table-wrap table:not(.keep-grid) tr {
+    display: flex; /* numbers two to a line, so a card isn't one long column */
+    flex-wrap: wrap;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--line);
+  }
   .table-wrap table:not(.keep-grid) tr:last-child { border-bottom: 0; }
   .table-wrap table:not(.keep-grid) td { border: 0; padding: 4px 14px; text-align: left; white-space: normal; }
-  /* Numbers two to a line, so a card isn't one long column */
-  .table-wrap table:not(.keep-grid) tr { display: flex; flex-wrap: wrap; }
   .table-wrap table:not(.keep-grid) td.num { width: 50%; }
   .table-wrap table:not(.keep-grid) td[data-label]::before {
     content: attr(data-label);
