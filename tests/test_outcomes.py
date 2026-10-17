@@ -53,6 +53,7 @@ def db():
         "INSERT INTO sde_types (type_id, name, group_id, published, volume) VALUES (?, ?, 1, 1, ?)",
         [(VELDSPAR, "Veldspar", 0.1), (PLAG, "Plagioclase", 0.35)],
     )
+    # CCP's average prices: outcomes must not value ore with these.
     conn.executemany(
         "INSERT INTO market_prices VALUES (?, ?, NULL, 'x')", [(VELDSPAR, 15.0), (PLAG, 60.0)]
     )
@@ -74,11 +75,31 @@ def _plan(db) -> int:
     db.execute(
         "INSERT INTO plan_items (plan_id, position, kind, key, title, isk, minutes, risk_rating, "
         "expected_loss, details) VALUES (?, 0, 'mining', 'k', 'Mine Veldspar', 4000000, 50, "
-        "'green', 0, '{}')",
-        (plan_id,),
+        "'green', 0, ?)",
+        (plan_id, json.dumps({"inputs": {"type_id": VELDSPAR, "quantity": 200_000}})),
     )
     db.commit()
     planner.respond(db, db.execute("SELECT MAX(item_id) FROM plan_items").fetchone()[0], "do")
+    return plan_id
+
+
+def _priced_plan(db, minutes: float, steps: list[tuple[int, int, float, int | None]]) -> int:
+    """A plan made `minutes` after 18:00 on DAY with mining steps of
+    (type_id, quantity, isk, position); position None is an alternative."""
+    plan_id = db.execute(
+        "INSERT INTO plans (character_id, created_at, minutes_available, inputs) "
+        "VALUES (?, ?, 60, '{}')",
+        (CHAR, at(minutes)),
+    ).lastrowid
+    for type_id, quantity, isk, position in steps:
+        db.execute(
+            "INSERT INTO plan_items (plan_id, position, kind, key, title, isk, minutes, "
+            "risk_rating, expected_loss, details) VALUES (?, ?, 'mining', 'k', 'Mine', ?, 50, "
+            "'green', 0, ?)",
+            (plan_id, position, isk,
+             json.dumps({"inputs": {"type_id": type_id, "quantity": quantity}})),
+        )  # fmt: skip
+    db.commit()
     return plan_id
 
 
@@ -158,13 +179,58 @@ def test_ore_mined_is_the_ledger_difference(db):
     mined = {m["name"]: m for m in details["mined"]}
     assert mined["Veldspar"]["units"] == 300
     assert mined["Veldspar"]["m3"] == pytest.approx(30)
-    assert mined["Plagioclase"]["value"] == 60_000
     assert details["mined_m3"] == pytest.approx(380)
-    assert details["mined_value"] == pytest.approx(64_500)
+
+
+def test_ore_sold_in_the_session_is_priced_by_that_sale(db):
+    _usual_data(db)  # sold Veldspar at 20 ISK a unit, 2.5% tax in the journal
+    _priced_plan(db, -2 * 24 * 60, [(VELDSPAR, 1000, 30_000, 0)])  # older than the sale
+    _priced_plan(db, -8 * 24 * 60, [(PLAG, 1000, 50_000, 0)])  # more than a week old
+    _settled, details = outcomes.compute(db, _played(db), now=at(65))
+    mined = {m["name"]: m for m in details["mined"]}
+    assert mined["Veldspar"]["price"] == {"unit_isk": pytest.approx(19.5), "from": "sales"}
+    assert mined["Plagioclase"]["value"] is None
+    assert details["mined_value"] == pytest.approx(300 * 19.5)
+    assert {"code": "ore_unpriced", "names": "Plagioclase"} in details["notes"]
+
+
+def test_sale_price_without_the_journal_assumes_full_tax(db):
+    snap(db, "mining_ledger", ledger({VELDSPAR: 100}), 0)
+    snap(db, "mining_ledger", ledger({VELDSPAR: 400}), 60)
+    snap(db, "wallet_transactions", TRANSACTIONS, 60)
+    _settled, details = outcomes.compute(db, _played(db), now=at(65))
+    assert details["mined"][0]["price"]["unit_isk"] == pytest.approx(20 * (1 - 0.075))
+
+
+def test_ore_nothing_priced_is_unknown_not_zero(db):
+    snap(db, "mining_ledger", ledger({VELDSPAR: 100}), 0)
+    snap(db, "mining_ledger", ledger({VELDSPAR: 400, PLAG: 1000}), 60)
+    _settled, details = outcomes.compute(db, _played(db), now=at(65))
+    assert [m["value"] for m in details["mined"]] == [None, None]
+    assert details["mined_value"] is None
+    assert {"code": "ore_unpriced", "names": "Plagioclase, Veldspar"} in details["notes"]
+
+
+def test_ore_is_valued_at_the_plans_sale_prices(db):
+    plan_id = _plan(db)  # this session's plan: Veldspar at 20 ISK a unit
+    _priced_plan(db, -60, [(VELDSPAR, 1000, 30_000, 0)])  # newer, but not the session's plan
+    _priced_plan(db, -2 * 24 * 60, [(PLAG, 1000, 40_000, None), (PLAG, 1000, 50_000, 0)])
+    _priced_plan(db, 120, [(PLAG, 1000, 90_000, 0)])  # made after the session
+    _usual_data(db)
+    _settled, details = outcomes.compute(db, _played(db, plan_id=plan_id), now=at(65))
+    mined = {m["name"]: m for m in details["mined"]}
+    assert mined["Veldspar"]["value"] == pytest.approx(300 * 20)
+    assert mined["Veldspar"]["price"]["plan_id"] == plan_id
+    # Chosen steps before alternatives; not CCP's average price (60).
+    assert mined["Plagioclase"]["value"] == pytest.approx(1000 * 50)
+    assert mined["Plagioclase"]["price"]["priced_at"] == at(-2 * 24 * 60)
+    assert details["mined_value"] == pytest.approx(56_000)
+    assert not any(n["code"] == "ore_unpriced" for n in details["notes"])
 
 
 def test_provisional_until_fresh_data_then_settled(db):
     _usual_data(db)
+    _priced_plan(db, -30, [(VELDSPAR, 1000, 20_000, 0), (PLAG, 1000, 50_000, 0)])
     session = _played(db)
     assert outcomes.update(db, now=at(65)) == 1
     first = outcomes.latest(db, session.session_id)
@@ -252,3 +318,24 @@ def test_cli_lists_outcomes(tmp_path, monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "Wallet change: +2,355,000 ISK." in out
     assert "Ore mined is unknown" in out
+
+
+def test_cli_shows_ore_value_at_plan_prices(tmp_path, monkeypatch, capsys):
+    path = tmp_path / "cli.sqlite3"
+    conn = store.connect(path)
+    snapshots.ensure_character(conn, CHAR, "Miner")
+    conn.execute(
+        "INSERT INTO sde_types (type_id, name, group_id, published, volume) "
+        "VALUES (?, 'Veldspar', 1, 1, 0.1)",
+        (VELDSPAR,),
+    )
+    _priced_plan(conn, -30, [(VELDSPAR, 1000, 20_000, 0)])
+    snap(conn, "mining_ledger", ledger({VELDSPAR: 100}), 0)
+    snap(conn, "mining_ledger", ledger({VELDSPAR: 400}), 60)
+    _played(conn)
+    conn.close()
+    monkeypatch.setattr(store, "connect", functools.partial(store.connect, path))
+    monkeypatch.setattr(outcomes, "utc_now", lambda: at(65))
+    assert cli.main(["outcomes"]) == 0
+    out = capsys.readouterr().out
+    assert "Ore mined: 30 m3, worth about 6,000 ISK at buyers' prices after tax." in out

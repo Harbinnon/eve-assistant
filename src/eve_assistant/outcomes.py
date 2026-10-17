@@ -7,6 +7,11 @@ Worked out from data EVE already keeps, with no input from the player:
 - **Market trades**: wallet transactions inside the session, per item.
 - **Ore mined**: the mining ledger counts ore per day, not per session, so
   the session's share is the ledger at the end minus the ledger at the start.
+- **Ore value**: the way plans value ore, so the two can be compared: what
+  buyers pay, after sales tax, per unit. The price is the one this session's
+  plan used, else what the ore sold for in the session, else the one the
+  latest plan in the week before the session ended used. Ore none of these
+  priced is left out.
 
 Only amounts, dates, types and reference types are copied. Counterparties
 (other players' IDs) and journal descriptions or reasons (which can be
@@ -26,7 +31,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from eve_assistant import gamelogs, sessions
+from eve_assistant import fees, gamelogs, sessions
 from eve_assistant.sessions import PlaySession
 from eve_assistant.store import utc_now
 
@@ -45,6 +50,8 @@ START_STALE = timedelta(minutes=15)
 # Mining after this long past the end isn't counted as the session's, and
 # the ledger part settles with whatever was seen by then.
 LEDGER_CAP = timedelta(hours=2)
+# Plans older than this before the session ended don't price its ore.
+PRICE_MAX_AGE = timedelta(days=7)
 
 NOTES = {
     "provisional": "Provisional: EVE caches wallet and mining data for up to an hour. "
@@ -55,6 +62,8 @@ NOTES = {
     "so ore mined may be incomplete.",
     "after_next_session": "The next session started soon after; mining was counted up "
     "to its start.",
+    "ore_unpriced": "Left out of the ore's value because no plan from the week before "
+    "priced it and it wasn't sold in the session: {names}.",
 }
 
 
@@ -148,22 +157,87 @@ def _types(db: sqlite3.Connection, type_ids) -> dict[int, sqlite3.Row]:
         return {}
     marks = ",".join("?" * len(ids))
     rows = db.execute(
-        f"SELECT t.type_id, t.name, t.volume, p.average_price FROM sde_types t "  # noqa: S608  # placeholders only
-        f"LEFT JOIN market_prices p USING (type_id) WHERE t.type_id IN ({marks})",
+        f"SELECT type_id, name, volume FROM sde_types WHERE type_id IN ({marks})",  # noqa: S608  # placeholders only
         ids,
     )
     return {r["type_id"]: r for r in rows}
 
 
-def _isk(db, character_id, start, end, now) -> tuple[dict, str | None]:
+def _plan_prices(db: sqlite3.Connection, session: PlaySession, type_ids, end) -> dict[int, dict]:
+    """ISK per unit for each ore, as plans priced it: a mining step's ISK (sold
+    where the plan would sell it, after tax) over its quantity. This session's
+    plan first, then the newest plan in the week before the session ended;
+    chosen steps before alternatives."""
+    wanted = set(type_ids)
+    if not wanted:
+        return {}
+    rows = db.execute(
+        "SELECT p.plan_id, p.created_at, i.isk, i.details FROM plan_items i "
+        "JOIN plans p USING (plan_id) WHERE p.character_id = ? AND i.kind = 'mining' "
+        "AND (p.plan_id IS ? OR p.created_at BETWEEN ? AND ?) "
+        "ORDER BY p.plan_id IS ? DESC, p.created_at DESC, i.position IS NULL, i.item_id",
+        (session.character_id, session.plan_id, _stamp(end - PRICE_MAX_AGE), _stamp(end),
+         session.plan_id),
+    )  # fmt: skip
+    prices: dict[int, dict] = {}
+    for row in rows:
+        inputs = json.loads(row["details"]).get("inputs", {})
+        type_id, quantity = inputs.get("type_id"), inputs.get("quantity")
+        if type_id in wanted and type_id not in prices and quantity and row["isk"] > 0:
+            prices[type_id] = {
+                "unit_isk": row["isk"] / quantity,
+                "from": "plan",
+                "plan_id": row["plan_id"],
+                "priced_at": row["created_at"],
+            }
+    return prices
+
+
+def _sale_prices(sold: list[dict], tax_rate: float | None) -> dict[int, dict]:
+    """ISK per unit, after sales tax, for ore sold in the session. Without
+    the journal's tax the full rate is assumed, so value isn't overstated."""
+    rate = tax_rate if tax_rate is not None else fees.sales_tax(0)
+    return {
+        s["type_id"]: {"unit_isk": s["isk"] / s["units"] * (1 - rate), "from": "sales"}
+        for s in sold
+        if s["units"] > 0
+    }
+
+
+def _ore_prices(db, session: PlaySession, type_ids, end, sales: dict[int, dict]) -> dict:
+    """This session's plan first, then the session's own sales, then plans
+    from the week before."""
+    planned = _plan_prices(db, session, type_ids, end)
+    prices = {}
+    for type_id in type_ids:
+        plan_price = planned.get(type_id)
+        if plan_price and plan_price["plan_id"] == session.plan_id:
+            prices[type_id] = plan_price
+        elif type_id in sales:
+            prices[type_id] = sales[type_id]
+        elif plan_price:
+            prices[type_id] = plan_price
+    return prices
+
+
+def _isk(db, character_id, start, end, now) -> tuple[dict, str | None, float | None]:
+    """ISK by group, when the journal was read, and the sales tax rate paid
+    in the session (None without sales)."""
     checked_at, journal = _payload_at(db, character_id, "wallet_journal", now)
     groups = dict.fromkeys(
         ("market_sales", "market_purchases", "taxes_fees", "contracts", "other"), 0.0
     )
+    sales = tax = 0.0
     for entry in journal or []:
         if _in_window(entry, start, end):
-            groups[_journal_group(entry)] += float(entry.get("amount", 0.0))
-    return {"net": sum(groups.values()), **groups}, checked_at
+            amount = float(entry.get("amount", 0.0))
+            groups[_journal_group(entry)] += amount
+            if entry.get("ref_type") == "market_transaction" and amount > 0:
+                sales += amount
+            elif entry.get("ref_type") == "transaction_tax":
+                tax -= amount
+    rate = tax / sales if sales > 0 else None
+    return {"net": sum(groups.values()), **groups}, checked_at, rate
 
 
 def _trades(db, character_id, start, end, now) -> tuple[list[dict], list[dict]]:
@@ -195,9 +269,11 @@ def _ledger_totals(payload) -> dict[tuple[str, int, int], int]:
     return totals
 
 
-def _mined(db, session: PlaySession, start, end, next_start, now) -> tuple[dict, list, bool]:
-    """Ore mined in the session from the ledger difference.
-    Returns (facts, notes, settled)."""
+def _mined(
+    db, session: PlaySession, start, end, next_start, now, sales: dict[int, dict]
+) -> tuple[dict, list, bool]:
+    """Ore mined in the session from the ledger difference, valued per unit
+    (see _ore_prices). Returns (facts, notes, settled)."""
     cid = session.character_id
     notes: list[dict] = []
     facts: dict = {"mined": None, "mined_m3": None, "mined_value": None}
@@ -227,24 +303,31 @@ def _mined(db, session: PlaySession, start, end, next_start, now) -> tuple[dict,
         if gained > 0:  # old days drop out of the ledger after 30 days
             by_type[key[1]] += gained
     types = _types(db, by_type)
+    prices = _ore_prices(db, session, by_type, end, sales)
     mined = []
     for type_id, units in sorted(by_type.items()):
         row = types.get(type_id)
         volume = row["volume"] if row and row["volume"] is not None else None
-        price = row["average_price"] if row else None
+        price = prices.get(type_id)
         mined.append(
             {
                 "type_id": type_id,
                 "name": row["name"] if row else str(type_id),
                 "units": units,
                 "m3": units * volume if volume is not None else None,
-                "value": units * price if price is not None else None,
+                "value": units * price["unit_isk"] if price else None,
+                "price": price,
             }
         )
+    unpriced = [m["name"] for m in mined if m["price"] is None]
+    if unpriced:
+        notes.append({"code": "ore_unpriced", "names": ", ".join(unpriced)})
+    priced = [m["value"] for m in mined if m["value"] is not None]
     facts = {
         "mined": mined,
         "mined_m3": sum(m["m3"] or 0 for m in mined),
-        "mined_value": sum(m["value"] or 0 for m in mined),
+        # Unknown rather than zero when ore was mined but none of it was priced.
+        "mined_value": sum(priced) if priced or not mined else None,
         "ledger_start_at": start_at,
         "ledger_end_at": end_at,
     }
@@ -288,7 +371,7 @@ def compute(
     start, end = _parse(session.started_at), _parse(session.ended_at)
     window_end = end + END_GRACE
 
-    isk, journal_at = _isk(db, session.character_id, start, window_end, now_dt)
+    isk, journal_at, tax_rate = _isk(db, session.character_id, start, window_end, now_dt)
     sold, bought = _trades(db, session.character_id, start, window_end, now_dt)
     journal_settles = end + JOURNAL_CACHE + SLACK
     journal_settled = (
@@ -296,7 +379,7 @@ def compute(
         is not None
     )
     mining, notes, ledger_settled = _mined(
-        db, session, start, end, _next_start(db, session), now_dt
+        db, session, start, end, _next_start(db, session), now_dt, _sale_prices(sold, tax_rate)
     )
     settled = journal_settled and ledger_settled
     if not settled:
