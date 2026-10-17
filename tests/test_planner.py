@@ -12,6 +12,7 @@ import pytest
 import respx
 
 from eve_assistant import planner, preferences, risk, sde, snapshots, store
+from eve_assistant.activities import hauling
 from eve_assistant.esi.client import EsiClient
 
 HOME, LOW = 31000001, 31000002
@@ -225,10 +226,10 @@ def test_ship_capacity_decides_what_can_be_hauled():
         )  # fmt: skip
 
     holds = (50.0, 5000.0)  # cargo, ore hold
-    assert planner._fits_in_ship(option(4000), holds)  # ore goes in the ore hold
-    assert not planner._fits_in_ship(option(6000), holds)
-    assert not planner._fits_in_ship(option(100, is_ore=False), holds)  # minerals: cargo only
-    assert planner._fits_in_ship(option(10**9, jumps=0), holds)  # selling where it is
+    assert hauling.fits_in_ship(option(4000), holds)  # ore goes in the ore hold
+    assert not hauling.fits_in_ship(option(6000), holds)
+    assert not hauling.fits_in_ship(option(100, is_ore=False), holds)  # minerals: cargo only
+    assert hauling.fits_in_ship(option(10**9, jumps=0), holds)  # selling where it is
 
 
 @respx.mock
@@ -290,7 +291,7 @@ def test_mining_uses_the_learned_speed_but_records_the_raw_estimate(db, monkeypa
     assert "not_learned_yet" in codes
 
     monkeypatch.setattr(
-        planner.corrections,
+        corrections,
         "correction",
         lambda *_args: corrections.Correction("mining_rate", 0.5, 4, 0.4),
     )

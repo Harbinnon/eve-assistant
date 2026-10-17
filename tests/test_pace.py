@@ -2,7 +2,8 @@ import json
 
 import pytest
 
-from eve_assistant import goals, pace, planner, projects, sessions, snapshots, store
+from eve_assistant import goals, pace, projects, sessions, snapshots, store
+from eve_assistant.activities import projects as project_steps
 from eve_assistant.risk import RiskRating
 
 NOW = "2026-10-21T12:00:00+00:00"  # a Wednesday; the week started Monday 19 Oct
@@ -73,7 +74,7 @@ def test_finish_rate_moves_from_the_guess(db):
 
 def test_project_items_use_the_learned_rate():
     finish = pace.FinishRate(0.25, 3, 1)
-    item = planner._project_item(
+    item = project_steps.project_item(
         kind="haul",
         key="k",
         title="Haul",
