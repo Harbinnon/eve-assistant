@@ -612,7 +612,7 @@ login (§4.1–4.2), whatever the code licence says.
 2. **Security headers: done.** Every response carries a strict
    Content-Security-Policy (`default-src 'none'`, only the dashboard's own
    stylesheet, forms only to itself, no framing), plus `X-Frame-Options:
-   DENY`, `nosniff`, `no-referrer`, same-origin isolation, a
+   DENY`, `nosniff`, `Referrer-Policy: same-origin` (no referrer to other sites; `no-referrer` made browsers send `Origin: null` on the dashboard's own forms), same-origin isolation, a
    Permissions-Policy and `Cache-Control: no-store`. Pages contain no
    scripts or inline styles; a test enforces it.
 3. **Dependency vulnerability checks: done.** `pip-audit` (approved by the

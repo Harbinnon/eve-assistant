@@ -356,7 +356,7 @@ def test_security_headers_on_pages_and_static_files(client):
         assert "frame-ancestors 'none'" in headers["content-security-policy"]
         assert headers["x-frame-options"] == "DENY"
         assert headers["x-content-type-options"] == "nosniff"
-        assert headers["referrer-policy"] == "no-referrer"
+        assert headers["referrer-policy"] == "same-origin"
         assert headers["cache-control"] == "no-store"
 
 
@@ -467,3 +467,18 @@ def test_sessions_work_without_a_snapshot_taker(planning_client):
     started = planning_client.post("/sessions/start", data={"token": token, "plan_id": plan_id})
     assert "Snapshots are not available here" in started.text
     assert "Playing now" in started.text
+
+
+def test_forms_accept_the_dashboards_own_origin_as_a_browser_sends_it(planning_client):
+    """A real browser sends the page's origin on form posts (the test client sends
+    none), so check the cross-site guard lets the dashboard's own origin through
+    and still refuses others, including the "null" origin."""
+    token = _token(planning_client.get("/today").text)
+    form = {"token": token, "character": "Test Pilot", "minutes": "30"}
+    own = planning_client.post(
+        "/today/plan", data=form, headers={"origin": LOCAL}, follow_redirects=False
+    )
+    assert own.status_code == 303
+    for origin in ("null", "https://evil.example", "http://127.0.0.1:9999"):
+        refused = planning_client.post("/today/plan", data=form, headers={"origin": origin})
+        assert refused.status_code == 403
