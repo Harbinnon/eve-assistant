@@ -22,6 +22,7 @@ dist/
 .pytest_cache/
 .ruff_cache/
 .coverage
+coverage.xml
 htmlcov/
 
 # Editors and OS

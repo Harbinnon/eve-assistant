@@ -581,15 +581,17 @@ In order; each box is ticked in this document when done.
 - [x] GitHub secret scanning with **push protection** switched on.
 - [x] **Dependabot** alerts and security updates switched on.
 - [x] **CodeQL** code scanning added (GitHub's default setup).
-- [ ] **SonarQube Cloud** added: code quality, security hotspots,
+- [x] **SonarQube Cloud** added: code quality, security hotspots,
       duplication and test coverage, with a pass/fail quality gate on every
-      pull request. Needs:
-  - a SonarQube token stored by the owner as a GitHub repository secret
-    (never in chat or the code);
-  - `pytest-cov` as a development library (owner's approval) so coverage
-    can be reported;
-  - its GitHub Action pinned to a commit SHA like the others;
-  - a first pass to fix real findings and mark the rest as reviewed.
+      pull request (EU region, CI-based analysis, not Automatic Analysis).
+  - [x] SonarQube token stored by the owner as the `SONAR_TOKEN` GitHub
+    repository secret (never in chat or the code);
+  - [x] `pytest-cov` added as a development library (owner's approval) so
+    coverage can be reported;
+  - [x] its GitHub Action pinned to a commit SHA like the others, and
+    allowed by name in the repository's Actions settings. The step is
+    skipped for forks and Dependabot, which do not get the secret;
+  - [ ] a first pass to fix real findings and mark the rest as reviewed.
 
   Run CodeQL and SonarQube side by side for a few weeks, then drop or tune
   whichever is noisy.
