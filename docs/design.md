@@ -724,6 +724,21 @@ In order; each box is ticked in this document when done.
 
 ## 9. Technical design
 
+### Backups
+
+The history this tool builds can't be fetched again: ESI keeps about 30
+days of wallet and mining data, and plans, sessions and outcomes exist
+nowhere else. The background task makes a backup once a day (and
+`eve-assistant backup` on demand) with SQLite's online-backup API, which is
+consistent while the dashboard writes. CCP's static data and the ESI cache
+are left out, since they can be downloaded again, so a backup is about 2 MB
+against a 25 MB database. Each backup is integrity-checked; the newest of
+each of the last 14 days and of each of the last 12 months are kept. A
+restore checks the file first, moves the current database aside (never
+deletes it), puts the original back if anything fails, and applies newer
+migrations. Login tokens live in the secret store, never in the database,
+so never in a backup.
+
 ### Keeping data current
 
 While the dashboard runs, a background task wakes every minute and fetches

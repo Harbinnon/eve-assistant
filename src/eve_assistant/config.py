@@ -27,6 +27,7 @@ class Config:
     mode: str
     gamelogs_dir: Path | None = None  # EVE's Gamelogs folder; None: don't read logs
     auto_refresh: bool = True  # refresh from EVE in the background while the dashboard runs
+    backups_dir: Path | None = None  # None: var/backups next to the database
 
 
 def _is_placeholder(value: str | None) -> bool:
@@ -56,6 +57,7 @@ def load_config(path: Path = DEFAULT_CONFIG_PATH) -> Config:
 
     contact = esi.get("contact")
     gamelogs = data.get("logs", {}).get("gamelogs_dir")
+    backups = data.get("backups", {}).get("folder")
     auto_refresh = app.get("auto_refresh", True)
     if not isinstance(auto_refresh, bool):
         raise ConfigError(f"[app] auto_refresh in {path} must be true or false.")
@@ -66,4 +68,5 @@ def load_config(path: Path = DEFAULT_CONFIG_PATH) -> Config:
         mode=mode,
         gamelogs_dir=None if _is_placeholder(gamelogs) else Path(gamelogs.strip()),
         auto_refresh=auto_refresh,
+        backups_dir=None if _is_placeholder(backups) else Path(backups.strip()),
     )

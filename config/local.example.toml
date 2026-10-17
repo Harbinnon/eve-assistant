@@ -18,6 +18,13 @@ mode = "local"
 # Refresh from EVE in the background while the dashboard runs (default true).
 # auto_refresh = false
 
+[backups]
+# Where the daily database backups go. Default: var/backups next to the
+# database. A folder on another drive, or one your cloud drive syncs, also
+# survives a disk failure. Backups hold your game data (wallet, assets,
+# history) but never login tokens.
+# folder = "D:/EVE Assistant backups"
+
 [logs]
 # Optional, local mode only: EVE's game log folder, so the assistant can read
 # your mining cycles (real yield per minute). Only "(mining)" lines from your

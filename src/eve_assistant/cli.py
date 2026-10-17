@@ -7,6 +7,7 @@ from eve_assistant import (
     __version__,
     accounts,
     auth,
+    backups,
     corrections,
     couriers,
     explain,
@@ -144,6 +145,7 @@ def _cmd_serve(args) -> int:
             make_plan=do_plan,
             snapshot=do_snapshot,
             auto_refresh=do_auto_refresh if config.auto_refresh else None,
+            backups_dir=config.backups_dir,
         ),
         host="127.0.0.1",
         port=args.port,
@@ -627,6 +629,44 @@ def _cmd_outcomes(_args) -> int:
     return 0
 
 
+def _backup_folder():
+    try:
+        return load_config().backups_dir
+    except ConfigError:
+        return None
+
+
+def _cmd_backup(_args) -> int:
+    made = backups.make(store.DEFAULT_DB_PATH, _backup_folder())
+    print(f"Backup saved: {made.path} ({made.size / 1e6:.1f} MB).")
+    return 0
+
+
+def _cmd_backups(_args) -> int:
+    folder = _backup_folder() or backups.default_folder(store.DEFAULT_DB_PATH)
+    found = backups.list_backups(folder)
+    if not found:
+        print(f"No backups yet in {folder}. Make one with: eve-assistant backup")
+        return 0
+    print(f"Backups in {folder}, newest first:")
+    for b in found:
+        print(f"  {b.path.name}  {b.size / 1e6:.1f} MB")
+    return 0
+
+
+def _cmd_restore(args) -> int:
+    if not args.confirm:
+        print(
+            "This replaces the database with the backup. Your current database is moved aside, "
+            "not deleted. Close the dashboard first, then run again with --confirm."
+        )
+        return 2
+    aside = backups.restore(args.file, store.DEFAULT_DB_PATH)
+    print(f"Restored {args.file}. The previous database is kept as {aside}.")
+    print("Reload the static data next: eve-assistant sde-update")
+    return 0
+
+
 def _cmd_learned(_args) -> int:
     with store.connect() as db:
         rows = db.execute("SELECT character_id, name FROM characters ORDER BY name").fetchall()
@@ -810,6 +850,12 @@ def build_parser() -> argparse.ArgumentParser:
     commands.add_parser(
         "learned", help="what the planner has learned from your sessions"
     ).set_defaults(func=_cmd_learned)
+    commands.add_parser("backup", help="back up the database now").set_defaults(func=_cmd_backup)
+    commands.add_parser("backups", help="list database backups").set_defaults(func=_cmd_backups)
+    restore_cmd = commands.add_parser("restore", help="put a backup in place of the database")
+    restore_cmd.add_argument("file", help="the backup file")
+    restore_cmd.add_argument("--confirm", action="store_true", help="really do it")
+    restore_cmd.set_defaults(func=_cmd_restore)
     session_cmd = commands.add_parser("session", help="start or end a play session").add_subparsers(
         dest="session_command", required=True
     )
@@ -871,6 +917,7 @@ def main(argv: list[str] | None = None) -> int:
         preferences.PreferenceError,
         projects.ProjectError,
         sessions.SessionError,
+        backups.BackupError,
     ) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 2
