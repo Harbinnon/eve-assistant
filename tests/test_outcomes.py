@@ -235,7 +235,8 @@ def test_provisional_until_fresh_data_then_settled(db):
     assert outcomes.update(db, now=at(65)) == 1
     first = outcomes.latest(db, session.session_id)
     assert not first.settled
-    assert first.notes()[0].startswith("May still change") and "UTC" in first.notes()[0]
+    assert first.notes()[0].startswith("May still change")
+    assert "final after 20:01 UTC" in first.notes()[0]  # ended 19:00, plus EVE's hour
     assert outcomes.update(db, now=at(66)) == 0  # nothing changed: no new row
 
     snap(db, "mining_ledger", None, 75, outcome="unchanged")  # ledger cache has passed
