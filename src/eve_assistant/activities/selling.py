@@ -5,10 +5,12 @@ job) or elsewhere, hauled there first with an owned ship.
 import sqlite3
 
 from eve_assistant import (
+    freelance,
     ore,
     pace,
     risk,
     routes,
+    skills,
     snapshots,
 )
 from eve_assistant.activities import base, hauling
@@ -186,10 +188,111 @@ def hangar_candidates(
     return items
 
 
+def _delivery_route(db, location, active, target, units_m3, highsec_only):
+    """(path, jumps) to take a stack to a job's location: none if it's already
+    there, or hauled by the active ship from where the character is docked."""
+    stack_at, here_system, docked_at = location
+    if stack_at == target[0]:
+        return [target[1]], 0
+    if stack_at != docked_at or active is None or active.capacity_for(False) < units_m3:
+        return None
+    path = routes.jumps_between(db, here_system, target[1], highsec_only)
+    return (path, len(path) - 1) if path is not None else None
+
+
+def delivery_candidates(
+    db, character_id, ships, net_worth, highsec_only, minutes, notes
+) -> list[PlanItem]:
+    """Hangar stacks a Freelance Job wants delivered: where they already are, or
+    carried there by the active ship. A stack is either sold or delivered."""
+    location = snapshots.latest(db, character_id, "location") or {}
+    here_system = location.get("solar_system_id")
+    docked_at = location.get("station_id") or base.accessible_structure(
+        db, location.get("structure_id")
+    )
+    active = next((s for s in ships if s.is_active and s.usable), None)
+    taken = freelance.committed(db, character_id)
+    stacks: dict[tuple[int, int], int] = {}
+    for item in snapshots.latest(db, character_id, "assets") or []:
+        if item.get("location_flag") == "Hangar":
+            key = (item["location_id"], item["type_id"])
+            stacks[key] = stacks.get(key, 0) + item.get("quantity", 1)
+    items = []
+    for (stack_at, type_id), quantity in stacks.items():
+        for job in freelance.delivery_jobs(db, type_id):
+            units = job.units_for(quantity)
+            volume = db.execute(
+                "SELECT volume FROM sde_types WHERE type_id = ?", (type_id,)
+            ).fetchone()
+            for target_id in job.locations.get("station", []) + job.locations.get("structure", []):
+                place = base.place(db, target_id)
+                if place is None or units <= 0:
+                    continue
+                load = units * ((volume and volume["volume"]) or 0)
+                route = _delivery_route(
+                    db, (stack_at, here_system, docked_at), active, (target_id, place[0]), load,
+                    highsec_only,
+                )  # fmt: skip
+                if route is None:
+                    continue
+                path, jumps = route
+                needed = (
+                    jumps * ore.MINUTES_PER_JUMP + ore.MINUTES_TO_SELL + (2.0 if jumps else 0.0)
+                )
+                if needed > minutes:
+                    continue
+                isk = units * job.reward_per_unit
+                if jumps:
+                    band = risk.band_for_security(routes.lowest_security(db, path))
+                    rating = risk.rate(band, (active.value if active else 0.0) + isk, net_worth)
+                else:
+                    rating = risk.rate("very_low", 0.0, net_worth)
+                name = skills.type_name(db, type_id)
+                items.append(
+                    PlanItem(
+                        kind="sell_hangar",
+                        key=f"deliver:{job.job_id}:{stack_at}:{type_id}",
+                        title=f"Deliver {units:,} {name} to {place[1]} for the Freelance Job "
+                        f"\u201c{job.name}\u201d"
+                        + ("" if job.job_id in taken else " (commit to it in game first)"),
+                        isk=isk,
+                        minutes=needed,
+                        risk=rating,
+                        reasons=(
+                            Reason(
+                                "freelance_delivery",
+                                {
+                                    "job": job.name,
+                                    "reward_per_unit": job.reward_per_unit,
+                                    "units": units,
+                                    "place": place[1],
+                                    "jumps": jumps,
+                                    "committed": job.job_id in taken,
+                                },
+                            ),  # fmt: skip
+                        ),
+                        inputs={
+                            "station_id": stack_at,
+                            "type_id": type_id,
+                            "quantity": units,
+                            "jumps": jumps,
+                            "travel_jumps": 0,
+                            "freelance_job_id": job.job_id,
+                            "player_job_name": job.name,
+                        },  # fmt: skip
+                    )
+                )
+                break  # one place per job
+    return items
+
+
 def candidates(ctx: Context) -> list[PlanItem]:
     return hangar_candidates(
         ctx.db, ctx.esi, ctx.character_id, ctx.ships, ctx.net_worth, ctx.highsec_only,
         ctx.minutes, ctx.notes,
+    ) + delivery_candidates(
+        ctx.db, ctx.character_id, ctx.ships, ctx.net_worth, ctx.highsec_only, ctx.minutes,
+        ctx.notes,
     )  # fmt: skip
 
 

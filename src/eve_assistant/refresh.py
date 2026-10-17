@@ -16,6 +16,7 @@ from eve_assistant import (
     auth,
     backups,
     contracts,
+    freelance,
     gamelogs,
     goals,
     outcomes,
@@ -200,6 +201,8 @@ ONLINE_MEDIUM = timedelta(minutes=15)
 EVERYTHING = timedelta(hours=1)
 ONLINE_CHECK = timedelta(minutes=5)  # how soon a character logging in is noticed
 PRICES_EVERY = timedelta(hours=6)
+FREELANCE_EVERY = timedelta(minutes=30)
+FREELANCE_SETTING = "freelance_checked"
 
 
 def interval(kind: str, online: bool) -> timedelta:
@@ -229,6 +232,26 @@ class AutoReport:
     checked: dict[str, int] = field(default_factory=dict)  # character name -> kinds fetched
     problems: list[str] = field(default_factory=list)
     retry_after: float | None = None  # seconds, when EVE asked us to slow down
+
+
+def _freelance_due(db, now: datetime) -> bool:
+    row = db.execute("SELECT value FROM settings WHERE key = ?", (FREELANCE_SETTING,)).fetchone()
+    return row is None or now - datetime.fromisoformat(row[0]) >= FREELANCE_EVERY
+
+
+def _refresh_freelance(db, esi: EsiClient, now: datetime) -> list[str]:
+    """Freelance Jobs' public listing; a problem line if ESI fails."""
+    try:
+        freelance.refresh(db, esi)
+    except EsiError as exc:
+        return [f"Freelance Jobs: {exc}"]
+    db.execute(
+        "INSERT INTO settings (key, value) VALUES (?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (FREELANCE_SETTING, now.isoformat(timespec="seconds")),
+    )
+    db.commit()
+    return []
 
 
 def _prices_due(db, now: datetime) -> bool:
@@ -275,7 +298,7 @@ def auto_refresh_once(
             due = due_kinds(db, character.character_id, now)
             if due:
                 work.append((character, due))
-        if not work and not _prices_due(db, now):
+        if not work and not _prices_due(db, now) and not _freelance_due(db, now):
             outcomes.update(db)
             return report
         with auth.http_client(config) as client:
@@ -299,6 +322,8 @@ def auto_refresh_once(
                     goals.update_prices(db, esi)
                 except EsiError as exc:
                     report.problems.append(f"Market prices: {exc}")
+            if _freelance_due(db, now):
+                report.problems.extend(_refresh_freelance(db, esi, now))
         outcomes.update(db)
     finally:
         db.close()

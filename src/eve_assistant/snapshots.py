@@ -47,6 +47,11 @@ KINDS = (
     Kind("industry_jobs", "/characters/{id}/industry/jobs"),
     Kind("contracts", "/characters/{id}/contracts", names_others=True),
     Kind("fittings", "/characters/{id}/fittings"),
+    Kind(
+        "freelance_jobs",
+        "/characters/{id}/freelance-jobs",
+        scope="esi-characters.read_freelance_jobs.v1",
+    ),
 )
 
 

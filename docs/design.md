@@ -852,6 +852,13 @@ ran and shows its first problem, if any. `[app] auto_refresh = false` in
   (12,000 tokens per 15 minutes for orders, 5-minute cache). Fuzzwork
   aggregates as a fallback.
 - **zKillboard**: kills per system, for risk.
+- **Freelance Jobs** (ESI `/freelance-jobs`, public): walked every half hour;
+  mining and delivery jobs are kept (ore or item types, where, ISK per unit,
+  limits), never the creator or the description; job names are
+  player-written and shown labelled. Mining a job's ore offers a job version
+  of the session, counted at the job's pay only (whether the ore stays
+  yours isn't certain); a hangar stack a job wants can be delivered instead
+  of sold. The character's own jobs (its scope) say whether to commit first.
 - **CCP's image server** (`images.evetech.net`): portraits of the owner's
   own characters and ship renders, downloaded the first time a page needs
   them into `var/images` (never committed) and served by the dashboard

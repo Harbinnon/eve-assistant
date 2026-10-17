@@ -9,6 +9,7 @@ from eve_assistant import (
     corrections,
     fittings,
     fleet,
+    freelance,
     mining,
     ore,
     risk,
@@ -167,9 +168,56 @@ def mining_candidates(
                     },
                 )
             )
+            job_item = _for_a_job(db, character_id, items[-1], system_id)
+            if job_item is not None:
+                items.append(job_item)
     if not any_miner:
         notes.append(Reason("no_mining_ship"))
     return items
+
+
+def _for_a_job(db, character_id, plain: PlanItem, system_id) -> PlanItem | None:
+    """The same session mined for the best open Freelance Job wanting this ore
+    here, if it pays more. Valued at the job's pay only for the units it takes
+    (whether the ore stays yours isn't certain), market value for the rest."""
+    type_id, quantity = plain.inputs["type_id"], plain.inputs["quantity"]
+    job = freelance.mining_job(db, type_id, system_id)
+    if job is None or quantity <= 0:
+        return None
+    counted = job.units_for(quantity)
+    unit_sale = plain.isk / quantity
+    isk = counted * job.reward_per_unit + (quantity - counted) * unit_sale
+    if isk <= plain.isk:
+        return None
+    taken = job.job_id in freelance.committed(db, character_id)
+    title = plain.title.split(", then ")[0]
+    title += f" for the Freelance Job \u201c{job.name}\u201d" + (
+        "" if taken else " (commit to it in game first)"
+    )
+    return PlanItem(
+        kind="mining",
+        key=f"{plain.key}:job:{job.job_id}",
+        title=title,
+        isk=isk,
+        minutes=plain.minutes,
+        risk=plain.risk,
+        reasons=(
+            *plain.reasons[:2],
+            Reason(
+                "freelance_mining",
+                {
+                    "job": job.name,
+                    "reward_per_unit": job.reward_per_unit,
+                    "counted": counted,
+                    "quantity": quantity,
+                    "ore_value": counted * unit_sale,
+                    "committed": taken,
+                },
+            ),  # fmt: skip
+            *plain.reasons[2:],
+        ),
+        inputs={**plain.inputs, "freelance_job_id": job.job_id, "player_job_name": job.name},
+    )
 
 
 def _better_saved_fit(db, character_id, character, ship, current, implants) -> Reason | None:

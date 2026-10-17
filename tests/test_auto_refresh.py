@@ -78,6 +78,7 @@ def fake_esi(monkeypatch):
     monkeypatch.setattr(refresh, "_snapshot_one", snapshot_one)
     prices = mock.Mock(return_value=1)
     monkeypatch.setattr(refresh.goals, "update_prices", prices)
+    monkeypatch.setattr(refresh.freelance, "refresh", mock.Mock(return_value=0))
     return calls, prices
 
 

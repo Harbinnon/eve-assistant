@@ -63,6 +63,28 @@ def describe(code: str, detail: dict | None = None) -> str:
     d = detail or {}
     texts = {
         "same_stack": lambda: _same_stack(d),
+        "freelance_mining": lambda: (
+            f"The Freelance Job \u201c{d.get('job', '')}\u201d (named by its corporation) pays "
+            f"{numbers.isk(d.get('reward_per_unit', 0))} ISK a unit mined, for "
+            f"{d.get('counted', 0):,} of the {d.get('quantity', 0):,} units. Counted at the job's "
+            f"pay only: if the ore stays yours, selling it adds about "
+            f"{numbers.isk(d.get('ore_value', 0))}."
+            + (
+                ""
+                if d.get("committed")
+                else " Commit to the job in game first; it pays only after that."
+            )
+        ),
+        "freelance_delivery": lambda: (
+            f"The Freelance Job \u201c{d.get('job', '')}\u201d (named by its corporation) pays "
+            f"{numbers.isk(d.get('reward_per_unit', 0))} ISK an item delivered to "
+            f"{d.get('place', '?')}: {d.get('units', 0):,} items, which go to the corporation."
+            + (
+                ""
+                if d.get("committed")
+                else " Commit to the job in game first; it pays only after that."
+            )
+        ),
         "less_after_losses": lambda: _less_after_losses(d),
         "too_long": lambda: (
             f"Takes {d.get('minutes', 0):.0f} min; you have {d.get('available', 0):.0f}."

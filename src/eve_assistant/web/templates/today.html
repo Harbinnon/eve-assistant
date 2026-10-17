@@ -7,6 +7,9 @@
       <li>{{ risk_summary(item.details.risk) }}</li>
       {% if item.details.why_not and plan %}{% set r = why_not_here(plan, item) %}<li>Not chosen: {{ explain(r.code, r.detail) }}</li>{% endif %}
       {% for r in item.details.reasons %}<li>{{ explain(r.code, r) }}</li>{% endfor %}
+      {% if item.details.inputs.player_job_name %}
+      <li>Job name, written by its corporation: <span class="player-text">“{{ item.details.inputs.player_job_name }}”</span></li>
+      {% endif %}
       {% if item.details.inputs.player_title %}
       <li>Contract title, written by the issuer: <span class="player-text">“{{ item.details.inputs.player_title }}”</span></li>
       {% endif %}
