@@ -49,7 +49,9 @@ Once, after setup:
 
 1. `eve-assistant sde-update` downloads CCP's static data (about 100 MB).
    A banner on every page says when CCP has published a newer build.
-2. `eve-assistant login` logs a character in. Repeat for each character.
+2. `eve-assistant login` logs a character in (or, once the dashboard is
+   running, **Add a character** on its Characters page). Repeat for each
+   character.
 3. `eve-assistant account assign <character id> <account name>` groups
    characters by account, and `eve-assistant account state <account name>
    alpha` (or `omega`) says which accounts are Alpha, so plans respect

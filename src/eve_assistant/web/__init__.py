@@ -15,6 +15,7 @@ import logging
 import math
 import secrets
 import sqlite3
+import threading
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -100,6 +101,11 @@ SECURITY_HEADERS = {
 # JavaScript), so the session view's timer and wallet stay current.
 RELOAD_SECONDS = 60
 RELOADING_PAGES = ("today", "characters", "history")
+
+# Adding a character: how often Characters reloads while EVE's login page is
+# open, and how long the result stays on the page.
+LOGIN_RELOAD_SECONDS = 5
+LOGIN_NEWS_MINUTES = 15
 
 # Past this age a plan's prices and contracts have likely moved: say so.
 PLAN_STALE_MINUTES = 60
@@ -275,12 +281,17 @@ def create_app(
     auto_refresh: AutoRefresher | None = None,
     auto_tick_seconds: float = AUTO_TICK_SECONDS,
     backups_dir: Path | str | None = None,
+    add_character: Callable[[], str] | None = None,
 ) -> FastAPI:
     """refresh: called by the Refresh button; returns problem lines, empty when all went well.
     make_plan: builds and records a plan (needs ESI), returning its ID.
     snapshot: snapshots one character (needs ESI), returning problem lines.
     auto_refresh: one background refresh tick (needs ESI), run every auto_tick_seconds."""
     auto_status: dict = {"enabled": auto_refresh is not None, "last_run": None, "problems": []}
+    # Adding a character runs EVE's login in the background (it waits for the
+    # browser); one at a time.
+    login: dict = {"state": None, "message": None, "at": None}
+    login_running = threading.Lock()
 
     async def auto_loop() -> None:
         while True:
@@ -815,7 +826,42 @@ def create_app(
             summaries = overview.all_characters(conn)
         finally:
             conn.close()
-        return render(request, "characters.html", characters=summaries, problems=[])
+        recent = login["at"] and (_minutes_since(login["at"]) or 0) < LOGIN_NEWS_MINUTES
+        return render(
+            request,
+            "characters.html",
+            characters=summaries,
+            problems=[],
+            login=login if login["state"] == "waiting" or recent else None,
+            can_add=add_character is not None,
+            # While EVE's login page is open, check back every few seconds.
+            **({"reload": LOGIN_RELOAD_SECONDS} if login["state"] == "waiting" else {}),
+        )
+
+    @app.post("/characters/add")
+    def add_character_now(request: Request, token: str = Form(...)):
+        check_form(request, token)
+        if add_character is None:
+            raise HTTPException(
+                400, "Adding characters isn't available here; run eve-assistant login instead."
+            )
+        if not login_running.acquire(blocking=False):
+            return back("/characters")  # already waiting for one
+
+        def run() -> None:
+            try:
+                login.update(state="waiting", message=None, at=store.utc_now())
+                name = add_character()
+                login.update(state="done", message=f"Added {name}.", at=store.utc_now())
+            except Exception as exc:  # noqa: BLE001  # shown on the page, never swallowed
+                problem = f"The login didn't finish: {exc}"
+                login.update(state="failed", message=problem, at=store.utc_now())
+            finally:
+                login_running.release()
+
+        login.update(state="waiting", message=None, at=store.utc_now())
+        threading.Thread(target=run, daemon=True).start()
+        return back("/characters")
 
     @app.post("/refresh", response_class=HTMLResponse)
     def refresh_now(request: Request, token: str = Form(...)):

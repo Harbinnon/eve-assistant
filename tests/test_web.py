@@ -933,3 +933,66 @@ def test_preferences_became_settings(client):
     assert 'href="/settings" aria-current="page">Settings</a>' in page
     assert "Risk matrix" not in page  # moved to History and learning
     assert "<h1>History and learning</h1>" in client.get("/history").text
+
+
+# --- Add a character from the dashboard (roadmap 2.10) --------------------------
+
+
+def _wait_for(predicate, seconds=3.0):
+    import time
+
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        time.sleep(0.02)
+    return False
+
+
+def test_a_character_can_be_added_from_the_dashboard(db_path):
+    import threading
+
+    browser_done = threading.Event()
+    calls = []
+
+    def add_character():
+        calls.append(1)
+        browser_done.wait(5)
+        return "New Pilot"
+
+    with TestClient(create_app(db_path, add_character=add_character), base_url=LOCAL) as client:
+        page = client.get("/characters").text
+        assert ">Add a character</button>" in page
+        token = _token(page)
+        started = client.post("/characters/add", data={"token": token}, follow_redirects=False)
+        assert started.headers["location"] == "/characters"
+        waiting = client.get("/characters").text
+        assert "EVE's login page is open in your browser" in waiting
+        assert '<meta http-equiv="refresh" content="5; url=/characters">' in waiting
+        assert "disabled>Add a character" in waiting
+        client.post("/characters/add", data={"token": token})  # pressed again: no second login
+        browser_done.set()
+        assert _wait_for(lambda: "Added New Pilot." in client.get("/characters").text)
+        assert calls == [1]
+
+
+def test_a_failed_login_is_shown(db_path):
+    def add_character():
+        raise RuntimeError("the browser window was closed")
+
+    with TestClient(create_app(db_path, add_character=add_character), base_url=LOCAL) as client:
+        client.post("/characters/add", data={"token": _token(client.get("/characters").text)})
+        assert _wait_for(
+            lambda: (
+                "The login didn&#39;t finish: the browser window was closed"
+                in client.get("/characters").text
+            )
+        )
+
+
+def test_adding_needs_the_dashboard_to_offer_it(client):
+    page = client.get("/characters").text
+    assert "Add a character" not in page
+    response = client.post("/characters/add", data={"token": _token(page)})
+    assert response.status_code == 400
+    assert "eve-assistant login" in response.text

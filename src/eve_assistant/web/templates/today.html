@@ -147,7 +147,7 @@
   </div>
   <button class="primary" type="submit" {% if not can_plan or not character_names %}disabled{% endif %}>Plan my time</button>
 </form>
-{% if not character_names %}<p class="muted">No characters yet: log one in with <span class="mono">eve-assistant login</span>, then refresh on the Characters page.</p>{% endif %}
+{% if not character_names %}<p class="muted">No characters yet: add one on the <a href="/characters">Characters</a> page.</p>{% endif %}
 <p class="muted small-print">Planning reads live market prices and contracts, so it takes a few seconds.</p>
 {% endif %}
 

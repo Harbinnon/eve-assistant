@@ -4,6 +4,7 @@ Service-layer functions: the CLI and, later, the dashboard call these.
 Refresh tokens live only in the secret store, keyed by character ID.
 """
 
+import contextlib
 import time
 import webbrowser
 from collections.abc import Callable
@@ -54,8 +55,13 @@ def login_character(
     client: httpx.Client,
     open_browser: Callable[[str], object] = webbrowser.open,
     wait: Callable[[str, str], str] = wait_for_code,
+    store_lock: contextlib.AbstractContextManager | None = None,
 ) -> LoggedInCharacter:
-    """Run the browser login for one character and store its refresh token."""
+    """Run the browser login for one character and store its refresh token.
+
+    store_lock is held only while the token store is read and written (not
+    while waiting for the browser), so a dashboard refreshing tokens in the
+    background can't save over the new character."""
     pkce = sso.make_pkce_pair()
     state = sso.make_state()
     url = sso.authorize_url(config.client_id, config.callback_url, SCOPES, state, pkce.challenge)
@@ -67,15 +73,16 @@ def login_character(
         tokens.access_token, sso.fetch_jwks(client), config.client_id
     )
 
-    data = store.load()
-    entry = {
-        "name": identity.name,
-        "refresh_token": tokens.refresh_token,
-        "scopes": list(identity.scopes),
-        "added_at": time.time(),
-    }
-    _characters(data)[str(identity.character_id)] = entry
-    store.save(data)
+    with store_lock or contextlib.nullcontext():
+        data = store.load()
+        entry = {
+            "name": identity.name,
+            "refresh_token": tokens.refresh_token,
+            "scopes": list(identity.scopes),
+            "added_at": time.time(),
+        }
+        _characters(data)[str(identity.character_id)] = entry
+        store.save(data)
     return _to_character(str(identity.character_id), entry)
 
 
