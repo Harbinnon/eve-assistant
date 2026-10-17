@@ -78,6 +78,29 @@
 {% if not character_names %}<p class="muted">No characters yet: log one in with <span class="mono">eve-assistant login</span>, then refresh on the Characters page.</p>{% endif %}
 <p class="muted small-print">Planning reads live market prices and contracts, so it takes a few seconds.</p>
 
+{% if results %}
+<h2>Recent sessions</h2>
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>Session</th><th class="num">Played</th><th class="num">Planned</th><th class="num">Wallet change</th><th class="num">Ore mined</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for s, o in results %}
+      <tr>
+        <td>{{ s.character_name }} · {{ s.started_at|when }}{% if s.plan_id %} · <a href="/plans/{{ s.plan_id }}">plan</a>{% endif %}</td>
+        <td class="num">{{ s.minutes()|round|int }} min</td>
+        <td class="num">{% if o and o.planned_isk is not none %}{{ o.planned_isk|isk }} · {{ o.planned_minutes|round|int }} min{% else %}–{% endif %}</td>
+        <td class="num">{% if o %}{{ o.net_isk|isk }}{% else %}–{% endif %}</td>
+        <td class="num">{% if o and o.mined_value is not none %}{{ o.details.mined_m3|round|int }} m³ · ~{{ o.mined_value|isk }}{% else %}–{% endif %}</td>
+        <td>{% if not o %}not worked out yet{% elif o.settled %}settled{% else %}provisional{% endif %}
+          {% if o and o.notes() %}<details class="why"><summary>Notes</summary><ul>{% for n in o.notes() %}<li>{{ n }}</li>{% endfor %}</ul></details>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p class="muted small-print">Wallet change counts every wallet entry during the session; ore is valued at EVE's average prices. The History page (coming next) will compare each plan step.</p>
+{% endif %}
+
 {% if open_projects %}
 <h2>Open projects</h2>
 <div class="table-wrap">

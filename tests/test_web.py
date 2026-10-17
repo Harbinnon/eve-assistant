@@ -415,6 +415,9 @@ def test_start_a_plan_then_finish_it(session_client):
     done = session_client.post(f"/sessions/{session_id}/finish", data={"token": token})
     assert "Session recorded." in done.text
     assert "Playing now" not in done.text
+    assert "Recent sessions" in done.text
+    assert "provisional" in done.text
+    assert "Ore mined is unknown" in done.text
     assert session_client.snapshot_mock.call_count == 2
 
 

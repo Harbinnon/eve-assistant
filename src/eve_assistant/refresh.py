@@ -6,7 +6,7 @@ Shared by `eve-assistant snapshot` and the dashboard's Refresh button.
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from eve_assistant import auth, goals, planner, snapshots, store, structures
+from eve_assistant import auth, goals, outcomes, planner, snapshots, store, structures
 from eve_assistant.config import Config
 from eve_assistant.esi.client import EsiClient, EsiError, EsiRateLimited
 from eve_assistant.esi.sso import SSOError
@@ -62,6 +62,7 @@ def _snapshot_one(db, esi: EsiClient, character_id: int, name: str) -> tuple[str
     """Snapshot one character. Returns a summary line and problem lines."""
     results = snapshots.collect(db, esi, character_id)
     structures.refresh(db, esi, character_id)
+    outcomes.update(db, character_id)  # newer data may settle earlier sessions
     failed = [r for r in results if r.outcome == "failed"]
     changed = sum(r.outcome == "changed" for r in results)
     line = (

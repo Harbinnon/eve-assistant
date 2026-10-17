@@ -12,6 +12,7 @@ from eve_assistant import (
     market,
     mining,
     ore,
+    outcomes,
     planner,
     preferences,
     projects,
@@ -555,6 +556,7 @@ def _cmd_session_end(args) -> int:
         ended = sessions.finish(
             db, session.session_id, getattr(args, "minutes", None), args.how, problems, now=now
         )
+        outcomes.update(db, ended.character_id)
     print(f"Session {ended.session_id} {ended.how}: {ended.minutes():.0f} minutes.")
     _print_problems(problems)
     return 0
@@ -573,6 +575,35 @@ def _cmd_sessions(_args) -> int:
             f"{s.session_id}: {s.character_name}, {s.started_at}, "
             f"{s.minutes():.0f} min, {state}{plan}"
         )
+    return 0
+
+
+def _cmd_outcomes(_args) -> int:
+    with store.connect() as db:
+        outcomes.update(db)
+        found = outcomes.recent(db)
+    if not found:
+        print("No finished sessions yet.")
+        return 0
+    for session, outcome in found:
+        print(f"Session {session.session_id}: {session.character_name}, {session.started_at}")
+        if outcome is None:
+            print("  Not worked out yet.")
+            continue
+        planned = (
+            f"planned {outcome.planned_isk:,.0f} ISK in {outcome.planned_minutes:.0f} min"
+            if outcome.planned_isk is not None
+            else "no plan"
+        )
+        print(f"  Played {session.minutes():.0f} min; {planned}.")
+        print(f"  Wallet change: {outcome.net_isk:+,.0f} ISK.")
+        if outcome.mined_value is not None:
+            print(
+                f"  Ore mined: {outcome.details['mined_m3']:,.0f} m3, "
+                f"about {outcome.mined_value:,.0f} ISK at average prices."
+            )
+        for note in outcome.notes():
+            print(f"  {note}")
     return 0
 
 
@@ -721,6 +752,9 @@ def build_parser() -> argparse.ArgumentParser:
     commands.add_parser("sessions", help="list recent play sessions").set_defaults(
         func=_cmd_sessions
     )
+    commands.add_parser(
+        "outcomes", help="what happened in recent sessions, against the plan"
+    ).set_defaults(func=_cmd_outcomes)
     session_cmd = commands.add_parser("session", help="start or end a play session").add_subparsers(
         dest="session_command", required=True
     )
