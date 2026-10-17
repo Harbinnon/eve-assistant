@@ -10,7 +10,8 @@ the dashboard, and the session planner (mining, ore, couriers, your whole
 fleet, multi-session projects, risk ratings, decline buttons). Phase 3,
 learning from results, is under way: play sessions and their outcomes are
 recorded.** The design is in
-[docs/design.md](docs/design.md).
+[docs/design.md](docs/design.md) and the plan from here in
+[docs/roadmap.md](docs/roadmap.md).
 
 ## What it will do
 

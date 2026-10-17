@@ -516,9 +516,8 @@ structured reasons and inputs; record where each piece of text came from
 | **1. Foundations and dashboard** | Store, ESI login for several characters, snapshots, static data, market prices, skill trees and training time, goals. Pages: Characters, Goals, Skills. | "To fly a Retriever you need Omega, these 6 skills (11 days) and ~32M ISK", correct per character. |
 | **2. First planner** | Mining, ore disposal and courier models; Today page with time limit and projects; risk matrix for highsec and Exordium; decline buttons; every plan recorded. | A 60-minute plan the player agrees is sensible. |
 | **3. Learning** | Reconciling plans with ledger, wallet and contracts; per-activity corrections; goal dates; moving risk lines; History page. Built: sessions, outcomes, game logs, mining-speed correction, History, real pace and goal dates. Left: moving risk lines (deferred until there's lowsec data), sale-price and travel-time corrections. | Predictions measurably improve after a few sessions. |
-| **4. Industry, skills, lowsec and nullsec** | Manufacturing model, "train this next", lowsec and nullsec risk, jump bridges, corp tax and buyback, "new to you". | A build or skill suggested with its payback; low/nullsec ratings that players agree with. |
-| **5. Alerts and hosted mode** | Discord and health alerts; hosted mode. | A finished job reaches Discord with a link to the dashboard. |
-| **Later** | MCP server; multi-character planning; officer corp data. | — |
+| **3.5 onwards** | Replaced by the milestones in [roadmap.md](roadmap.md) (17 October 2026): foundations (backups, automatic session detection, structure markets, contract tracking), the dashboard's look and flow, a planner restructure with Freelance Jobs and an Omega comparison, risk from real data, new activities (gas, exploration, missions, manufacturing), corporations, nullsec and PI, then alerts and hosted mode. | Each milestone ends with a version tag. |
+| **Later** | MCP server; officer corp data. | — |
 
 ---
 
