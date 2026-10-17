@@ -68,8 +68,9 @@ Once, after setup:
    just opens it. Its window starts minimised: closing that window stops
    the dashboard.
 2. On **Today**, pick a character, say how long you have and press
-   **Plan my time**. Press **Start this plan** when you begin and
-   **I'm done** when you stop.
+   **Plan my time**. Press **Start this plan** when you begin: Today
+   becomes the session view, with the time played, the step to do now and
+   a checklist to tick off. Press **I'm done** when you stop.
 3. Forgot to press them? While the dashboard runs it notices when you log
    in and out of EVE, and Today offers to record that session.
 

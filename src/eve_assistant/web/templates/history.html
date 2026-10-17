@@ -27,7 +27,7 @@
       {% for s in h.steps %}
         <tr>
           <td>{{ s.item.title }}</td>
-          <td>{{ {"do": "doing it", "not_now": "not now", "mute": "not this kind"}.get(s.item.response, "–") }}</td>
+          <td>{% if s.item.item_id in h.ticked %}ticked off{% else %}{{ {"do": "doing it", "not_now": "not now", "mute": "not this kind"}.get(s.item.response, "–") }}{% endif %}</td>
           <td class="num">{{ s.item.isk|isk }} ISK{% if s.predicted_units %}<br><span class="muted small-print">{{ "{:,}".format(s.predicted_units) }} units</span>{% endif %}
             {% if s.predicted_rate %}<br><span class="muted small-print">{{ s.predicted_rate|round|int }} m³/min</span>{% endif %}</td>
           <td class="num">

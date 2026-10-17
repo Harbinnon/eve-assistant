@@ -246,11 +246,11 @@ def test_responding_records_and_mute_shows_in_preferences(planning_client):
     page = planning_client.get(plan_url).text
     item_id = re.search(r'action="/plan-items/(\d+)/respond"', page).group(1)
 
-    done = planning_client.post(
+    refused = planning_client.post(
         f"/plan-items/{item_id}/respond", data={"token": token, "response": "do"}
     )
-    assert "Recorded: you" in done.text
-    assert "You said: doing it" in done.text
+    assert refused.status_code == 400  # "Start this plan" is the one commitment
+    assert "Start this plan" in refused.text
 
     muted = planning_client.post(
         f"/plan-items/{item_id}/respond", data={"token": token, "response": "mute"}

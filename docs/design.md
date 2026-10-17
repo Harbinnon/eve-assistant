@@ -183,9 +183,18 @@ Each session records the plan (with predictions), what the player did
 
 **Sessions are marked explicitly.** "Start this plan" on the Today page
 (or `eve-assistant session start`) records the start time and takes a
-snapshot; "I'm done" records the end and takes another. That is cheap,
-accurate and needs no background polling; detecting sessions on its own
-can come later. Details:
+snapshot; "I'm done" records the end and takes another. "Start this plan"
+is the one commitment: plan steps offer only "Not now" and "Not this kind"
+(and "Start project" on a project's first step). Sessions EVE saw but
+weren't marked are offered for recording too (see below). Details:
+
+- While a session runs, Today is the **session view**: time played, the
+  wallet's change since the start, the step to do now (Done, Not now), and
+  the plan as a checklist to tick off or undo. Ticks are append-only; the
+  latest for a step wins. Ticking off a project step logs its minutes on
+  the project once. Today, Characters and History reload themselves every
+  minute while a session runs (a meta refresh, no JavaScript); History
+  shows which steps were ticked off.
 
 - One running session per character; others can play meanwhile.
 - "I'm done" accepts the minutes actually played, for when the player
@@ -414,8 +423,8 @@ is visible on Preferences. A loss is recorded and feeds straight back in.
 ### 4.9 Declining, and discovering options
 
 Every suggestion has:
-- **Do it**: recorded, so the outcome can be checked later.
-- **Not now**: no penalty.
+- **Not now**: no penalty. (Committing is "Start this plan" for the whole
+  plan; while playing, steps are ticked off in the session view.)
 - **Not this kind**: mutes a category, specific ("not this route") or
   broad ("no hauling").
 - **Why?**: how the estimate was made, with a link to a guide (EVE

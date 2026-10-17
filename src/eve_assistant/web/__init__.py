@@ -30,6 +30,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from eve_assistant import (
     backups,
+    checklist,
     corrections,
     detection,
     explain,
@@ -62,6 +63,10 @@ TODAY = "/today"
 GOALS = "/goals"
 PREFERENCES = "/preferences"
 UNKNOWN_ACTION = "Unknown action."
+COMMIT_WITH_THE_PLAN = (
+    "Steps aren't taken on one by one: press “Start this plan” to start the whole "
+    "plan, then tick steps off as you go."
+)
 
 HERE = Path(__file__).parent
 
@@ -88,6 +93,11 @@ SECURITY_HEADERS = {
     "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
     "Cache-Control": "no-store",
 }
+
+# While a session runs these pages reload themselves (a meta refresh: no
+# JavaScript), so the session view's timer and wallet stay current.
+RELOAD_SECONDS = 60
+RELOADING_PAGES = ("today", "characters", "history")
 
 # Risk ratings in words; the stored ratings stay green, amber and red.
 RISK_LABELS = {"green": "Safe", "amber": "Caution", "red": "Risky"}
@@ -130,7 +140,7 @@ MESSAGES = {
     "goal_done": "Goal marked done.",
     "goal_dropped": "Goal dropped.",
     "refreshed": "Character data refreshed from EVE.",
-    "do": "Recorded: you're doing it.",
+    "do": "Project started: it's under Open projects.",
     "not_now": "Recorded: not now.",
     "mute": "Muted. You can undo that on the Preferences page.",
     "muted": "Muted.",
@@ -275,8 +285,10 @@ def create_app(
         conn = db()
         try:
             static_data = sde.update_status(conn)
+            playing = bool(sessions.open_sessions(conn))
         finally:
             conn.close()
+        page = name.split(".")[0]
         return templates.TemplateResponse(
             request,
             name,
@@ -285,7 +297,8 @@ def create_app(
                 "message": message,
                 "auto": auto_status,
                 "static_data": static_data,
-                "page": name.split(".")[0],
+                "page": page,
+                "reload": RELOAD_SECONDS if playing and page in RELOADING_PAGES else None,
                 "theme": _theme(request),
                 "here": request.url.path,  # where the theme form returns to
                 **context,
@@ -355,9 +368,9 @@ def create_app(
         if not secrets.compare_digest(token, form_token):
             raise HTTPException(403, "This form has expired. Reload the page and try again.")
 
-    def back(path: str, **params) -> RedirectResponse:
+    def back(path: str, anchor: str = "", **params) -> RedirectResponse:
         query = f"?{urlencode(params)}" if params else ""
-        return RedirectResponse(f"{path}{query}", status_code=303)
+        return RedirectResponse(f"{path}{query}{'#' + anchor if anchor else ''}", status_code=303)
 
     @app.get("/")
     def home():
@@ -399,6 +412,7 @@ def create_app(
             recent = planner.load_plan(conn, latest) if latest else None
             open_projects = _open_projects(conn)
             playing = sessions.open_sessions(conn)
+            session_views = checklist.views(conn)
             results = outcomes.recent(conn, 5)
             noticed = detection.suggestions(conn)
         finally:
@@ -413,8 +427,27 @@ def create_app(
             can_plan=make_plan is not None,
             open_projects=open_projects,
             open_sessions=playing,
+            session_views=session_views,  # while playing, Today is the session view
             noticed=noticed,
         )
+
+    @app.post("/sessions/{session_id}/steps/{item_id}/{action}")
+    def tick_step(
+        request: Request, session_id: int, item_id: int, action: str, token: str = Form(...)
+    ):
+        check_form(request, token)
+        if action not in ("done", "undo"):
+            raise HTTPException(404, UNKNOWN_ACTION)
+        conn = db()
+        try:
+            checklist.mark(conn, session_id, item_id, done=action == "done")
+        except sessions.SessionNotFound as exc:
+            raise HTTPException(404, str(exc)) from None
+        except (checklist.ChecklistError, planner.PlanError, projects.ProjectError) as exc:
+            raise HTTPException(400, str(exc)) from None
+        finally:
+            conn.close()
+        return RedirectResponse(f"{TODAY}#session-{session_id}", status_code=303)
 
     def _open_projects(conn) -> list[tuple[str, projects.Project]]:
         names = dict(conn.execute("SELECT character_id, name FROM characters").fetchall())
@@ -484,6 +517,7 @@ def create_app(
             can_plan=make_plan is not None,
             open_projects=open_projects,
             open_sessions=playing,
+            session_views=[],  # a plan you opened is shown even while playing
             noticed=noticed,
         )
 
@@ -560,16 +594,21 @@ def create_app(
         conn = db()
         try:
             row = conn.execute(
-                "SELECT plan_id FROM plan_items WHERE item_id = ?", (item_id,)
+                "SELECT plan_id, kind FROM plan_items WHERE item_id = ?", (item_id,)
             ).fetchone()
             if row is None:
                 raise HTTPException(404, "No such suggestion.")
+            if response == "do" and row["kind"] != "project_start":
+                raise HTTPException(400, COMMIT_WITH_THE_PLAN)
             try:
                 planner.respond(conn, item_id, response)
             except planner.PlanError as exc:
                 raise HTTPException(400, str(exc)) from None
+            following = [s for s in sessions.open_sessions(conn) if s.plan_id == row["plan_id"]]
         finally:
             conn.close()
+        if following:  # answered from the session view: go back to it
+            return back(TODAY, anchor=f"session-{following[0].session_id}", msg=response)
         return back(f"/plans/{row['plan_id']}", msg=response)
 
     @app.get(PREFERENCES, response_class=HTMLResponse)
