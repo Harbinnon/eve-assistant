@@ -17,6 +17,7 @@ from eve_assistant import (
     projects,
     refresh,
     sde,
+    sessions,
     skills,
     snapshots,
     store,
@@ -125,9 +126,12 @@ def _cmd_serve(args) -> int:
     def do_plan(character_id: int, minutes: float, allow_lowsec: bool, allow_risky: bool) -> int:
         return refresh.plan_now(config, secrets, character_id, minutes, allow_lowsec, allow_risky)
 
+    def do_snapshot(character_id: int) -> list[str]:
+        return refresh.snapshot_character(config, secrets, character_id)
+
     print(f"Dashboard: http://127.0.0.1:{args.port}  (Ctrl+C to stop)")
     uvicorn.run(
-        create_app(refresh=do_refresh, make_plan=do_plan),
+        create_app(refresh=do_refresh, make_plan=do_plan, snapshot=do_snapshot),
         host="127.0.0.1",
         port=args.port,
         log_level="warning",
@@ -503,6 +507,75 @@ def _cmd_project_close(args) -> int:
     return 0
 
 
+def _snapshot_for_session(character_id: int) -> list[str]:
+    try:
+        config = load_config()
+    except ConfigError as exc:
+        return [f"No snapshot: {exc}"]
+    return refresh.snapshot_character(config, default_store(), character_id)
+
+
+def _print_problems(problems: list[str]) -> None:
+    for line in problems:
+        print(f"  Snapshot problem: {line}")
+
+
+def _cmd_session_start(args) -> int:
+    with store.connect() as db:
+        character_id = goals.resolve_character(db, args.character)
+        plan_id = args.plan
+        if plan_id is None and not args.no_plan:
+            plan_id = planner.latest_plan_id(db, character_id)
+        if (existing := sessions.open_session(db, character_id)) is not None:
+            raise sessions.SessionError(
+                f"{existing.character_name} already has session {existing.session_id} running. "
+                "Finish or cancel it first."
+            )
+    now = store.utc_now()
+    problems = _snapshot_for_session(character_id)
+    with store.connect() as db:
+        session = sessions.start(db, character_id, plan_id, problems, now=now)
+    following = f", following plan {plan_id}" if plan_id else ""
+    print(f"Session {session.session_id} started for {session.character_name}{following}.")
+    _print_problems(problems)
+    print(f'When you stop: eve-assistant session finish "{session.character_name}"')
+    return 0
+
+
+def _cmd_session_end(args) -> int:
+    with store.connect() as db:
+        character_id = goals.resolve_character(db, args.character)
+        session = sessions.open_session(db, character_id)
+        if session is None:
+            raise sessions.SessionError("No session is running for that character.")
+    now = store.utc_now()
+    sessions.check_end(session, getattr(args, "minutes", None), args.how, now)
+    problems = _snapshot_for_session(character_id) if args.how == "finished" else []
+    with store.connect() as db:
+        ended = sessions.finish(
+            db, session.session_id, getattr(args, "minutes", None), args.how, problems, now=now
+        )
+    print(f"Session {ended.session_id} {ended.how}: {ended.minutes():.0f} minutes.")
+    _print_problems(problems)
+    return 0
+
+
+def _cmd_sessions(_args) -> int:
+    with store.connect() as db:
+        found = sessions.recent(db)
+    if not found:
+        print("No sessions yet. Start one with: eve-assistant session start <character>")
+        return 0
+    for s in found:
+        state = "running" if s.is_open else s.how
+        plan = f", plan {s.plan_id}" if s.plan_id else ""
+        print(
+            f"{s.session_id}: {s.character_name}, {s.started_at}, "
+            f"{s.minutes():.0f} min, {state}{plan}"
+        )
+    return 0
+
+
 def _cmd_play_time(args) -> int:
     with store.connect() as db:
         projects.set_weekly_minutes(db, args.hours * 60)
@@ -645,6 +718,27 @@ def build_parser() -> argparse.ArgumentParser:
     play_time.add_argument("hours", type=float)
     play_time.set_defaults(func=_cmd_play_time)
 
+    commands.add_parser("sessions", help="list recent play sessions").set_defaults(
+        func=_cmd_sessions
+    )
+    session_cmd = commands.add_parser("session", help="start or end a play session").add_subparsers(
+        dest="session_command", required=True
+    )
+    start_cmd = session_cmd.add_parser("start", help="start playing (takes a snapshot)")
+    start_cmd.add_argument("character", help=CHARACTER_HELP)
+    start_cmd.add_argument("--plan", type=int, help="plan to follow (default: the latest)")
+    start_cmd.add_argument("--no-plan", action="store_true", help="play without a plan")
+    start_cmd.set_defaults(func=_cmd_session_start)
+    finish_cmd = session_cmd.add_parser("finish", help="stop playing (takes a snapshot)")
+    finish_cmd.add_argument("character", help=CHARACTER_HELP)
+    finish_cmd.add_argument(
+        "--minutes", type=float, help="minutes actually played, if you stopped earlier"
+    )
+    finish_cmd.set_defaults(func=_cmd_session_end, how="finished")
+    cancel_cmd = session_cmd.add_parser("cancel", help="discard a session you didn't play")
+    cancel_cmd.add_argument("character", help=CHARACTER_HELP)
+    cancel_cmd.set_defaults(func=_cmd_session_end, how="cancelled")
+
     serve = commands.add_parser("serve", help="run the dashboard on this PC")
     serve.add_argument("--port", type=int, default=8700)
     serve.set_defaults(func=_cmd_serve)
@@ -687,6 +781,7 @@ def main(argv: list[str] | None = None) -> int:
         planner.PlanError,
         preferences.PreferenceError,
         projects.ProjectError,
+        sessions.SessionError,
     ) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 2

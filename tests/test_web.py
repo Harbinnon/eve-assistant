@@ -369,3 +369,86 @@ def test_pages_have_no_inline_styles_or_scripts(planning_client):
         assert "<script" not in page, path
         assert "style=" not in page, path
         assert "<style" not in page, path
+
+
+@pytest.fixture
+def session_client(db_path):
+    snapshot = mock.Mock(return_value=[])
+    app = create_app(db_path, make_plan=_fake_plan_maker(db_path), snapshot=snapshot)
+    with TestClient(app, base_url=LOCAL) as test_client:
+        test_client.snapshot_mock = snapshot
+        yield test_client
+
+
+def _new_plan(client) -> tuple[str, str]:
+    token = _token(client.get("/today").text)
+    plan_url = client.post(
+        "/today/plan",
+        data={"token": token, "character": "Test Pilot", "minutes": "60"},
+        follow_redirects=False,
+    ).headers["location"]
+    return token, plan_url
+
+
+def test_start_a_plan_then_finish_it(session_client):
+    token, plan_url = _new_plan(session_client)
+    plan_id = plan_url.rsplit("/", 1)[1]
+    assert "Start this plan" in session_client.get(plan_url).text
+
+    started = session_client.post("/sessions/start", data={"token": token, "plan_id": plan_id})
+    assert "Session started." in started.text
+    assert "Playing now" in started.text
+    assert f'following <a href="/plans/{plan_id}">plan {plan_id}</a>' in started.text
+    session_client.snapshot_mock.assert_called_once_with(7)
+    assert "Start this plan" not in session_client.get(plan_url).text  # already playing
+
+    again = session_client.post("/sessions/start", data={"token": token, "plan_id": plan_id})
+    assert "already has a session running" in again.text
+
+    session_id = re.search(r'action="/sessions/(\d+)/finish"', started.text).group(1)
+    too_long = session_client.post(
+        f"/sessions/{session_id}/finish", data={"token": token, "minutes": "500"}
+    )
+    assert "can&#39;t have lasted" in too_long.text
+    assert session_client.snapshot_mock.call_count == 1  # refused before the snapshot
+
+    done = session_client.post(f"/sessions/{session_id}/finish", data={"token": token})
+    assert "Session recorded." in done.text
+    assert "Playing now" not in done.text
+    assert session_client.snapshot_mock.call_count == 2
+
+
+def test_cancel_takes_no_snapshot_and_problems_are_shown(session_client):
+    token, plan_url = _new_plan(session_client)
+    plan_id = plan_url.rsplit("/", 1)[1]
+    session_client.snapshot_mock.return_value = ["Test Pilot, wallet: timed out"]
+    started = session_client.post("/sessions/start", data={"token": token, "plan_id": plan_id})
+    assert "Snapshot problems: Test Pilot, wallet: timed out" in started.text
+    assert "Playing now" in started.text  # recorded anyway
+
+    session_id = re.search(r'action="/sessions/(\d+)/cancel"', started.text).group(1)
+    cancelled = session_client.post(f"/sessions/{session_id}/cancel", data={"token": token})
+    assert "Session cancelled." in cancelled.text
+    assert session_client.snapshot_mock.call_count == 1
+
+
+def test_session_forms_need_the_token_and_known_ids(session_client):
+    token, plan_url = _new_plan(session_client)
+    plan_id = plan_url.rsplit("/", 1)[1]
+    refused = session_client.post("/sessions/start", data={"token": "wrong", "plan_id": plan_id})
+    assert refused.status_code == 403
+    assert (
+        session_client.post("/sessions/start", data={"token": token, "plan_id": "999"}).status_code
+        == 404
+    )
+    assert session_client.post("/sessions/999/finish", data={"token": token}).status_code == 404
+    assert session_client.post("/sessions/1/pause", data={"token": token}).status_code == 404
+    session_client.snapshot_mock.assert_not_called()
+
+
+def test_sessions_work_without_a_snapshot_taker(planning_client):
+    token, plan_url = _new_plan(planning_client)
+    plan_id = plan_url.rsplit("/", 1)[1]
+    started = planning_client.post("/sessions/start", data={"token": token, "plan_id": plan_id})
+    assert "Snapshots are not available here" in started.text
+    assert "Playing now" in started.text

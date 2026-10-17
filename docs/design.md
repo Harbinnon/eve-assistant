@@ -3,7 +3,7 @@
 *Working name. Shareable version: contains no personal account,
 character or infrastructure details.*
 
-Status: **design agreed. Phases 1 and 2 (section 7) built; phase 3 (learning) next.**
+Status: **design agreed. Phases 1 and 2 (section 7) built; phase 3 (learning) under way.**
 
 
 ---
@@ -174,6 +174,26 @@ stopping point.
 
 Each session records the plan (with predictions), what the player did
 (from ledger, wallet, jobs and contracts, no input needed) and the result.
+
+**Sessions are marked explicitly.** "Start this plan" on the Today page
+(or `eve-assistant session start`) records the start time and takes a
+snapshot; "I'm done" records the end and takes another. That is cheap,
+accurate and needs no background polling; detecting sessions on its own
+can come later. Details:
+
+- One running session per character; others can play meanwhile.
+- "I'm done" accepts the minutes actually played, for when the player
+  stopped earlier. After 12 hours it insists on it, since the button was
+  clearly forgotten.
+- "Cancel: I didn't play" closes a session without a snapshot, and it is
+  left out of the learning.
+- A snapshot problem (ESI down, a character logged out) never blocks the
+  session; it is recorded with it.
+- ESI caches some data for up to an hour (wallet journal, assets), so the
+  end snapshot may not show the whole session yet. Outcomes are worked
+  out from timestamped entries once the data has caught up, not at the
+  moment "I'm done" is pressed.
+
 From that it learns:
 
 1. **Corrections per activity.** "Predicted 8M an hour, made 6M." After a
@@ -475,8 +495,8 @@ login (§4.1–4.2), whatever the code licence says.
 - **Dashboard:** listens on `127.0.0.1` only and refuses hosted mode until
   a login exists; every form carries a per-process token and cross-site
   posts are rejected; templates escape all output; no third-party scripts.
-- **Data:** parameterised SQL; plans, plan items, responses and snapshots
-  are append-only, enforced by database triggers.
+- **Data:** parameterised SQL; plans, plan items, responses, play sessions
+  and snapshots are append-only, enforced by database triggers.
 - **Supply chain:** every dependency pinned exactly (direct and indirect,
   `constraints.txt`), versions at least two weeks old; GitHub Actions
   pinned to commit SHAs; CI runs with read-only permissions.

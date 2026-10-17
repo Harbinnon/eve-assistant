@@ -142,6 +142,8 @@ tr:last-child td { border-bottom: 0; }
 td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 form.inline { display: inline; }
+.session-start { margin: 0 0 12px; }
+.session p { margin-top: 0; }
 form.stack { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
 form.stack label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
 input, select, button {

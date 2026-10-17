@@ -26,6 +26,7 @@ from eve_assistant import (
     preferences,
     projects,
     risk,
+    sessions,
     skills,
     store,
 )
@@ -34,6 +35,7 @@ from eve_assistant.skills import SkillsError
 
 # make_plan(character_id, minutes, allow_lowsec, allow_risky) -> plan_id
 PlanMaker = Callable[[int, float, bool, bool], int]
+SnapshotTaker = Callable[[int], list[str]]
 
 HERE = Path(__file__).parent
 
@@ -79,6 +81,9 @@ MESSAGES = {
     "project_done": "Project marked done.",
     "project_dropped": "Project dropped.",
     "play_time": "Play time saved.",
+    "session_started": "Session started. Press “I’m done” when you stop.",
+    "session_finished": "Session recorded.",
+    "session_cancelled": "Session cancelled.",
 }
 
 
@@ -113,10 +118,12 @@ def create_app(
     db_path: Path | str = store.DEFAULT_DB_PATH,
     refresh: Callable[[], list[str]] | None = None,
     make_plan: PlanMaker | None = None,
+    snapshot: SnapshotTaker | None = None,
     allowed_hosts: tuple[str, ...] = LOCAL_HOSTS,
 ) -> FastAPI:
     """refresh: called by the Refresh button; returns problem lines, empty when all went well.
-    make_plan: builds and records a plan (needs ESI), returning its ID."""
+    make_plan: builds and records a plan (needs ESI), returning its ID.
+    snapshot: snapshots one character (needs ESI), returning problem lines."""
     app = FastAPI(title="EVE Assistant", docs_url=None, redoc_url=None, openapi_url=None)
     app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(allowed_hosts))
@@ -181,6 +188,7 @@ def create_app(
             latest = planner.latest_plan_id(conn)
             recent = planner.load_plan(conn, latest) if latest else None
             open_projects = _open_projects(conn)
+            playing = sessions.open_sessions(conn)
         finally:
             conn.close()
         return render(
@@ -191,6 +199,7 @@ def create_app(
             error=error,
             can_plan=make_plan is not None,
             open_projects=open_projects,
+            open_sessions=playing,
         )
 
     def _open_projects(conn) -> list[tuple[str, projects.Project]]:
@@ -246,6 +255,7 @@ def create_app(
                 raise HTTPException(404, str(exc)) from None
             names = _names(conn)
             open_projects = _open_projects(conn)
+            playing = sessions.open_sessions(conn)
         finally:
             conn.close()
         return render(
@@ -256,7 +266,86 @@ def create_app(
             error=None,
             can_plan=make_plan is not None,
             open_projects=open_projects,
+            open_sessions=playing,
         )
+
+    def _snapshot(character_id: int) -> list[str]:
+        if snapshot is None:
+            return ["Snapshots are not available here, so none was taken."]
+        try:
+            return snapshot(character_id)
+        except Exception as exc:  # noqa: BLE001  # the session is still recorded
+            return [f"Snapshot failed: {exc}"]
+
+    def _after_session(request: Request, problems: list[str], msg: str):
+        if problems:
+            done = MESSAGES[msg]
+            return today_page(request, error=f"{done} Snapshot problems: " + "; ".join(problems))
+        return back("/today", msg=msg)
+
+    @app.post("/sessions/start")
+    def start_session(request: Request, token: str = Form(...), plan_id: int = Form(...)):
+        check_form(request, token)
+        conn = db()
+        try:
+            row = conn.execute(
+                "SELECT character_id FROM plans WHERE plan_id = ?", (plan_id,)
+            ).fetchone()
+            if row is None:
+                raise HTTPException(404, "No such plan.")
+            character_id = row["character_id"]
+            if sessions.open_session(conn, character_id) is not None:
+                return today_page(request, error="That character already has a session running.")
+        finally:
+            conn.close()
+        now = store.utc_now()
+        problems = _snapshot(character_id)
+        conn = db()
+        try:
+            sessions.start(conn, character_id, plan_id, problems, now=now)
+        except sessions.SessionError as exc:
+            return today_page(request, error=str(exc))
+        finally:
+            conn.close()
+        return _after_session(request, problems, "session_started")
+
+    @app.post("/sessions/{session_id}/{how}")
+    def end_session(
+        request: Request,
+        session_id: int,
+        how: str,
+        token: str = Form(...),
+        minutes: str = Form(""),
+    ):
+        check_form(request, token)
+        if how not in ("finish", "cancel"):
+            raise HTTPException(404, "Unknown action.")
+        try:
+            played = float(minutes) if minutes.strip() else None
+        except ValueError:
+            return today_page(request, error="Minutes played must be a number.")
+        ending = "finished" if how == "finish" else "cancelled"
+        now = store.utc_now()
+        conn = db()
+        try:
+            session = sessions.get(conn, session_id)
+        except sessions.SessionError as exc:
+            raise HTTPException(404, str(exc)) from None
+        finally:
+            conn.close()
+        try:
+            sessions.check_end(session, played, ending, now)
+        except sessions.SessionError as exc:
+            return today_page(request, error=str(exc))
+        problems = _snapshot(session.character_id) if ending == "finished" else []
+        conn = db()
+        try:
+            ended = sessions.finish(conn, session_id, played, ending, problems, now=now)
+        except sessions.SessionError as exc:
+            return today_page(request, error=str(exc))
+        finally:
+            conn.close()
+        return _after_session(request, problems, f"session_{ended.how}")
 
     @app.post("/plan-items/{item_id}/respond")
     def respond(request: Request, item_id: int, token: str = Form(...), response: str = Form(...)):
