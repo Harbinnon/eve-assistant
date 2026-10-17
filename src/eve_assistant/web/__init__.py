@@ -86,9 +86,13 @@ SECURITY_HEADERS = {
 
 # Colour themes, kept in a cookie set by the form in every page's footer.
 THEMES = ("dark", "light", "system")
+# The cookie gets one of these constants, never the posted text itself.
+THEME_VALUES = {theme: theme for theme in THEMES}
 DEFAULT_THEME = "dark"
 THEME_COOKIE = "theme"
 THEME_MAX_AGE = 365 * 24 * 3600
+# Pages the theme form may return to; anything else goes to Today.
+RETURN_PAGES = frozenset({"/today", "/characters", "/goals", "/skills", "/history", "/preferences"})
 
 BAND_LABELS = {
     "none": "No player risk (Exordium)",
@@ -133,19 +137,6 @@ def _when(value) -> str:
     if not value:
         return "never"
     return f"{value[:10]} {value[11:16]} UTC"
-
-
-def _safe_back(path: str) -> str:
-    """Where to return after a form: a path on this dashboard, else Today.
-    Never another site ("//host", "/\\host") or a header break."""
-    if (
-        not path.startswith("/")
-        or path.startswith("//")
-        or "\\" in path
-        or any(ord(ch) < 32 for ch in path)
-    ):
-        return TODAY
-    return path
 
 
 def _security_tenths(value: float) -> int:
@@ -239,9 +230,6 @@ def create_app(
     def render(request: Request, name: str, **context) -> HTMLResponse:
         message = MESSAGES.get(request.query_params.get("msg", ""))
         theme = request.cookies.get(THEME_COOKIE, DEFAULT_THEME)
-        # Where the theme form returns to: this page, without its one-off message.
-        kept = urlencode([(k, v) for k, v in request.query_params.multi_items() if k != "msg"])
-        here = request.url.path + (f"?{kept}" if kept else "")
         conn = db()
         try:
             static_data = sde.update_status(conn)
@@ -257,7 +245,7 @@ def create_app(
                 "static_data": static_data,
                 "page": name.split(".")[0],
                 "theme": theme if theme in THEMES else DEFAULT_THEME,
-                "here": here,
+                "here": request.url.path,  # where the theme form returns to
                 **context,
             },  # fmt: skip
         )
@@ -282,11 +270,22 @@ def create_app(
         request: Request, token: str = Form(...), theme: str = Form(...), return_to: str = Form("")
     ):
         check_form(request, token)
-        if theme not in THEMES:
+        chosen = THEME_VALUES.get(theme)
+        if chosen is None:
             raise HTTPException(400, "Unknown theme.")
-        response = RedirectResponse(_safe_back(return_to), status_code=303)
+        # Back to one of the dashboard's own pages, never an address from the form.
+        target = return_to if return_to in RETURN_PAGES else TODAY
+        response = RedirectResponse(target, status_code=303)
+        # Secure is fine over plain http here: browsers treat 127.0.0.1 and localhost
+        # as secure, and hosted mode will use HTTPS.
         response.set_cookie(
-            THEME_COOKIE, theme, max_age=THEME_MAX_AGE, path="/", httponly=True, samesite="strict"
+            THEME_COOKIE,
+            chosen,
+            max_age=THEME_MAX_AGE,
+            path="/",
+            secure=True,
+            httponly=True,
+            samesite="strict",
         )
         return response
 

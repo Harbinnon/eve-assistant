@@ -158,15 +158,17 @@ def test_choosing_a_theme_sets_a_cookie_and_returns(client, theme):
     token = _token(client.get("/goals").text)
     response = client.post(
         "/theme",
-        data={"token": token, "theme": theme, "return_to": "/skills?item=Retriever"},
+        data={"token": token, "theme": theme, "return_to": "/skills"},
         headers={"Origin": LOCAL},
         follow_redirects=False,
     )
     assert response.status_code == 303
-    assert response.headers["location"] == "/skills?item=Retriever"
-    cookie = response.headers["set-cookie"]
+    assert response.headers["location"] == "/skills"
+    cookie = response.headers["set-cookie"].lower()
     assert cookie.startswith(f"theme={theme};")
-    assert "samesite=strict" in cookie.lower() and "httponly" in cookie.lower()
+    assert "samesite=strict" in cookie
+    assert "httponly" in cookie
+    assert "secure" in cookie
     client.cookies.set("theme", theme)
     page = client.get("/skills").text
     assert f'data-theme="{theme}"' in page
@@ -175,7 +177,15 @@ def test_choosing_a_theme_sets_a_cookie_and_returns(client, theme):
 
 @pytest.mark.parametrize(
     "return_to",
-    ["https://evil.example/", "//evil.example/", "/\\evil.example", "/x\r\nSet-Cookie: a=b", ""],
+    [
+        "https://evil.example/",
+        "//evil.example/",
+        "/\\evil.example",
+        "/x\r\nSet-Cookie: a=b",
+        "/plans/1",  # not on the list: back to Today
+        "/skills?item=x",
+        "",
+    ],
 )
 def test_theme_never_returns_to_another_site(client, return_to):
     token = _token(client.get("/today").text)
@@ -195,9 +205,9 @@ def test_unknown_theme_is_refused_and_unknown_cookie_ignored(client):
     assert 'data-theme="dark"' in client.get("/today").text
 
 
-def test_theme_form_returns_without_the_one_off_message(client):
+def test_theme_form_returns_to_the_page_itself(client):
     page = client.get("/goals?msg=goal_added&x=1").text
-    assert 'name="return_to" value="/goals?x=1"' in page
+    assert 'name="return_to" value="/goals"' in page
 
 
 def test_theme_form_needs_the_form_token(client):
