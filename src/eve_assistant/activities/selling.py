@@ -5,6 +5,7 @@ job) or elsewhere, hauled there first with an owned ship.
 import sqlite3
 
 from eve_assistant import (
+    corrections,
     freelance,
     ore,
     pace,
@@ -35,6 +36,9 @@ def hangar_candidates(
     )
     here_location = docked_at or location.get("structure_id")
     active_value = next((s.value for s in ships if s.is_active), 0.0)
+    sale = corrections.correction(db, character_id, "sale_price")
+    per_jump = corrections.minutes_per_jump(db, character_id)
+    a_jump = per_jump[0]
     assets = snapshots.latest(db, character_id, "assets") or []
     stacks: dict[int, dict[int, int]] = {}
     for item in assets:
@@ -56,12 +60,10 @@ def hangar_candidates(
             if travel_path is None:
                 continue
         travel_jumps = len(travel_path) - 1
-        travel_minutes = (
-            0.0 if station_id == docked_at else travel_jumps * ore.MINUTES_PER_JUMP + 2.0
-        )
+        travel_minutes = 0.0 if station_id == docked_at else travel_jumps * a_jump + 2.0
         for type_id, quantity in by_type.items():
             analysis = ore.analyse(
-                db, esi, character_id, type_id, quantity, station_id, highsec_only
+                db, esi, character_id, type_id, quantity, station_id, highsec_only, per_jump
             )
             fitting = []
             multi_trip = []
@@ -99,7 +101,7 @@ def hangar_candidates(
                 else:
                     where = f"Go to {station['name']} ({travel_jumps} jumps), then: "
                 ship_note = f" (in your {hauler.name})" if hauler is not None else ""
-                reasons = option.reasons
+                reasons = (*option.reasons, sale.reason())
                 if station_id != docked_at:
                     reasons = (
                         Reason(
@@ -127,7 +129,7 @@ def hangar_candidates(
                         title=(
                             f"{where}{analysis.type_name} x{quantity:,}: {option.title}{ship_note}"
                         ),
-                        isk=option.isk,
+                        isk=option.isk * sale.factor,
                         minutes=total,
                         risk=rating,
                         reasons=reasons,
@@ -139,17 +141,18 @@ def hangar_candidates(
                             "jumps": option.jumps,
                             "option": option.key,
                             "ship_item_id": hauler.item_id if hauler else None,
+                            "unit_prices": option.unit_prices,
                         },
                     )
                 )
             for option, hauler, switch, trips in multi_trip[:1]:
-                per_trip = 2 * option.jumps * ore.MINUTES_PER_JUMP + 4.0
+                per_trip = 2 * option.jumps * a_jump + 4.0
                 total = (
                     travel_minutes
                     + switch
                     + ore.MINUTES_TO_SELL
                     + trips * per_trip
-                    - option.jumps * ore.MINUTES_PER_JUMP  # no trip back after the last load
+                    - option.jumps * a_jump  # no trip back after the last load
                 )
                 band = risk.band_for_security(routes.lowest_security(db, travel_path))
                 stake = hauler.value + option.isk / trips
@@ -166,7 +169,7 @@ def hangar_candidates(
                         key=f"{station_id}:{type_id}:{option.key}",
                         title=title,
                         total_minutes=total,
-                        isk=option.isk,
+                        isk=option.isk * sale.factor,
                         minutes=minutes,
                         rating=risk.rate(band, stake, net_worth),
                         reasons=(
@@ -175,6 +178,7 @@ def hangar_candidates(
                                 {"trips": trips, "ship": hauler.name, "load_m3": option.hauled_m3},
                             ),  # fmt: skip
                             *option.reasons,
+                            sale.reason(),
                         ),
                         inputs={
                             "type_id": type_id,
@@ -182,6 +186,7 @@ def hangar_candidates(
                             "station_id": station_id,
                             "trips": trips,
                             "ship_item_id": hauler.item_id,
+                            "unit_prices": option.unit_prices,
                         },  # fmt: skip
                     )
                 )
@@ -212,6 +217,7 @@ def delivery_candidates(
     )
     active = next((s for s in ships if s.is_active and s.usable), None)
     taken = freelance.committed(db, character_id)
+    a_jump, jump_reason = corrections.minutes_per_jump(db, character_id)
     stacks: dict[tuple[int, int], int] = {}
     for item in snapshots.latest(db, character_id, "assets") or []:
         if item.get("location_flag") == "Hangar":
@@ -236,9 +242,7 @@ def delivery_candidates(
                 if route is None:
                     continue
                 path, jumps = route
-                needed = (
-                    jumps * ore.MINUTES_PER_JUMP + ore.MINUTES_TO_SELL + (2.0 if jumps else 0.0)
-                )
+                needed = jumps * a_jump + ore.MINUTES_TO_SELL + (2.0 if jumps else 0.0)
                 if needed > minutes:
                     continue
                 isk = units * job.reward_per_unit
@@ -270,6 +274,7 @@ def delivery_candidates(
                                     "committed": job.job_id in taken,
                                 },
                             ),  # fmt: skip
+                            *([jump_reason] if jumps else []),
                         ),
                         inputs={
                             "station_id": stack_at,
@@ -297,4 +302,5 @@ def candidates(ctx: Context) -> list[PlanItem]:
 
 
 def learned(db: sqlite3.Connection, character_id: int) -> list:
-    return []
+    """What market sales really fetch, against the prices plans expected."""
+    return [corrections.correction(db, character_id, "sale_price")]

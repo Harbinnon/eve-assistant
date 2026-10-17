@@ -30,5 +30,5 @@ def test_learning_is_collected_from_the_activities():
     db = store.connect(":memory:")
     snapshots.ensure_character(db, 7, "Miner")
     learned = activities.learned(db, 7)
-    assert [c.what for c in learned] == ["mining_rate"]  # the only correction so far
+    assert [c.what for c in learned] == ["sale_price", "mining_rate", "minutes_per_jump"]
     db.close()

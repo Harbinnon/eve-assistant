@@ -5,6 +5,7 @@ alone or as multi-session projects.
 import sqlite3
 
 from eve_assistant import (
+    corrections,
     couriers,
     fleet,
     pace,
@@ -21,11 +22,12 @@ from eve_assistant.skills import Reason
 
 
 def courier_candidates(db, esi, character_id, ships, minutes, net_worth, highsec_only, notes):
+    per_jump = corrections.minutes_per_jump(db, character_id)
     choices = []
     for ship in ships:
         if not ship.usable or not ship.cargo_m3:
             continue
-        board = fleet.boarding(db, character_id, ship, highsec_only)
+        board = fleet.boarding(db, character_id, ship, highsec_only, per_jump[0])
         if board is None:
             continue
         choices.append(
@@ -50,6 +52,7 @@ def courier_candidates(db, esi, character_id, ships, minutes, net_worth, highsec
             max_minutes=None,
             limit=10,
             ships=choices,
+            per_jump=per_jump,
         )
     except couriers.CourierError as exc:
         notes.append(Reason("couriers_unavailable", {"why": str(exc)}))
@@ -122,4 +125,5 @@ def candidates(ctx: Context) -> list[PlanItem]:
 
 
 def learned(db: sqlite3.Connection, character_id: int) -> list:
-    return []
+    """Travel time: every activity that travels uses it, hauling most."""
+    return [corrections.correction(db, character_id, "minutes_per_jump")]

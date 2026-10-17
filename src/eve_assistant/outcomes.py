@@ -7,6 +7,8 @@ Worked out from data EVE already keeps, with no input from the player:
 - **Market trades**: wallet transactions inside the session, per item.
 - **Ore mined**: the mining ledger counts ore per day, not per session, so
   the session's share is the ledger at the end minus the ledger at the start.
+- **Travel**: jumps and minutes travelled, from the location checks
+  (travel.py), so travel time can be learned.
 - **Ore value**: the way plans value ore, so the two can be compared: what
   buyers pay, after sales tax, per unit. The price is the one this session's
   plan used, else what the ore sold for in the session, else the one the
@@ -31,7 +33,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from eve_assistant import fees, gamelogs, sessions
+from eve_assistant import fees, gamelogs, sessions, travel
 from eve_assistant.sessions import PlaySession
 from eve_assistant.store import utc_now
 
@@ -399,6 +401,7 @@ def compute(
         **mining,
         # Per-cycle mining from EVE's game logs, when they are read (local mode).
         "log_mining": gamelogs.session_mining(db, session.character_id, _stamp(start), _stamp(end)),
+        "travel": travel.session_travel(db, session.character_id, _stamp(start), _stamp(end)),
         "plan": _plan(db, session.plan_id),
         "data": {
             "journal_snapshot_at": journal_at,

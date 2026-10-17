@@ -73,10 +73,12 @@ def mining_candidates(
     implants = snapshots.latest(db, character_id, "implants") or []
     location = snapshots.latest(db, character_id, "location") or {}
     learned = corrections.correction(db, character_id, "mining_rate")
+    sale = corrections.correction(db, character_id, "sale_price")
+    per_jump = corrections.minutes_per_jump(db, character_id)
     items = []
     any_miner = False
     for ship in ships:
-        board = fleet.boarding(db, character_id, ship)
+        board = fleet.boarding(db, character_id, ship, minutes_a_jump=per_jump[0])
         if board is None:
             continue
         try:
@@ -134,7 +136,9 @@ def mining_candidates(
             quantity = int(volume / unit["volume"])
             if quantity <= 0:
                 continue
-            analysis = ore.analyse(db, esi, character_id, type_id, quantity, station_id)
+            analysis = ore.analyse(
+                db, esi, character_id, type_id, quantity, station_id, per_jump=per_jump
+            )
             here_options = [o for o in analysis.options if o.instant and o.jumps == 0]
             if not here_options:
                 continue
@@ -146,7 +150,8 @@ def mining_candidates(
                     key=f"{ship.item_id}:{type_id}",
                     title=f"{prefix} {analysis.type_name} for {mining_minutes:.0f} min, then "
                     f"{best.title[0].lower()}{best.title[1:]}",
-                    isk=best.isk,
+                    # What sales really fetch, as learned; unit_prices keep the market's.
+                    isk=best.isk * sale.factor,
                     minutes=minutes,
                     risk=risk.rate(band, ship.value + hold_value, net_worth),
                     reasons=(
@@ -155,6 +160,7 @@ def mining_candidates(
                             {"m3_per_minute": estimate.m3_per_minute, "ship": estimate.ship_name},
                         ),
                         learned.reason(),
+                        sale.reason(),
                         *([fit_note] if fit_note else []),
                         *estimate.reasons,
                     ),
@@ -165,6 +171,7 @@ def mining_candidates(
                         "sell_option": best.key,
                         "ship_item_id": ship.item_id,
                         "board_minutes": board.minutes,
+                        "unit_prices": best.unit_prices,
                     },
                 )
             )

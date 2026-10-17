@@ -171,6 +171,16 @@ def test_ore_analysis_compares_selling_refining_and_hauling(db):
     assert jita.reasons[0].code == "not_enough_buyers"
     assert options["list_raw_jita"].instant is False
     assert {r.code for r in result.reasons} >= {"leftover_not_refined", "skills_used"}
+    # The unit prices each option expects, before tax, are kept for plans to record.
+    assert options["sell_raw_here"].unit_prices == {ORE: 9.0}
+    assert options["refine_sell_here"].unit_prices == {MINERAL: 4.0, ORE: 9.0}
+    assert jita.unit_prices == {ORE: 10.0}
+    assert options["list_raw_jita"].unit_prices == {ORE: pytest.approx(10.99)}
+    assert next(r for r in result.reasons if r.code == "assumed_minutes_per_jump").detail == {
+        "minutes": 1.0,
+        "base": 1.0,
+        "sessions": 0,
+    }
 
 
 def test_ore_analysis_refuses_non_ore(db):
