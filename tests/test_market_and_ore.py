@@ -73,7 +73,10 @@ def db():
         "INSERT INTO sde_npc_stations VALUES (?, ?, ?, 1, 0.5, 0.05)",
         [(HOME_STATION, HOME, 1000001), (JITA.station_id, JITA.system_id, 1000035)],
     )
-    conn.executemany("INSERT INTO sde_npc_corporations VALUES (?, ?)", [(1000001, 500001)])
+    conn.executemany(
+        "INSERT INTO sde_npc_corporations (corporation_id, faction_id) VALUES (?, ?)",
+        [(1000001, 500001)],
+    )
     conn.executemany(
         "INSERT INTO sde_types (type_id, name, group_id, published, volume, portion_size) "
         "VALUES (?, ?, 1, 1, ?, ?)",
@@ -181,6 +184,23 @@ def test_ore_analysis_compares_selling_refining_and_hauling(db):
         "base": 1.0,
         "sessions": 0,
     }
+
+
+@respx.mock
+def test_ore_that_refines_into_nothing_is_still_sold_raw(db):
+    db.execute("INSERT INTO sde_groups VALUES (4031, 25, 'AIR Ore Asteroid Resources', 1)")
+    db.execute(
+        "INSERT INTO sde_types (type_id, name, group_id, published, volume, portion_size) "
+        "VALUES (60771, 'Nephrite', 4031, 1, 0.1, 100)"
+    )
+    respx.get(url__regex=rf"{BASE}/markets/\d+/orders").mock(
+        return_value=httpx.Response(200, json=_book((50.0, 10_000, True, HOME_STATION, HOME)))
+    )
+    with httpx.Client() as http:
+        result = ore.analyse(db, EsiClient(http, db, base_url=BASE), 7, 60771, 500, HOME_STATION)
+    assert result.options  # selling it raw, here and at hubs
+    assert not any(o.key.startswith("refine") for o in result.options)
+    assert "not_refinable" in {r.code for r in result.reasons}
 
 
 def test_ore_analysis_refuses_non_ore(db):

@@ -67,7 +67,7 @@ class MiningEstimate:
         return self.hold_m3 / self.m3_per_minute
 
 
-def _attributes(db: sqlite3.Connection, type_id: int) -> dict[str, float]:
+def attributes(db: sqlite3.Connection, type_id: int) -> dict[str, float]:
     return {
         row["name"]: row["value"]
         for row in db.execute(
@@ -78,7 +78,7 @@ def _attributes(db: sqlite3.Connection, type_id: int) -> dict[str, float]:
     }
 
 
-def _skill_level(db: sqlite3.Connection, character: skills.CharacterSkills, name: str) -> int:
+def skill_level(db: sqlite3.Connection, character: skills.CharacterSkills, name: str) -> int:
     row = db.execute(
         "SELECT type_id FROM sde_types WHERE name = ? AND published = 1", (name,)
     ).fetchone()
@@ -108,7 +108,7 @@ def estimate(
     """Ore mining yield for a ship with these fitted items (modules, upgrades)."""
     if db.execute("SELECT 1 FROM sde_dogma_attributes LIMIT 1").fetchone() is None:
         raise MiningError("Static data needs reloading. Run `eve-assistant sde-update --force`.")
-    ship = _attributes(db, ship_type_id)
+    ship = attributes(db, ship_type_id)
     reasons: list[Reason] = []
     yield_factor = ship.get(SHIP_MULTIPLIER, 1.0)
     multipliers: dict[str, float] = {}
@@ -116,11 +116,11 @@ def estimate(
         multipliers["ship"] = yield_factor
 
     for name in MINING_SKILLS:
-        level = _skill_level(db, character, name)
+        level = skill_level(db, character, name)
         row = db.execute(
             "SELECT type_id FROM sde_types WHERE name = ? AND published = 1", (name,)
         ).fetchone()
-        bonus = _attributes(db, row["type_id"]).get("miningAmountBonus", 0.0) if row else 0.0
+        bonus = attributes(db, row["type_id"]).get("miningAmountBonus", 0.0) if row else 0.0
         factor = 1 + bonus / 100 * level
         multipliers[f"{name} {level}"] = factor
         yield_factor *= factor
@@ -128,13 +128,13 @@ def estimate(
     duration_factor = 1.0
     for attribute, skill_name in PER_LEVEL_YIELD.items():
         if attribute in ship:
-            level = _skill_level(db, character, skill_name)
+            level = skill_level(db, character, skill_name)
             factor = 1 + ship[attribute] / 100 * level
             multipliers[f"{skill_name} {level}"] = factor
             yield_factor *= factor
     for attribute, skill_name in PER_LEVEL_DURATION.items():
         if attribute in ship:
-            level = _skill_level(db, character, skill_name)
+            level = skill_level(db, character, skill_name)
             duration_factor *= 1 + ship[attribute] / 100 * level
     if ROLE_YIELD in ship:
         factor = 1 + ship[ROLE_YIELD] / 100
@@ -155,7 +155,7 @@ def estimate(
         if not usable[type_id]:
             unusable.append(skills.type_name(db, type_id))
             continue
-        attrs = _attributes(db, type_id)
+        attrs = attributes(db, type_id)
         if _is_mining_module(db, type_id) and "miningAmount" in attrs:
             lasers.append((type_id, attrs))
         elif "miningAmountBonus" in attrs:  # mining upgrades
@@ -163,7 +163,7 @@ def estimate(
             multipliers[skills.type_name(db, type_id)] = factor
             yield_factor *= factor
     for type_id in implant_type_ids:
-        bonus = _attributes(db, type_id).get("miningAmountBonus")
+        bonus = attributes(db, type_id).get("miningAmountBonus")
         if bonus:
             multipliers[skills.type_name(db, type_id)] = 1 + bonus / 100
             yield_factor *= 1 + bonus / 100

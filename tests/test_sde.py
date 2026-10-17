@@ -85,6 +85,48 @@ def sample_zip(tmp_path):
             {"_key": 2, "solarSystemID": 30000144, "destination": {"solarSystemID": 30000142}},
         ],
         "npcCorporations.jsonl": [{"_key": 1000035, "factionID": 500001}],
+        "blueprints.jsonl": [
+            {
+                "_key": 17479,
+                "maxProductionLimit": 1,
+                "activities": {
+                    "manufacturing": {
+                        "time": 9000,
+                        "materials": [{"typeID": 34, "quantity": 500}],
+                        "products": [{"typeID": 17478, "quantity": 1}],
+                        "skills": [{"typeID": 3380, "level": 1}],
+                    },
+                    "research_time": {"time": 100},
+                },
+            },
+            {"_key": 99999, "activities": {"copying": {"time": 5}}},  # makes nothing
+        ],
+        "npcCharacters.jsonl": [
+            {
+                "_key": 3008416,
+                "name": {"en": "Antaken Kamola"},
+                "corporationID": 1000002,
+                "locationID": 60000004,
+                "agent": {"agentTypeID": 2, "divisionID": 22, "level": 1, "isLocator": False},
+            },
+            {"_key": 3000001, "name": {"en": "Not an agent"}, "corporationID": 1000002},
+        ],
+        "militaryCampaigns.jsonl": [{"_key": "c1", "title": {"en": "The Blessed Exchange"}}],
+        "militaryCampaignObjectives.jsonl": [
+            {
+                "_key": "o1",
+                "campaignID": "c1",
+                "title": {"en": "Mine for it"},
+                "careerPath": "industrialist",
+                "maxProgressPerParticipant": 1,
+                "contributionMethodConfiguration": {"name": "MineOre", "parameters": []},
+                "rewards": {
+                    "isk": {"amountPerInterval": 150000},
+                    "lp": {"amountPerInterval": 300, "issuer": {"corporationID": 1000035}},
+                    "standing": {"gainPercentPerInterval": 0.1},
+                },
+            },
+        ],
         "dogmaAttributes.jsonl": [
             {"_key": 9, "name": "hp"},
             {"_key": 182, "name": "requiredSkill1"},
@@ -121,6 +163,40 @@ def test_load_fills_tables_with_english_names(db, sample_zip):
     assert db.execute("SELECT quantity FROM sde_type_materials").fetchone()[0] == 400
     assert db.execute("SELECT COUNT(*) FROM sde_jumps").fetchone()[0] == 2
     assert db.execute("SELECT faction_id FROM sde_npc_corporations").fetchone()[0] == 500001
+    assert tuple(db.execute("SELECT * FROM sde_blueprints").fetchone()) == (
+        17479,
+        17478,
+        1,
+        9000,
+        1,
+    )
+    assert tuple(db.execute("SELECT * FROM sde_blueprint_materials").fetchone()) == (17479, 34, 500)
+    assert tuple(db.execute("SELECT * FROM sde_blueprint_skills").fetchone()) == (17479, 3380, 1)
+    assert tuple(db.execute("SELECT * FROM sde_agents").fetchall()[0]) == (
+        3008416,
+        "Antaken Kamola",
+        1000002,
+        60000004,
+        22,
+        1,
+        2,
+        0,
+    )
+    assert db.execute("SELECT COUNT(*) FROM sde_agents").fetchone()[0] == 1
+    assert db.execute("SELECT title FROM sde_campaigns").fetchone()[0] == "The Blessed Exchange"
+    assert tuple(db.execute("SELECT * FROM sde_campaign_objectives").fetchone()) == (
+        "o1",
+        "c1",
+        "Mine for it",
+        "MineOre",
+        "industrialist",
+        150000,
+        300,
+        1000035,
+        0.1,
+        1,
+        "[]",
+    )
     assert not sde.needs_reload(db)
 
 
@@ -130,6 +206,20 @@ def test_data_from_an_older_loader_must_be_reloaded(db, sample_zip):
     assert sde.needs_reload(db)
     with pytest.raises(sde.SdeError, match="--force"):
         sde.require_current(db)
+
+
+def test_a_newer_loader_reloads_from_the_zip_on_disk(db, sample_zip):
+    folder = sample_zip.parent
+    assert not sde.reload_if_needed(db, folder)  # nothing loaded yet
+    sde.load(db, sample_zip)
+    assert not sde.reload_if_needed(db, folder)  # current
+    db.execute("UPDATE sde_meta SET loader_version = 1")
+    db.execute("DELETE FROM sde_agents")
+    assert sde.reload_if_needed(db, folder)
+    assert not sde.needs_reload(db)
+    assert db.execute("SELECT COUNT(*) FROM sde_agents").fetchone()[0] == 1
+    db.execute("UPDATE sde_meta SET loader_version = 1")
+    assert not sde.reload_if_needed(db, folder / "elsewhere")  # no zip: left for the banner
 
 
 def test_reload_replaces_rather_than_duplicates(db, sample_zip):

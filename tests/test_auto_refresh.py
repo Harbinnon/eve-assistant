@@ -7,7 +7,7 @@ from unittest import mock
 import pytest
 from fastapi.testclient import TestClient
 
-from eve_assistant import refresh, signals, snapshots, store
+from eve_assistant import campaigns, industry, refresh, signals, snapshots, store
 from eve_assistant.config import Config, ConfigError, load_config
 from eve_assistant.esi import SCOPES
 from eve_assistant.esi.client import EsiRateLimited
@@ -82,6 +82,14 @@ def fake_esi(monkeypatch):
     monkeypatch.setattr(refresh.freelance, "refresh", mock.Mock(return_value=0))
     monkeypatch.setattr(
         refresh.signals, "refresh", lambda db, _esi, now: signals._mark(db, signals.SETTING, now)
+    )
+    monkeypatch.setattr(
+        refresh.industry, "refresh", lambda db, _esi, now: signals._mark(db, industry.SETTING, now)
+    )
+    monkeypatch.setattr(
+        refresh.campaigns,
+        "refresh",
+        lambda db, _esi, now: signals._mark(db, campaigns.SETTING, now),
     )
     return calls, prices
 

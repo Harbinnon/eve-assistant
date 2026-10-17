@@ -11,6 +11,10 @@ from eve_assistant.store import utc_now
 KNOWN = {
     "kind:sell_hangar": "selling ore from your hangar",
     "kind:mining": "mining",
+    "kind:gas": "gas harvesting",
+    "kind:manufacturing": "manufacturing",
+    "kind:mission": "agent missions",
+    "kind:exploration": "exploration",
     "kind:courier": "courier contracts",
     "kind:skill": "skill training reminders",
     "route:lowsec": "anything that goes through lowsec",

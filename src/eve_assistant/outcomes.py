@@ -7,6 +7,9 @@ Worked out from data EVE already keeps, with no input from the player:
 - **Market trades**: wallet transactions inside the session, per item.
 - **Ore mined**: the mining ledger counts ore per day, not per session, so
   the session's share is the ledger at the end minus the ledger at the start.
+- **Net worth**: wallet plus items at CCP averages, at the session's start
+  and end snapshots, and the change: what an activity whose takings aren't
+  sold in the session (exploration loot) is learned from.
 - **Travel**: jumps and minutes travelled, from the location checks
   (travel.py), so travel time can be learned.
 - **Ore value**: the way plans value ore, so the two can be compared: what
@@ -33,7 +36,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from eve_assistant import fees, gamelogs, sessions, travel
+from eve_assistant import fees, gamelogs, sessions, travel, worth
 from eve_assistant.sessions import PlaySession
 from eve_assistant.store import utc_now
 
@@ -52,6 +55,8 @@ START_STALE = timedelta(minutes=15)
 # Mining after this long past the end isn't counted as the session's, and
 # the ledger part settles with whatever was seen by then.
 LEDGER_CAP = timedelta(hours=2)
+# Agent mission rewards in the wallet journal (the LP isn't in it).
+MISSION_REFS = ("agent_mission_reward", "agent_mission_time_bonus_reward")
 # Plans older than this before the session ended don't price its ore.
 PRICE_MAX_AGE = timedelta(days=7)
 
@@ -156,6 +161,8 @@ def _journal_group(entry: dict) -> str:
         return "taxes_fees"
     if ref.startswith("contract_"):
         return "contracts"
+    if ref in MISSION_REFS:
+        return "missions"
     return "other"
 
 
@@ -233,7 +240,7 @@ def _isk(db, character_id, start, end, now) -> tuple[dict, str | None, float | N
     in the session (None without sales)."""
     checked_at, journal = _payload_at(db, character_id, "wallet_journal", now)
     groups = dict.fromkeys(
-        ("market_sales", "market_purchases", "taxes_fees", "contracts", "other"), 0.0
+        ("market_sales", "market_purchases", "taxes_fees", "contracts", "missions", "other"), 0.0
     )
     sales = tax = 0.0
     for entry in journal or []:
@@ -361,6 +368,19 @@ def _plan(db: sqlite3.Connection, plan_id: int | None) -> dict | None:
     }
 
 
+def _worth_change(db: sqlite3.Connection, character_id: int, start, end) -> dict | None:
+    """Wallet plus items at the start and end snapshots, and the change."""
+    prices: dict[int, float] = {}
+    found = []
+    for at in (start + START_WINDOW, end):
+        _, wallet = _payload_at(db, character_id, "wallet", at)
+        _, assets = _payload_at(db, character_id, "assets", at)
+        if wallet is None or assets is None:
+            return None
+        found.append(float(wallet) + worth.asset_value(db, assets, prices))
+    return {"start": found[0], "end": found[1], "change": found[1] - found[0]}
+
+
 def _next_start(db: sqlite3.Connection, session: PlaySession) -> datetime | None:
     row = db.execute(
         "SELECT MIN(started_at) FROM play_sessions WHERE character_id = ? AND started_at > ?",
@@ -402,6 +422,7 @@ def compute(
         # Per-cycle mining from EVE's game logs, when they are read (local mode).
         "log_mining": gamelogs.session_mining(db, session.character_id, _stamp(start), _stamp(end)),
         "travel": travel.session_travel(db, session.character_id, _stamp(start), _stamp(end)),
+        "worth": _worth_change(db, session.character_id, start, window_end),
         "plan": _plan(db, session.plan_id),
         "data": {
             "journal_snapshot_at": journal_at,

@@ -129,6 +129,15 @@ def _station(db: sqlite3.Connection, station_id: int) -> dict:
     )
 
 
+def _is_asteroid(db: sqlite3.Connection, type_id: int) -> bool:
+    row = db.execute(
+        "SELECT 1 FROM sde_types t JOIN sde_groups g USING (group_id) "
+        "WHERE t.type_id = ? AND g.category_id = 25",
+        (type_id,),
+    ).fetchone()
+    return row is not None
+
+
 def analyse(
     db: sqlite3.Connection,
     esi: EsiClient,
@@ -157,7 +166,9 @@ def analyse(
     materials = db.execute(
         "SELECT material_type_id, quantity FROM sde_type_materials WHERE type_id = ?", (type_id,)
     ).fetchall()
-    if item is None or not materials:
+    # Some ores (Nephrite, 2026) refine into nothing: only selling them raw is compared.
+    refinable = bool(materials)
+    if item is None or not (refinable or _is_asteroid(db, type_id)):
         raise OreError("That item cannot be refined, so it is not handled as ore.")
     compressed = db.execute(
         "SELECT t.volume FROM sde_compressible_types c JOIN sde_types t "
@@ -182,6 +193,8 @@ def analyse(
         ),  # fmt: skip
         jump_reason,
     ]
+    if not refinable:
+        reasons.append(Reason("not_refinable", {"name": item["name"]}))
 
     portion = item["portion_size"] or 100
     portions = quantity // portion
@@ -195,7 +208,7 @@ def analyse(
         m["material_type_id"]: math.floor(m["quantity"] * portions * yield_here * (1 - refine_tax))
         for m in materials
     }
-    if leftover:
+    if leftover and refinable:
         reasons.append(Reason("leftover_not_refined", {"units": leftover, "portion": portion}))
     ore_m3 = quantity * (item["volume"] or 0)
     mineral_m3 = leftover * (item["volume"] or 0) + sum(
@@ -251,8 +264,8 @@ def analyse(
                 unit_prices=raw_prices,
             )
         )
-        if at_structure:
-            return  # refining here would be at the structure: not modelled
+        if at_structure or not refinable:
+            return  # refining at a structure isn't modelled; some ores can't be refined
         refined, unsold, refined_prices = 0.0, 0, {}
         for mineral, amount in minerals.items():
             value, left = instant_value(region_id, station, system, mineral, amount, refined_prices)

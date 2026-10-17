@@ -6,6 +6,7 @@ import sqlite3
 from dataclasses import dataclass, field
 
 from eve_assistant import (
+    risk,
     snapshots,
     structures,
 )
@@ -124,3 +125,21 @@ def is_ore(db: sqlite3.Connection, type_id: int) -> bool:
         ).fetchone()
         is not None
     )
+
+
+def work_site(db: sqlite3.Connection, location: dict, ship, board):
+    """Where work in this ship happens (here, or where the ship is) and the
+    risk of getting there and working: (system_id, risk.Assessment)."""
+    system_id = location.get("solar_system_id") if board.jumps == 0 else ship.system_id
+    here = system_info(db, system_id)
+    assessed = risk.assess(
+        db, [system_id, *(board.path if board.jumps else [])], here["region"] if here else None
+    )
+    return system_id, assessed
+
+
+def board_first(ship, board, verb: str) -> str:
+    """ "Board your Venture (4 min), then find" or just "Find"."""
+    if board.needs_switch:
+        return f"Board your {ship.name} ({board.minutes:.0f} min), then {verb}"
+    return verb.capitalize()

@@ -22,6 +22,9 @@ LEARNED = {
     "mining_rate": "Mining speed",
     "sale_price": "Sale prices",
     "minutes_per_jump": "Travel time",
+    "gas_rate": "Gas harvesting speed",
+    "mission_income": "Mission income",
+    "exploration_income": "Exploration income",
 }
 # What a plan uses until a correction has sessions to learn from, and where it learns from.
 NOT_LEARNED = {
@@ -32,6 +35,18 @@ NOT_LEARNED = {
     "sale_price": (
         "so plans expect what buyers' orders pay now. It learns from what your market sales "
         "in recorded sessions actually got."
+    ),
+    "exploration_income": (
+        "so this is a starting guess from players' reports. It learns from the change in "
+        "your net worth across exploration sessions."
+    ),
+    "mission_income": (
+        "so this is a starting guess from one published figure. It learns from the "
+        "mission rewards in your wallet journal."
+    ),
+    "gas_rate": (
+        "so this is the published figure. It learns from the gas in EVE's mining ledger, "
+        "if the ledger records it."
     ),
     "minutes_per_jump": (
         "so plans assume about a minute a jump. It learns from your travel in recorded "
@@ -89,6 +104,43 @@ def _less_after_losses(d: dict) -> str:
     return (
         f"Step {step} earns more an hour after expected losses: "
         f"{isk(theirs)} against {isk(mine)}{risk}."
+    )
+
+
+def _lp_value(d: dict) -> str:
+    if d.get("isk_per_lp"):
+        worth = (
+            f", worth about {d['isk_per_lp']:,.0f} ISK each at the "
+            f"{d.get('corporation') or 'agent corporation'} LP store (a typical good offer, "
+            "CCP average prices)"
+        )
+    else:
+        worth = ", not valued (the LP store couldn't be priced)"
+    have = f"; you have {d['have']:,} LP with them" if d.get("have") else ""
+    return f"About {d.get('lp', 0):,.0f} LP{worth}{have}."
+
+
+def _campaign_objective(d: dict) -> str:
+    where = f", in {d['systems']} systems" if d.get("systems") else ""
+    return (
+        f"Military campaign “{d.get('campaign')}” is running: "
+        f"“{d.get('title')}” pays {numbers.isk(d.get('isk'))} ISK and "
+        f"{d.get('lp', 0):,.0f} LP each time, plus standing ({d.get('activity')}{where}). "
+        "See the campaign in game for what counts."
+    )
+
+
+def _manufacture_costs(d: dict) -> str:
+    runs = d.get("runs", 1)
+    cost = d.get("materials", 0) + d.get("job_fee", 0)
+    on_cost = f", {d['profit'] / cost:.0%} on what it costs" if cost > 0 else ""
+    to_buy = f"; to buy first: {', '.join(d['to_buy'])}" if d.get("to_buy") else ""
+    return (
+        f"Materials {numbers.isk(d.get('materials'))} ISK and job fee "
+        f"{numbers.isk(d.get('job_fee'))} ISK against {numbers.isk(d.get('value'))} ISK "
+        f"when sold (after tax): {numbers.isk(d.get('profit'))} ISK profit over "
+        f"{runs} run{'s' if runs != 1 else ''}{on_cost}. Prices are CCP averages, not hub "
+        f"quotes{to_buy}."
     )
 
 
@@ -203,6 +255,63 @@ def describe(code: str, detail: dict | None = None) -> str:
         "ores_assumed": lambda: (
             f"No mining here on record; assumed common ores: {', '.join(d.get('ores', []))}."
         ),
+        "exploration_guess": lambda: (
+            f"About {numbers.isk(d.get('isk_per_hour'))} ISK an hour from "
+            f"{' and '.join(d.get('sites', []))} sites, a starting guess (players report "
+            "500k-1.5M in highsec, EVE forums; loot is very much luck). Sites have to be "
+            "scanned down first."
+        ),
+        "exploration_needs_fit": lambda: (
+            "Exploration: fit a probe launcher and a relic or data analyzer to see it in plans."
+        ),
+        "mission_guess": lambda: (
+            f"Level {d.get('level')} distribution missions: about "
+            f"{numbers.isk(d.get('isk_per_hour'))} ISK and {d.get('lp_per_hour', 0):,.0f} LP an "
+            "hour, a starting guess (EVE doesn't publish mission pay; level 4 is about 400k ISK "
+            "and 750 LP a mission, EVE University, a third less a level below, three an hour)."
+        ),
+        "lp_value": lambda: _lp_value(d),
+        "campaign_objective": lambda: _campaign_objective(d),
+        "manufacture_costs": lambda: _manufacture_costs(d),
+        "mission_cargo": lambda: (
+            "Distribution missions need cargo space: a few m3 at level 1, up to thousands at "
+            "level 4. Some send you to lowsec; decline those if you don't go there."
+        ),
+        "job_slots_full": lambda: (
+            f"No build suggested: all {d.get('slots')} of your job slots are busy."
+        ),
+        "no_cost_index": lambda: (
+            "No build suggested yet: the system's industry cost index hasn't been read "
+            "(once a day while the dashboard runs)."
+        ),
+        "not_refinable": lambda: (
+            f"{d.get('name', 'This ore')} can't be refined (CCP's data lists nothing it refines "
+            "into), so only selling it raw is compared."
+        ),
+        "gas_estimate": lambda: (
+            f"{d.get('ship')}: about {d.get('m3_per_minute', 0):,.0f} m3 of gas a minute with "
+            f"{d.get('harvesters', 0)} harvester{'s' if d.get('harvesters', 0) != 1 else ''} "
+            "(the published figures; Gas Cloud Harvesting allows one active harvester a level)."
+        ),
+        "gas_site_search": lambda: (
+            f"Gas sites (nebulae) have to be scanned down first: about {d.get('minutes', 0):.0f} "
+            "minutes allowed. A Venture can't fit a probe launcher, so use a scanning ship or "
+            "a bookmark."
+        ),
+        "gas_valued_as": lambda: (
+            f"Valued at {d.get('isk_per_m3', 0):,.0f} ISK a m3, the average CCP price of the "
+            f"highsec booster gases, after {d.get('tax', 0):.1%} sales tax; which gas a site "
+            "holds depends on the site."
+        ),
+        "gas_skill_limit": lambda: (
+            f"{d.get('fitted')} gas harvesters fitted but only {d.get('active')} can run at your "
+            "Gas Cloud Harvesting level (or turret slots)."
+        ),
+        "gas_needs_scoops": lambda: (
+            "Gas harvesting: fit Gas Cloud Scoops to a mining frigate to see gas sites in plans."
+        ),
+        "gas_unpriced": lambda: "Gas isn't in plans: no market prices for it yet.",
+        "no_gas_modules": lambda: "No gas harvesters this character can use are fitted.",
         "no_live_signals": lambda: (
             "No fresh kill data from EVE, so the chance of loss comes from security alone "
             "(highsec low, lowsec medium). It's read every hour while the dashboard runs."

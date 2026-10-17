@@ -48,13 +48,33 @@ ATTRIBUTE_NAMES = frozenset(
         "miningCritBonusYield",
         "generalMiningHoldCapacity",
         "specialOreHoldCapacity",
+        "specialGasHoldCapacity",
+        # Milestone 5: slots for fitting, industry and exploration skills.
+        "turretSlotsLeft",
+        "launcherSlotsLeft",
+        "hiSlots",
+        "manufacturingTimeBonus",
+        "advancedIndustrySkillIndustryJobTimeBonus",
+        "manufacturingSlotBonus",
+        "virusCoherence",
+        "virusStrength",
+        "virusCoherenceBonus",
+        "accessDifficultyBonusAbsolutePercent",
     }
 )
-ATTRIBUTE_NAME_SUFFIXES = ("OreMiningYield", "OreMiningDuration")
+ATTRIBUTE_NAME_SUFFIXES = (
+    "OreMiningYield",
+    "OreMiningDuration",
+    "GasHarvestingYield",
+    "GasHarvestingDuration",
+    "GasCloudHarvestingDuration",
+    "GasHarvesterDuration",
+)
+AGENT_TYPE_BASIC = 2
 
 # Bump when load() starts filling new tables or attributes; a database loaded
 # by an older loader is then reported as needing a reload.
-LOADER_VERSION = 3
+LOADER_VERSION = 4
 
 
 def _kept_attribute_ids(names: dict[int, str]) -> frozenset[int]:
@@ -155,6 +175,12 @@ def load(db: sqlite3.Connection, zip_path: Path) -> SdeBuild:
                 "sde_jumps",
                 "sde_npc_corporations",
                 "sde_dogma_attributes",
+                "sde_blueprints",
+                "sde_blueprint_materials",
+                "sde_blueprint_skills",
+                "sde_agents",
+                "sde_campaigns",
+                "sde_campaign_objectives",
             ):
                 db.execute(f"DELETE FROM {table}")  # noqa: S608  # fixed table names
 
@@ -272,15 +298,99 @@ def load(db: sqlite3.Connection, zip_path: Path) -> SdeBuild:
                 ),
             )
             db.executemany(
-                "INSERT INTO sde_npc_corporations VALUES (?, ?)",
-                ((r["_key"], r.get("factionID")) for r in _rows(archive, "npcCorporations.jsonl")),
+                "INSERT INTO sde_npc_corporations VALUES (?, ?, ?)",
+                (
+                    (r["_key"], r.get("factionID"), _english(r.get("name")))
+                    for r in _rows(archive, "npcCorporations.jsonl")
+                ),
             )
+            _load_industry_and_agents(db, archive)
+            _load_campaigns(db, archive)
             db.execute(
                 "INSERT INTO sde_meta (build_number, release_date, loaded_at, loader_version) "
                 "VALUES (?, ?, ?, ?)",
                 (build.build_number, build.release_date, utc_now(), LOADER_VERSION),
             )
     return build
+
+
+def _optional_rows(archive: zipfile.ZipFile, name: str):
+    """A file's rows, or none if this build doesn't have it."""
+    return _rows(archive, name) if name in archive.namelist() else iter(())
+
+
+def _load_industry_and_agents(db: sqlite3.Connection, archive: zipfile.ZipFile) -> None:
+    """Blueprints' manufacturing (materials, product, time, skills) and NPC agents."""
+    for r in _optional_rows(archive, "blueprints.jsonl"):
+        making = r.get("activities", {}).get("manufacturing")
+        if not making or not making.get("products"):
+            continue
+        product = making["products"][0]
+        blueprint = r["_key"]
+        db.execute(
+            "INSERT INTO sde_blueprints VALUES (?, ?, ?, ?, ?)",
+            (blueprint, product["typeID"], product.get("quantity", 1), making.get("time", 0),
+             r.get("maxProductionLimit")),
+        )  # fmt: skip
+        db.executemany(
+            "INSERT OR REPLACE INTO sde_blueprint_materials VALUES (?, ?, ?)",
+            [(blueprint, m["typeID"], m["quantity"]) for m in making.get("materials", [])],
+        )
+        db.executemany(
+            "INSERT OR REPLACE INTO sde_blueprint_skills VALUES (?, ?, ?)",
+            [(blueprint, s["typeID"], s["level"]) for s in making.get("skills", [])],
+        )
+    db.executemany(
+        "INSERT INTO sde_agents VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            (r["_key"], _english(r.get("name")), r["corporationID"], r.get("locationID"),
+             r["agent"]["divisionID"], r["agent"]["level"], r["agent"]["agentTypeID"],
+             int(bool(r["agent"].get("isLocator"))))
+            for r in _optional_rows(archive, "npcCharacters.jsonl")
+            if r.get("agent") and "corporationID" in r
+        ),
+    )  # fmt: skip
+
+
+def reload_if_needed(db: sqlite3.Connection, folder: Path = DEFAULT_SDE_DIR) -> bool:
+    """Reload the loaded build from its zip on disk when this loader is newer
+    than the one that loaded it (a new version filling new tables). Nothing is
+    downloaded. Returns True if it reloaded."""
+    build = loaded_build(db)
+    if build is None or not needs_reload(db):
+        return False
+    cached = folder / f"sde-{build.build_number}-jsonl.zip"
+    if not cached.exists() or not zipfile.is_zipfile(cached):
+        return False
+    load(db, cached)
+    return True
+
+
+def _load_campaigns(db: sqlite3.Connection, archive: zipfile.ZipFile) -> None:
+    """Military campaigns and their objectives: what each is and pays."""
+    db.executemany(
+        "INSERT INTO sde_campaigns VALUES (?, ?)",
+        (
+            (r["_key"], _english(r.get("title")))
+            for r in _optional_rows(archive, "militaryCampaigns.jsonl")
+        ),
+    )
+    for r in _optional_rows(archive, "militaryCampaignObjectives.jsonl"):
+        rewards = r.get("rewards", {})
+        method = r.get("contributionMethodConfiguration", {})
+        db.execute(
+            "INSERT INTO sde_campaign_objectives VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                r["_key"], r["campaignID"], _english(r.get("title")), method.get("name", ""),
+                r.get("careerPath"),
+                rewards.get("isk", {}).get("amountPerInterval", 0.0),
+                rewards.get("lp", {}).get("amountPerInterval", 0.0),
+                rewards.get("lp", {}).get("issuer", {}).get("corporationID"),
+                rewards.get("standing", {}).get("gainPercentPerInterval", 0.0),
+                r.get("maxProgressPerParticipant"),
+                json.dumps(method.get("parameters", [])),
+            ),
+        )  # fmt: skip
 
 
 def needs_reload(db: sqlite3.Connection) -> bool:

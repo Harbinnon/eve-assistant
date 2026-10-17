@@ -15,10 +15,12 @@ from pathlib import Path
 from eve_assistant import (
     auth,
     backups,
+    campaigns,
     contracts,
     freelance,
     gamelogs,
     goals,
+    industry,
     losses,
     outcomes,
     planner,
@@ -278,7 +280,13 @@ def _refresh_signals(db, esi: EsiClient, now: datetime) -> list[str]:
 
 
 def _public_due(db, now: datetime) -> bool:
-    return _prices_due(db, now) or _freelance_due(db, now) or signals.due(db, now)
+    return (
+        _prices_due(db, now)
+        or _freelance_due(db, now)
+        or signals.due(db, now)
+        or industry.due(db, now)
+        or campaigns.due(db, now)
+    )
 
 
 def _refresh_public(db, esi: EsiClient, now: datetime) -> list[str]:
@@ -293,13 +301,25 @@ def _refresh_public(db, esi: EsiClient, now: datetime) -> list[str]:
         problems.extend(_refresh_freelance(db, esi, now))
     if signals.due(db, now):
         problems.extend(_refresh_signals(db, esi, now))
+    if industry.due(db, now):
+        try:
+            industry.refresh(db, esi, now)
+        except EsiError as exc:
+            problems.append(f"Industry cost indices: {exc}")
+    if campaigns.due(db, now):
+        try:
+            campaigns.refresh(db, esi, now)
+        except EsiError as exc:
+            problems.append(f"Military campaigns: {exc}")
     return problems
 
 
 def _check_static_data(config: Config, db_path, now: datetime) -> list[str]:
-    """Once a day, note which static data build CCP has published."""
+    """Reload the static data if a newer loader needs it (from the zip already on
+    disk), and once a day note which build CCP has published."""
     db = store.connect(db_path)
     try:
+        sde.reload_if_needed(db)
         if not sde.check_due(db, now):
             return []
         with auth.http_client(config) as http:
