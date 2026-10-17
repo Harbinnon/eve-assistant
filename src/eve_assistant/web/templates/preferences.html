@@ -27,8 +27,9 @@
 </div>
 
 <h2>Play time</h2>
-<p class="lede">Used to check whether a project can be finished before its deadline. It will be
-learned from your sessions later; until then, set it here.</p>
+<p class="lede">Used to check whether a project can be finished before its deadline, and for
+goal dates. Your setting is the starting point; recorded sessions take over as weeks agree.</p>
+<p class="muted">{{ explain(play_time.reason().code, play_time.reason().detail) }}</p>
 <form class="stack card" method="post" action="/preferences-play-time">
   <input type="hidden" name="token" value="{{ form_token }}">
   <label for="hours">Hours per week
@@ -40,6 +41,9 @@ learned from your sessions later; until then, set it here.</p>
 
 <h2>What it has learned</h2>
 <p class="muted">Corrections to the planner's estimates, from your own sessions. They start at the published figures and move as sessions agree.</p>
+<ul>
+  <li>{{ explain(finish.reason().code, finish.reason().detail) }}</li>
+</ul>
 {% if learned %}
 <ul>
   {% for name, c in learned %}<li><strong>{{ name }}</strong>: {{ explain(c.reason().code, c.reason().detail) }}</li>{% endfor %}

@@ -25,6 +25,7 @@ from eve_assistant import (
     fleet,
     mining,
     ore,
+    pace,
     preferences,
     projects,
     risk,
@@ -308,6 +309,7 @@ def hangar_candidates(
                 )
                 items.append(
                     _project_item(
+                        finish=pace.finish_rate(db),
                         kind="haul",
                         key=f"{station_id}:{type_id}:{option.key}",
                         title=title,
@@ -356,7 +358,18 @@ def _multi_trip_haul(
 
 
 def _project_item(
-    *, kind, key, title, total_minutes, isk, minutes, rating, reasons, inputs, deadline_days=None
+    *,
+    kind,
+    key,
+    title,
+    total_minutes,
+    isk,
+    minutes,
+    rating,
+    reasons,
+    inputs,
+    deadline_days=None,
+    finish: pace.FinishRate | None = None,
 ) -> PlanItem:
     """A plan item that either fits in this session or starts a multi-session project.
     A project's value is its share for this session, discounted for not finishing."""
@@ -372,11 +385,12 @@ def _project_item(
             inputs={**inputs, "jumps": 1, "travel_jumps": 1},
         )
     share = minutes / total_minutes
+    finish = finish or pace.FinishRate(projects.NOT_FINISHING_CHANCE, 0, 0)
     return PlanItem(
         kind="project_start",
         key=f"{kind}:{key}",
         title=f"Start a project: {title}",
-        isk=isk * share * (1 - projects.NOT_FINISHING_CHANCE),
+        isk=isk * share * (1 - finish.not_finishing),
         minutes=minutes,
         risk=rating,
         reasons=(
@@ -386,7 +400,8 @@ def _project_item(
                     "total_minutes": total_minutes,
                     "total_isk": isk,
                     "share": share,
-                    "not_finishing": projects.NOT_FINISHING_CHANCE,
+                    "not_finishing": finish.not_finishing,
+                    "learned_from": finish.done + finish.dropped,
                 },
             ),  # fmt: skip
             *reasons,
@@ -409,6 +424,7 @@ def _project_item(
 def project_candidates(db, character_id, minutes, net_worth, notes) -> list[PlanItem]:
     """Open projects, to continue."""
     items = []
+    not_finishing = pace.finish_rate(db).not_finishing
     for project in projects.open_projects(db, character_id):
         if project.minutes_left <= 0:
             notes.append(Reason("project_time_used", {"title": project.title}))
@@ -428,9 +444,7 @@ def project_candidates(db, character_id, minutes, net_worth, notes) -> list[Plan
                 kind="project_continue",
                 key=str(project.project_id),
                 title=f"Continue project: {project.title}",
-                isk=project.isk
-                * (session / project.total_minutes)
-                * (1 - projects.NOT_FINISHING_CHANCE),
+                isk=project.isk * (session / project.total_minutes) * (1 - not_finishing),
                 minutes=session,
                 risk=rating,
                 reasons=tuple(reasons),
@@ -614,7 +628,8 @@ def courier_candidates(db, esi, character_id, ships, minutes, net_worth, highsec
     if not found.options and found.excluded:
         notes.append(Reason("no_couriers_fit", dict(found.excluded)))
     items = []
-    weekly = projects.weekly_minutes(db)
+    weekly = pace.weekly_play(db).minutes
+    finish = pace.finish_rate(db)
     for option in found.options:
         band = risk.band_for_security(option.lowest_security)
         in_ship = f" in your {option.ship.name}" if option.ship.switch_minutes else ""
@@ -623,6 +638,7 @@ def courier_candidates(db, esi, character_id, ships, minutes, net_worth, highsec
                 continue
             items.append(
                 _project_item(
+                    finish=finish,
                     kind="courier",
                     key=str(option.contract_id),
                     title=f"Courier {option.start_system} -> {option.end_system} "

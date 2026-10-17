@@ -16,6 +16,7 @@ from eve_assistant import (
     mining,
     ore,
     outcomes,
+    pace,
     planner,
     preferences,
     projects,
@@ -491,8 +492,9 @@ def _cmd_projects(_args) -> int:
     with store.connect() as db:
         names = dict(db.execute("SELECT character_id, name FROM characters").fetchall())
         open_projects = projects.open_projects(db)
-        weekly = projects.weekly_minutes(db)
-    print(f"Play time: {weekly / 60:g} hours a week (change with: eve-assistant play-time <hours>)")
+        play_time = pace.weekly_play(db)
+    print(explain.describe(play_time.reason().code, play_time.reason().detail))
+    print("Change your setting with: eve-assistant play-time <hours>")
     if not open_projects:
         print("No open projects.")
     for p in open_projects:
@@ -623,6 +625,8 @@ def _cmd_learned(_args) -> int:
         for row in rows:
             reason = corrections.correction(db, row["character_id"], "mining_rate").reason()
             print(f"{row['name']}: {explain.describe(reason.code, reason.detail)}")
+        for reason in (pace.weekly_play(db).reason(), pace.finish_rate(db).reason()):
+            print(explain.describe(reason.code, reason.detail))
     return 0
 
 

@@ -124,7 +124,12 @@ def describe(code: str, detail: dict | None = None) -> str:
             f"Takes about {d.get('total_minutes', 0):,.0f} minutes in all for "
             f"{d.get('total_isk', 0):,.0f} ISK, paid at the end. This session counts as "
             f"{d.get('share', 0):.0%} of it, less {d.get('not_finishing', 0):.0%} for the chance "
-            "of not finishing (a starting guess)."
+            "of not finishing "
+            + (
+                f"(from your {d['learned_from']} closed projects)."
+                if d.get("learned_from")
+                else "(a starting guess)."
+            )
         ),
         "project_progress": lambda: (
             f"Done so far: about {d.get('done', 0):,.0f} of {d.get('total', 0):,.0f} minutes."
@@ -136,8 +141,26 @@ def describe(code: str, detail: dict | None = None) -> str:
             f"The project “{d.get('title')}” has used its estimated time; mark it done or drop it."
         ),
         "deadline_fits_your_pace": lambda: (
-            f"{d.get('days')} days to deliver; at about {d.get('weekly_minutes', 0) / 60:g} hours "
-            "a week you should finish in time."
+            f"{d.get('days')} days to deliver; at about {d.get('weekly_minutes', 0) / 60:.1f} "
+            "hours a week you should finish in time."
+        ),
+        "play_time_setting": lambda: (
+            f"Play time: {d.get('weekly_minutes', 0) / 60:.1f} hours a week, your setting. It "
+            "is learned from the sessions you record."
+        ),
+        "play_time_learned": lambda: (
+            f"Play time: about {d.get('weekly_minutes', 0) / 60:.1f} hours a week. Your recorded "
+            f"sessions average {d.get('observed_minutes', 0) / 60:.1f} hours over "
+            f"{d.get('weeks')} weeks, blended with your setting of "
+            f"{d.get('setting_minutes', 0) / 60:.1f} until more weeks agree."
+        ),
+        "finish_rate_guess": lambda: (
+            f"Projects: assumed {d.get('not_finishing', 0):.0%} are not finished (a starting "
+            "guess, until you close some)."
+        ),
+        "finish_rate_learned": lambda: (
+            f"Projects: {d.get('done')} finished, {d.get('dropped')} dropped, so plans now allow "
+            f"{d.get('not_finishing', 0):.0%} for not finishing."
         ),
         "hauler_chosen": lambda: (
             f"Carried in your {d.get('ship')}: {d.get('load_m3', 0):,.0f} m3 of the "
