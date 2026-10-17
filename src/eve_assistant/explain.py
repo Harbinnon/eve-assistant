@@ -18,6 +18,9 @@ WHY_NOT = {
 }
 
 
+LEARNED = {"mining_rate": "Mining speed"}
+
+
 def describe(code: str, detail: dict | None = None) -> str:
     d = detail or {}
     texts = {
@@ -60,8 +63,22 @@ def describe(code: str, detail: dict | None = None) -> str:
         ),
         "mining_estimate": lambda: (
             f"Estimated {d.get('m3_per_minute', 0):,.0f} m3 per minute in your "
-            f"{d.get('ship', 'ship')}, from the static data (not yet checked against your "
-            "real sessions)."
+            f"{d.get('ship', 'ship')}, from the static data."
+        ),
+        "learned_correction": lambda: (
+            f"{LEARNED.get(d.get('what'), d.get('what'))}: adjusted ×{d.get('factor', 1):.2f} "
+            f"from {d.get('sessions', 0)} of your sessions (you averaged "
+            f"×{d.get('average_ratio', 1):.2f} of the estimate; the adjustment grows as "
+            "more sessions agree)."
+        ),
+        "not_learned_yet": lambda: (
+            f"{LEARNED.get(d.get('what'), d.get('what'))}: not yet checked against your real "
+            "sessions, so this is the published figure."
+            + (
+                " It learns from sessions played with game logs on ([logs] in config/local.toml)."
+                if d.get("what") == "mining_rate"
+                else ""
+            )
         ),
         "not_modelled": lambda: f"Not counted: {', '.join(d.get('items', []))}.",
         "crystals_not_modelled": lambda: "Mining crystals are not counted yet.",

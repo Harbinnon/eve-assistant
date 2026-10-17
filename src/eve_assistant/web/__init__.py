@@ -19,6 +19,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from eve_assistant import (
+    corrections,
     explain,
     goals,
     outcomes,
@@ -378,6 +379,10 @@ def create_app(
         try:
             active = preferences.active_mutes(conn)
             weekly = projects.weekly_minutes(conn)
+            learned = [
+                (r["name"], corrections.correction(conn, r["character_id"], "mining_rate"))
+                for r in conn.execute("SELECT character_id, name FROM characters ORDER BY name")
+            ]
         finally:
             conn.close()
         return render(
@@ -388,6 +393,7 @@ def create_app(
             risk_matrix=risk.MATRIX,
             band_labels=BAND_LABELS,
             weekly_hours=weekly / 60,
+            learned=learned,
         )
 
     @app.post("/preferences-play-time")

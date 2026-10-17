@@ -38,6 +38,14 @@ learned from your sessions later; until then, set it here.</p>
   <button class="primary" type="submit">Save</button>
 </form>
 
+<h2>What it has learned</h2>
+<p class="muted">Corrections to the planner's estimates, from your own sessions. They start at the published figures and move as sessions agree.</p>
+{% if learned %}
+<ul>
+  {% for name, c in learned %}<li><strong>{{ name }}</strong>: {{ explain(c.reason().code, c.reason().detail) }}</li>{% endfor %}
+</ul>
+{% else %}<p class="muted">No characters yet.</p>{% endif %}
+
 <h2>Risk matrix</h2>
 <p class="lede">Each suggestion is rated by how likely a loss is against how much of your net worth is at stake.
 Red options are left out unless you tick “include risky options”. The starting lines will move as the tool learns
