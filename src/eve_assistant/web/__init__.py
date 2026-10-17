@@ -37,6 +37,7 @@ from eve_assistant.skills import SkillsError
 # make_plan(character_id, minutes, allow_lowsec, allow_risky) -> plan_id
 PlanMaker = Callable[[int, float, bool, bool], int]
 SnapshotTaker = Callable[[int], list[str]]
+TODAY = "/today"
 
 HERE = Path(__file__).parent
 
@@ -176,12 +177,12 @@ def create_app(
 
     @app.get("/")
     def home():
-        return back("/today")
+        return back(TODAY)
 
     def _names(conn) -> list[str]:
         return [r["name"] for r in conn.execute("SELECT name FROM characters ORDER BY name")]
 
-    @app.get("/today", response_class=HTMLResponse)
+    @app.get(TODAY, response_class=HTMLResponse)
     def today_page(request: Request, error: str | None = None):
         conn = db()
         try:
@@ -221,7 +222,7 @@ def create_app(
             raise HTTPException(404, str(exc)) from None
         finally:
             conn.close()
-        return back("/today", msg=f"project_{status}")
+        return back(TODAY, msg=f"project_{status}")
 
     @app.post("/today/plan")
     def new_plan(
@@ -286,7 +287,7 @@ def create_app(
         if problems:
             done = MESSAGES[msg]
             return today_page(request, error=f"{done} Snapshot problems: " + "; ".join(problems))
-        return back("/today", msg=msg)
+        return back(TODAY, msg=msg)
 
     @app.post("/sessions/start")
     def start_session(request: Request, token: str = Form(...), plan_id: int = Form(...)):

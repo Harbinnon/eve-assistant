@@ -58,9 +58,10 @@ def test_minutes_played_moves_the_end_back(db):
 
 def test_one_running_session_per_character(db):
     sessions.start(db, 7, now=START)
+    later = _at(5)
     with pytest.raises(sessions.SessionError, match="already has a session"):
-        sessions.start(db, 7, now=_at(5))
-    other = sessions.start(db, 8, now=_at(5))  # another character can play meanwhile
+        sessions.start(db, 7, now=later)
+    other = sessions.start(db, 8, now=later)  # another character can play meanwhile
     assert other.is_open
 
 
@@ -75,24 +76,26 @@ def test_a_plan_must_belong_to_the_character(db):
 
 
 def test_bad_endings_are_refused(db):
-    session = sessions.start(db, 7, now=START)
+    session_id = sessions.start(db, 7, now=START).session_id
+    half_hour, after = _at(30), _at(31)
     with pytest.raises(sessions.SessionError, match="can't have lasted"):
-        sessions.finish(db, session.session_id, minutes_played=90, now=_at(30))
+        sessions.finish(db, session_id, minutes_played=90, now=half_hour)
     with pytest.raises(sessions.SessionError, match="more than zero"):
-        sessions.finish(db, session.session_id, minutes_played=0, now=_at(30))
+        sessions.finish(db, session_id, minutes_played=0, now=half_hour)
     with pytest.raises(sessions.SessionError, match="finished or cancelled"):
-        sessions.finish(db, session.session_id, how="paused", now=_at(30))
-    sessions.finish(db, session.session_id, now=_at(30))
+        sessions.finish(db, session_id, how="paused", now=half_hour)
+    sessions.finish(db, session_id, now=half_hour)
     with pytest.raises(sessions.SessionError, match="already ended"):
-        sessions.finish(db, session.session_id, now=_at(31))
+        sessions.finish(db, session_id, now=after)
 
 
 def test_a_stale_session_needs_the_real_length(db):
     session = sessions.start(db, 7, now=START)
-    assert session.is_stale(_at(13 * 60))
+    next_day = _at(13 * 60)
+    assert session.is_stale(next_day)
     with pytest.raises(sessions.SessionError, match="how many minutes"):
-        sessions.finish(db, session.session_id, now=_at(13 * 60))
-    ended = sessions.finish(db, session.session_id, minutes_played=90, now=_at(13 * 60))
+        sessions.finish(db, session.session_id, now=next_day)
+    ended = sessions.finish(db, session.session_id, minutes_played=90, now=next_day)
     assert ended.minutes() == 90
 
 
