@@ -128,6 +128,14 @@ def test_skills_page_suggests_what_to_train_next(client, monkeypatch):
     assert "Have 101M ISK" in page
 
 
+def test_skills_page_says_when_alpha_limits_leave_nothing_to_train(client, monkeypatch):
+    monkeypatch.setattr(train_next, "suggestions", lambda db, cid, limit=3: [])
+    monkeypatch.setattr(train_next, "at_alpha_limits", lambda db, cid: True)
+    page = client.get("/skills").text
+    assert "Every skill your mining uses is at Alpha's limit" in page
+    assert 'href="/goals"' in page
+
+
 def test_skills_page_explains_unknown_items(client):
     page = client.get("/skills", params={"character": "Test Pilot", "item": "Big"})
     assert "Did you mean: Big Barge" in page.text

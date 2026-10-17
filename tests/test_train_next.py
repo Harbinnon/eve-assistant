@@ -107,3 +107,15 @@ def test_no_skills_or_no_mining_means_no_suggestions(db):
     snapshots.ensure_character(db, 8, "Nobody")
     assert train_next.suggestions(db, 8) == []
     assert train_next.goal_for(db, 8) is None
+
+
+def test_an_alpha_at_every_limit_is_told_so(db):
+    assert not train_next.at_alpha_limits(db, 7)  # Mining 4 of 5, Astrogeology 0 of 3, ...
+    db.execute("UPDATE sde_clone_grade_skills SET max_level = 0 WHERE skill_id = ?", (ASTRO,))
+    db.execute("UPDATE sde_clone_grade_skills SET max_level = 2 WHERE skill_id = ?", (FRIG_SKILL,))
+    db.execute("UPDATE sde_clone_grade_skills SET max_level = 4 WHERE skill_id = ?", (MINING,))
+    assert train_next.suggestions(db, 7) == []
+    assert train_next.at_alpha_limits(db, 7)
+    account = db.execute("INSERT INTO accounts (label, clone_state) VALUES ('main', 'omega')")
+    db.execute("UPDATE characters SET account_id = ? WHERE character_id = 7", (account.lastrowid,))
+    assert not train_next.at_alpha_limits(db, 7)

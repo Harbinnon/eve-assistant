@@ -54,6 +54,12 @@
     {% if train|selectattr("needs_omega")|list %}Alpha training stops at 5,000,000 skill points, so these times are as Omega.{% endif %}
   </p>
 </section>
+{% elif train_capped %}
+<section class="card train-next">
+  <h2 class="history-title">Train this next · {{ character }}</h2>
+  <p>Every skill your mining uses is at Alpha's limit, so there's nothing more to train for mining as Alpha.
+    Omega lifts the limits: see <a href="/goals">What Omega would change</a> on Goals.</p>
+</section>
 {% endif %}
 
 {% if requirement %}

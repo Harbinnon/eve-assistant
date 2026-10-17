@@ -2,7 +2,8 @@
 
 Wallet and assets are snapshotted only when they change, so the worth on a
 day is the day's last wallet plus its last asset list (or the latest before
-it). One point a day, the newest always included. Assets are valued at
+it). One point a day, plus one at the latest check with EVE when nothing has
+changed since an earlier day (the worth then is the same). Assets are valued at
 today's CCP average prices for every point, as no price history is kept: the
 line shows what changed in wallets and hangars, not price moves. Blueprint
 copies count as nothing (their price is the original's).
@@ -70,6 +71,7 @@ def history(
     db: sqlite3.Connection, character_ids: Iterable[int], days: int = DAYS, now: str | None = None
 ) -> list[Point]:
     """Net worth a day, oldest first, for one character or several added up."""
+    character_ids = list(character_ids)
     since = (datetime.fromisoformat(now or utc_now()) - timedelta(days=days)).date().isoformat()
     events = []
     for character_id in character_ids:
@@ -88,7 +90,25 @@ def history(
         day = max(taken_at[:10], since)
         at = taken_at if day == taken_at[:10] else f"{since}T00:00:00+00:00"
         by_day[day] = Point(at, sum(wallets.values()), sum(holdings.values()))
+    checked = _last_checked(db, character_ids)
+    if by_day and checked and checked[:10] > max(by_day):
+        last = by_day[max(by_day)]
+        by_day[checked[:10]] = Point(checked, last.wallet, last.assets)
     return list(by_day.values())
+
+
+def _last_checked(db: sqlite3.Connection, character_ids: Iterable[int]) -> str | None:
+    """The latest successful check of wallet or assets, for any of the characters."""
+    latest = None
+    for character_id in character_ids:
+        row = db.execute(
+            "SELECT MAX(checked_at) FROM snapshot_checks WHERE character_id = ? "
+            "AND kind IN ('wallet', 'assets') AND outcome != 'failed'",
+            (character_id,),
+        ).fetchone()
+        if row[0] and (latest is None or row[0] > latest):
+            latest = row[0]
+    return latest
 
 
 def all_characters(db: sqlite3.Connection) -> list[int]:

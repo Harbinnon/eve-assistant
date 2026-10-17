@@ -56,6 +56,22 @@ def test_older_snapshots_carry_into_the_window(db):
     ]
 
 
+def test_an_unchanged_worth_is_carried_to_the_latest_check(db):
+    snap(db, 7, "wallet", 5_000_000.0, "2026-10-16T08:00:00+00:00")
+    for at, outcome in (("2026-10-17T09:00:00+00:00", "unchanged"),
+                        ("2026-10-17T10:00:00+00:00", "failed")):  # fmt: skip
+        db.execute(
+            "INSERT INTO snapshot_checks (character_id, kind, checked_at, outcome) "
+            "VALUES (7, 'wallet', ?, ?)",
+            (at, outcome),
+        )
+    points = worth.history(db, iter([7]), now="2026-10-17T12:00:00+00:00")
+    assert [(p.at, p.total) for p in points] == [
+        ("2026-10-16T08:00:00+00:00", 5_000_000.0),
+        ("2026-10-17T09:00:00+00:00", 5_000_000.0),  # the same worth, checked a day later
+    ]
+
+
 def test_several_characters_add_up_and_copies_count_as_nothing(db):
     snap(db, 7, "wallet", 1_000_000.0, "2026-10-16T00:00:00+00:00")
     snap(db, 8, "wallet", 3_000_000.0, "2026-10-16T01:00:00+00:00")

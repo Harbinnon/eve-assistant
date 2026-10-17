@@ -1104,12 +1104,13 @@ def create_app(
                 active = active_character(request, conn)
                 character = active[1] if active else ""
             requirement, error, clone_state = None, None, None
-            train, train_goal = [], None
+            train, train_goal, train_capped = [], None, False
             if character:
                 try:
                     character_id = goals.resolve_character(conn, character)
                     train = train_next.suggestions(conn, character_id)
                     train_goal = train_next.goal_for(conn, character_id)
+                    train_capped = not train and train_next.at_alpha_limits(conn, character_id)
                 except GoalError:
                     pass
             if character and item:
@@ -1133,6 +1134,7 @@ def create_app(
             clone_state=clone_state,
             train=train,
             train_goal=train_goal,
+            train_capped=train_capped,
             error=error,
         )
 

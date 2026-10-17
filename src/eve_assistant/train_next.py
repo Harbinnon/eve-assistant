@@ -121,6 +121,31 @@ def suggestions(db: sqlite3.Connection, character_id: int, limit: int = 3) -> li
     return found[:limit]
 
 
+def at_alpha_limits(db: sqlite3.Connection, character_id: int) -> bool:
+    """True for an Alpha whose every mining skill is at Alpha's limit, with
+    Omega allowing more: nothing is left to train for mining as Alpha."""
+    try:
+        character = skills.load_character_skills(db, character_id)
+    except skills.SkillsError:
+        return False
+    if not character.is_alpha:
+        return False
+    caps = skills.alpha_caps(db, character.race_id)
+    capped = False
+    for name in CANDIDATES:
+        row = db.execute(
+            "SELECT type_id FROM sde_types WHERE name = ? AND published = 1", (name,)
+        ).fetchone()
+        if row is None:
+            continue
+        cap = min(caps.get(row["type_id"], 0), 5)
+        level = character.skills.get(row["type_id"], TrainedSkill(0, 0, 0)).active_level
+        if level < cap:
+            return False
+        capped = capped or cap < 5
+    return capped
+
+
 def goal_for(db: sqlite3.Connection, character_id: int) -> str | None:
     """The goal the 'weeks sooner' figures are for, by its label."""
     found = _isk_still_needed(db, character_id)
