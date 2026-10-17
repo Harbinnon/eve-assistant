@@ -59,6 +59,8 @@ AutoRefresher = Callable[[], object]
 AUTO_TICK_SECONDS = 60.0
 log = logging.getLogger(__name__)
 TODAY = "/today"
+GOALS = "/goals"
+PREFERENCES = "/preferences"
 UNKNOWN_ACTION = "Unknown action."
 
 HERE = Path(__file__).parent
@@ -110,7 +112,10 @@ DEFAULT_THEME = "dark"
 THEME_COOKIE = "theme"
 THEME_MAX_AGE = 365 * 24 * 3600
 # Pages the theme form may return to; anything else goes to Today.
-RETURN_PAGES = frozenset({"/today", "/characters", "/goals", "/skills", "/history", "/preferences"})
+# Each maps to itself, so the redirect is always one of these constants.
+RETURN_PAGES = {
+    page: page for page in (TODAY, "/characters", GOALS, "/skills", "/history", PREFERENCES)
+}
 
 BAND_LABELS = {
     "none": "No player risk (Exordium)",
@@ -367,7 +372,7 @@ def create_app(
         if chosen is None:
             raise HTTPException(400, "Unknown theme.")
         # Back to one of the dashboard's own pages, never an address from the form.
-        target = return_to if return_to in RETURN_PAGES else TODAY
+        target = RETURN_PAGES.get(return_to, TODAY)
         response = RedirectResponse(target, status_code=303)
         # Secure is fine over plain http here: browsers treat 127.0.0.1 and localhost
         # as secure, and hosted mode will use HTTPS.
@@ -567,7 +572,7 @@ def create_app(
             conn.close()
         return back(f"/plans/{row['plan_id']}", msg=response)
 
-    @app.get("/preferences", response_class=HTMLResponse)
+    @app.get(PREFERENCES, response_class=HTMLResponse)
     def preferences_page(request: Request):
         conn = db()
         try:
@@ -611,7 +616,7 @@ def create_app(
             raise HTTPException(400, str(exc)) from None
         finally:
             conn.close()
-        return back("/preferences", msg="play_time")
+        return back(PREFERENCES, msg="play_time")
 
     @app.post("/preferences/{action}")
     def change_preference(
@@ -630,7 +635,7 @@ def create_app(
             raise HTTPException(400, str(exc)) from None
         finally:
             conn.close()
-        return back("/preferences", msg=f"{action}d")
+        return back(PREFERENCES, msg=f"{action}d")
 
     @app.get("/history", response_class=HTMLResponse)
     def history_page(request: Request):
@@ -673,7 +678,7 @@ def create_app(
             conn.close()
         return render(request, "characters.html", characters=summaries, problems=problems)
 
-    @app.get("/goals", response_class=HTMLResponse)
+    @app.get(GOALS, response_class=HTMLResponse)
     def goals_page(request: Request, error: str | None = None):
         conn = db()
         try:
@@ -695,7 +700,7 @@ def create_app(
             error=error,
         )
 
-    @app.post("/goals")
+    @app.post(GOALS)
     def add_goal(
         request: Request,
         token: str = Form(...),
@@ -730,7 +735,7 @@ def create_app(
             return goals_page(request, error=message)
         finally:
             conn.close()
-        return back("/goals", msg="goal_added")
+        return back(GOALS, msg="goal_added")
 
     @app.post("/goals/{goal_id}/status")
     def close_goal(request: Request, goal_id: int, token: str = Form(...), status: str = Form(...)):
@@ -744,7 +749,7 @@ def create_app(
             raise HTTPException(404, str(exc)) from None
         finally:
             conn.close()
-        return back("/goals", msg=f"goal_{status}")
+        return back(GOALS, msg=f"goal_{status}")
 
     @app.get("/skills", response_class=HTMLResponse)
     def skills_page(request: Request, character: str = "", item: str = ""):
