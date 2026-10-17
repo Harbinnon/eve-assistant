@@ -208,6 +208,13 @@ def describe(code: str, detail: dict | None = None) -> str:
         "ores_assumed": lambda: (
             f"No mining here on record; assumed common ores: {', '.join(d.get('ores', []))}."
         ),
+        "campaign_objective": lambda: (
+            f"Military campaign \u201c{d.get('campaign')}\u201d is running: "
+            f"\u201c{d.get('title')}\u201d pays {numbers.isk(d.get('isk'))} ISK and "
+            f"{d.get('lp', 0):,.0f} LP each time, plus standing ({d.get('activity')}"
+            + (f", in {d['systems']} systems" if d.get("systems") else "")
+            + "). See the campaign in game for what counts."
+        ),
         "manufacture_costs": lambda: (
             f"Materials {numbers.isk(d.get('materials'))} ISK and job fee "
             f"{numbers.isk(d.get('job_fee'))} ISK against {numbers.isk(d.get('value'))} ISK "

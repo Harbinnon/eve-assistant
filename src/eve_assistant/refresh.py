@@ -15,6 +15,7 @@ from pathlib import Path
 from eve_assistant import (
     auth,
     backups,
+    campaigns,
     contracts,
     freelance,
     gamelogs,
@@ -284,6 +285,7 @@ def _public_due(db, now: datetime) -> bool:
         or _freelance_due(db, now)
         or signals.due(db, now)
         or industry.due(db, now)
+        or campaigns.due(db, now)
     )
 
 
@@ -304,6 +306,11 @@ def _refresh_public(db, esi: EsiClient, now: datetime) -> list[str]:
             industry.refresh(db, esi, now)
         except EsiError as exc:
             problems.append(f"Industry cost indices: {exc}")
+    if campaigns.due(db, now):
+        try:
+            campaigns.refresh(db, esi, now)
+        except EsiError as exc:
+            problems.append(f"Military campaigns: {exc}")
     return problems
 
 

@@ -111,6 +111,22 @@ def sample_zip(tmp_path):
             },
             {"_key": 3000001, "name": {"en": "Not an agent"}, "corporationID": 1000002},
         ],
+        "militaryCampaigns.jsonl": [{"_key": "c1", "title": {"en": "The Blessed Exchange"}}],
+        "militaryCampaignObjectives.jsonl": [
+            {
+                "_key": "o1",
+                "campaignID": "c1",
+                "title": {"en": "Mine for it"},
+                "careerPath": "industrialist",
+                "maxProgressPerParticipant": 1,
+                "contributionMethodConfiguration": {"name": "MineOre", "parameters": []},
+                "rewards": {
+                    "isk": {"amountPerInterval": 150000},
+                    "lp": {"amountPerInterval": 300, "issuer": {"corporationID": 1000035}},
+                    "standing": {"gainPercentPerInterval": 0.1},
+                },
+            },
+        ],
         "dogmaAttributes.jsonl": [
             {"_key": 9, "name": "hp"},
             {"_key": 182, "name": "requiredSkill1"},
@@ -167,6 +183,20 @@ def test_load_fills_tables_with_english_names(db, sample_zip):
         0,
     )
     assert db.execute("SELECT COUNT(*) FROM sde_agents").fetchone()[0] == 1
+    assert db.execute("SELECT title FROM sde_campaigns").fetchone()[0] == "The Blessed Exchange"
+    assert tuple(db.execute("SELECT * FROM sde_campaign_objectives").fetchone()) == (
+        "o1",
+        "c1",
+        "Mine for it",
+        "MineOre",
+        "industrialist",
+        150000,
+        300,
+        1000035,
+        0.1,
+        1,
+        "[]",
+    )
     assert not sde.needs_reload(db)
 
 

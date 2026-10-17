@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 
 from eve_assistant import (
     activities,
+    campaigns,
     fleet,
     preferences,
     projects,
@@ -298,6 +299,20 @@ def build_plan(
         notes.append(Reason("nothing_fits"))
     if not signals.fresh(db):
         notes.append(Reason("no_live_signals"))
+    for objective in campaigns.open_objectives(db)[:3]:
+        notes.append(
+            Reason(
+                "campaign_objective",
+                {
+                    "campaign": objective.campaign,
+                    "title": objective.title,
+                    "activity": objective.activity,
+                    "isk": objective.isk,
+                    "lp": objective.lp,
+                    "systems": len(objective.systems),
+                },
+            )
+        )
     trips = sum(c.trips for c in learned.chances.values())
     if trips:
         losses = sum(c.losses for c in learned.chances.values())

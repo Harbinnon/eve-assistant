@@ -179,6 +179,8 @@ def load(db: sqlite3.Connection, zip_path: Path) -> SdeBuild:
                 "sde_blueprint_materials",
                 "sde_blueprint_skills",
                 "sde_agents",
+                "sde_campaigns",
+                "sde_campaign_objectives",
             ):
                 db.execute(f"DELETE FROM {table}")  # noqa: S608  # fixed table names
 
@@ -300,6 +302,7 @@ def load(db: sqlite3.Connection, zip_path: Path) -> SdeBuild:
                 ((r["_key"], r.get("factionID")) for r in _rows(archive, "npcCorporations.jsonl")),
             )
             _load_industry_and_agents(db, archive)
+            _load_campaigns(db, archive)
             db.execute(
                 "INSERT INTO sde_meta (build_number, release_date, loaded_at, loader_version) "
                 "VALUES (?, ?, ?, ?)",
@@ -358,6 +361,33 @@ def reload_if_needed(db: sqlite3.Connection, folder: Path = DEFAULT_SDE_DIR) -> 
         return False
     load(db, cached)
     return True
+
+
+def _load_campaigns(db: sqlite3.Connection, archive: zipfile.ZipFile) -> None:
+    """Military campaigns and their objectives: what each is and pays."""
+    db.executemany(
+        "INSERT INTO sde_campaigns VALUES (?, ?)",
+        (
+            (r["_key"], _english(r.get("title")))
+            for r in _optional_rows(archive, "militaryCampaigns.jsonl")
+        ),
+    )
+    for r in _optional_rows(archive, "militaryCampaignObjectives.jsonl"):
+        rewards = r.get("rewards", {})
+        method = r.get("contributionMethodConfiguration", {})
+        db.execute(
+            "INSERT INTO sde_campaign_objectives VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                r["_key"], r["campaignID"], _english(r.get("title")), method.get("name", ""),
+                r.get("careerPath"),
+                rewards.get("isk", {}).get("amountPerInterval", 0.0),
+                rewards.get("lp", {}).get("amountPerInterval", 0.0),
+                rewards.get("lp", {}).get("issuer", {}).get("corporationID"),
+                rewards.get("standing", {}).get("gainPercentPerInterval", 0.0),
+                r.get("maxProgressPerParticipant"),
+                json.dumps(method.get("parameters", [])),
+            ),
+        )  # fmt: skip
 
 
 def needs_reload(db: sqlite3.Connection) -> bool:
