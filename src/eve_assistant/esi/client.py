@@ -12,6 +12,7 @@ import json
 import re
 import sqlite3
 import time
+from collections import deque
 from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -123,8 +124,16 @@ class EsiClient:
             for page in range(2, count + 1):
                 yield fetch(page)
             return
+        # At most two pages a worker fetched ahead: a region's hundreds of pages
+        # never pile up in memory waiting to be read.
         with ThreadPoolExecutor(max_workers=workers) as pool:
-            yield from pool.map(fetch, range(2, count + 1))
+            waiting: deque = deque()
+            page = 2
+            while page <= count or waiting:
+                while page <= count and len(waiting) < workers * 2:
+                    waiting.append(pool.submit(fetch, page))
+                    page += 1
+                yield waiting.popleft().result()
 
     def _request(self, path: str, params: dict | None, headers: dict) -> httpx.Response:
         try:

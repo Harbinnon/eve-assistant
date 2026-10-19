@@ -41,31 +41,34 @@ def kept_locations(db: sqlite3.Connection, hub: Hub) -> set[int]:
 
 def scan_hub(db: sqlite3.Connection, esi: EsiClient, hub: Hub, now: datetime) -> int:
     """Replace the hub region's orders with a fresh scan. Returns how many were kept.
-    Raises EsiError (the previous scan stays)."""
+    Each page is written as it arrives, inside one transaction, so memory stays
+    at a few pages whatever the region's size. Raises EsiError (the transaction
+    is rolled back and the previous scan stays)."""
     store.ensure_market(db)
     keep = kept_locations(db, hub)
-    rows, pages = [], 0
-    for page in esi.pages(
-        f"/markets/{hub.region_id}/orders", {"order_type": "all"}, workers=WORKERS
-    ):
-        pages += 1
-        rows.extend(
-            (o["order_id"], hub.region_id, o["location_id"], o["type_id"],
-             int(o["is_buy_order"]), o["price"], o["volume_remain"], o.get("min_volume", 1),
-             o.get("issued", ""))
-            for o in page
-            if isinstance(o, dict) and o.get("location_id") in keep
-        )  # fmt: skip
+    kept, pages = 0, 0
     with db:
         db.execute("DELETE FROM market.orders WHERE region_id = ?", (hub.region_id,))
-        db.executemany(
-            "INSERT OR REPLACE INTO market.orders VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", rows
-        )
+        for page in esi.pages(
+            f"/markets/{hub.region_id}/orders", {"order_type": "all"}, workers=WORKERS
+        ):
+            pages += 1
+            rows = [
+                (o["order_id"], hub.region_id, o["location_id"], o["type_id"],
+                 int(o["is_buy_order"]), o["price"], o["volume_remain"], o.get("min_volume", 1),
+                 o.get("issued", ""))
+                for o in page
+                if isinstance(o, dict) and o.get("location_id") in keep
+            ]  # fmt: skip
+            db.executemany(
+                "INSERT OR REPLACE INTO market.orders VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", rows
+            )
+            kept += len(rows)
         db.execute(
             "INSERT OR REPLACE INTO market.scans VALUES (?, ?, ?, ?)",
-            (hub.region_id, now.isoformat(timespec="seconds"), len(rows), pages),
+            (hub.region_id, now.isoformat(timespec="seconds"), kept, pages),
         )
-    return len(rows)
+    return kept
 
 
 def scanned_at(db: sqlite3.Connection, hub: Hub) -> str | None:
