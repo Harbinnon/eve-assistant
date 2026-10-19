@@ -12,7 +12,8 @@ import json
 import re
 import sqlite3
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any
 
@@ -105,6 +106,25 @@ class EsiClient:
         if remember:
             self._store(key, first.headers.get("etag"), first.headers, json.dumps(data))
         return EsiResult(data, from_cache=False)
+
+    def pages(self, path: str, params: dict | None = None, workers: int = 1) -> Iterator[list]:
+        """Every page of a big public paged route, one page at a time, kept out of the
+        cache (the market's regional orders run to hundreds of pages). With workers > 1
+        the later pages are fetched a few at a time; they still come back in order."""
+        headers = {"X-Compatibility-Date": COMPATIBILITY_DATE, "Accept": "application/json"}
+        first = self._request(path, params, headers)
+        yield first.json()
+        count = int(first.headers.get("x-pages", "1"))
+
+        def fetch(page: int) -> list:
+            return self._request(path, {**(params or {}), "page": page}, headers).json()
+
+        if workers <= 1:
+            for page in range(2, count + 1):
+                yield fetch(page)
+            return
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            yield from pool.map(fetch, range(2, count + 1))
 
     def _request(self, path: str, params: dict | None, headers: dict) -> httpx.Response:
         try:

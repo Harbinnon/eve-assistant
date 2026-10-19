@@ -40,7 +40,7 @@ eve-assistant = "eve_assistant.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-"eve_assistant.store" = ["migrations/*.sql"]
+"eve_assistant.store" = ["migrations/*.sql", "market_schema.sql"]
 "eve_assistant.web" = ["templates/*.html", "static/*"]
 
 [tool.pytest.ini_options]
