@@ -1320,3 +1320,14 @@ def test_the_trade_page_reads_the_markets_and_shows_runs(db_path):
                 break
             time.sleep(0.02)
         assert asked[-1] is True
+
+
+def test_amounts_can_be_typed_as_players_write_them():
+    from eve_assistant.web import _amount
+
+    assert _amount("929m", 0.0) == 929_000_000.0
+    assert _amount("1.5b", 0.0) == 1_500_000_000.0
+    assert _amount("40,000", 0.0) == 40_000.0
+    assert _amount("12k", 0.0) == 12_000.0
+    assert _amount("", 7.0) == 7.0
+    assert _amount("lots", 7.0) == 7.0

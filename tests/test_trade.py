@@ -195,8 +195,11 @@ def test_your_orders_are_watched_against_the_market(db):
          "is_buy_order": True, "price": 1.0, "volume_remain": 1},  # nothing read there
     ])  # fmt: skip
     watched = {w.order_id: w for w in trade.watch_orders(db, 7)}
-    assert watched[9001].outbid and watched[9001].best_other == 100.0
+    assert watched[9001].outbid
+    assert watched[9001].best_other == 100.0
     assert watched[9001].place == "Jita"
-    assert not watched[9002].outbid and watched[9002].best_other == 150.0
-    assert watched[9003].best_other is None and not watched[9003].outbid
+    assert not watched[9002].outbid
+    assert watched[9002].best_other == 150.0
+    assert watched[9003].best_other is None
+    assert not watched[9003].outbid
     assert watched[9003].place == "elsewhere"

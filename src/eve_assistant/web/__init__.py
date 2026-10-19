@@ -236,9 +236,10 @@ def _amount(text: str, default: float) -> float:
     cleaned = text.replace(",", "").replace("_", "").strip().lower()
     if not cleaned:
         return default
-    scale = AMOUNT_UNITS.get(cleaned[-1], 1.0)
+    scale = AMOUNT_UNITS.get(cleaned[-1])
+    number = cleaned[:-1] if scale is not None else cleaned
     try:
-        return float(cleaned[:-1] if scale != 1.0 else cleaned) * scale
+        return float(number) * (scale or 1.0)
     except ValueError:
         return default
 

@@ -18,6 +18,7 @@ from eve_assistant.config import PROJECT_ROOT
 
 DEFAULT_DB_PATH = PROJECT_ROOT / "var" / "eve-assistant.sqlite3"
 MARKET_FILE = "market.sqlite3"
+MEMORY = ":memory:"  # an in-memory database, as SQLite names it
 MARKET_SCHEMA_VERSION = "1"
 
 
@@ -57,7 +58,7 @@ def migrate(conn: sqlite3.Connection) -> list[str]:
 
 def connect(path: Path | str = DEFAULT_DB_PATH) -> sqlite3.Connection:
     """Open the database, creating and migrating it if needed."""
-    if str(path) != ":memory:":
+    if str(path) != MEMORY:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
@@ -70,13 +71,13 @@ def connect(path: Path | str = DEFAULT_DB_PATH) -> sqlite3.Connection:
 
 def market_path(path: Path | str) -> str:
     """The market file next to a database file (in memory for an in-memory one)."""
-    return ":memory:" if str(path) == ":memory:" else str(Path(path).with_name(MARKET_FILE))
+    return MEMORY if str(path) == MEMORY else str(Path(path).with_name(MARKET_FILE))
 
 
 def attach_market(conn: sqlite3.Connection, path: Path | str) -> None:
     """Attach the market data as "market" (its tables come with ensure_market)."""
     conn.execute("ATTACH DATABASE ? AS market", (market_path(path),))
-    if str(path) != ":memory:":
+    if str(path) != MEMORY:
         conn.execute("PRAGMA market.journal_mode = WAL")
 
 

@@ -121,33 +121,45 @@ def _candidates(db, source: set[int], dest: set[int], keep: float, listed: bool)
     ).fetchall()
 
 
+class _Side:
+    """Walking down one side of a book, a lot at a time."""
+
+    def __init__(self, orders: list[Order]):
+        self._orders = orders
+        self._at = 0
+        self.left = orders[0].volume if orders else 0
+
+    @property
+    def price(self) -> float | None:
+        return self._orders[self._at].price if self._at < len(self._orders) else None
+
+    def take(self, units: int) -> None:
+        self.left -= units
+        if self.left == 0:
+            self._at += 1
+            self.left = self._orders[self._at].volume if self._at < len(self._orders) else 0
+
+
 def walk(buy_from: list[Order], sell_to: list[Order], keep: float, isk: float, units: int):
     """Units bought from the cheapest sell orders and sold to the dearest buy orders while
     each still makes money after fees: (units, cost, gross, first/last buy, first/last sell)."""
-    bought = cost = 0
-    gross = 0.0
-    i = j = 0
-    left_a = buy_from[0].volume if buy_from else 0
-    left_b = sell_to[0].volume if sell_to else 0
-    first_buy = first_sell = last_buy = last_sell = 0.0
-    while i < len(buy_from) and j < len(sell_to) and bought < units:
-        price_a, price_b = buy_from[i].price, sell_to[j].price
-        if price_b * keep <= price_a:
+    sellers, buyers = _Side(buy_from), _Side(sell_to)
+    bought, cost, gross = 0, 0.0, 0.0
+    first = last = (0.0, 0.0)
+    while sellers.price is not None and buyers.price is not None and bought < units:
+        if buyers.price * keep <= sellers.price:
             break
-        take = min(left_a, left_b, units - bought, int((isk - cost) // price_a))
+        take = min(sellers.left, buyers.left, units - bought, int((isk - cost) // sellers.price))
         if take <= 0:
             break
-        first_buy, first_sell = first_buy or price_a, first_sell or price_b
-        last_buy, last_sell = price_a, price_b
+        last = (sellers.price, buyers.price)
+        first = first if bought else last
         bought += take
-        cost += take * price_a
-        gross += take * price_b
-        left_a, left_b = left_a - take, left_b - take
-        if left_a == 0 and (i := i + 1) < len(buy_from):
-            left_a = buy_from[i].volume
-        if left_b == 0 and (j := j + 1) < len(sell_to):
-            left_b = sell_to[j].volume
-    return bought, cost, gross, first_buy, last_buy, first_sell, last_sell
+        cost += take * sellers.price
+        gross += take * buyers.price
+        sellers.take(take)
+        buyers.take(take)
+    return bought, cost, gross, first[0], last[0], first[1], last[1]
 
 
 def _instant(db, type_id, name, source, dest, m3, limits, tax, sources, dests) -> Run | None:
@@ -178,6 +190,22 @@ def _listed(db, type_id, name, source, dest, m3, limits, keep, sources, listing,
                b1, b2, price, price, volume)  # fmt: skip
 
 
+def _run(db, row, source: Hub, dest: Hub, limits: Limits, trade_fees: Fees, keep: float,
+         listed: bool, volumes, locations) -> Run | None:  # fmt: skip
+    """The run for one candidate item between two hubs, or None."""
+    m3 = _unit_m3(db, row["type_id"])
+    if not m3:
+        return None
+    name = skills.type_name(db, row["type_id"])
+    sources, dests = locations
+    if listed:
+        volume = (volumes or {}).get((dest.region_id, row["type_id"]))
+        return _listed(db, row["type_id"], name, source, dest, m3, limits, keep, sources,
+                       row["sell_at"], volume)  # fmt: skip
+    return _instant(db, row["type_id"], name, source, dest, m3, limits, trade_fees.sales_tax,
+                    sources, dests)  # fmt: skip
+
+
 def runs(
     db: sqlite3.Connection,
     limits: Limits,
@@ -192,22 +220,11 @@ def runs(
     pairs = pairs or [(a, b) for a in market.HUBS for b in market.HUBS if a != b]
     found = []
     for source, dest in pairs:
-        sources = market_data.kept_locations(db, source)
-        dests = market_data.kept_locations(db, dest)
+        locations = (market_data.kept_locations(db, source), market_data.kept_locations(db, dest))
         broker = trade_fees.broker.get(dest.station_id, 0.0) if listed else 0.0
         keep = 1 - trade_fees.sales_tax - broker
-        for row in _candidates(db, sources, dests, keep, listed):
-            m3 = _unit_m3(db, row["type_id"])
-            if not m3:
-                continue
-            name = skills.type_name(db, row["type_id"])
-            if listed:
-                volume = (volumes or {}).get((dest.region_id, row["type_id"]))
-                run = _listed(db, row["type_id"], name, source, dest, m3, limits, keep,
-                              sources, row["sell_at"], volume)  # fmt: skip
-            else:
-                run = _instant(db, row["type_id"], name, source, dest, m3, limits,
-                               trade_fees.sales_tax, sources, dests)  # fmt: skip
+        for row in _candidates(db, *locations, keep, listed):
+            run = _run(db, row, source, dest, limits, trade_fees, keep, listed, volumes, locations)
             if run is not None and run.profit >= limits.min_profit:
                 found.append(run)
     return sorted(found, key=lambda r: -r.profit)[:limit]
@@ -334,9 +351,10 @@ def board(db: sqlite3.Connection, character_id: int, wanted: Wanted) -> Board:
     ship = next((s for s in ships if s.is_active), None) or max(
         ships, key=lambda s: s.cargo_m3, default=None
     )
+    own_cargo = ship.cargo_m3 if ship else 0.0
     limits = Limits(
         isk=wanted.isk if wanted.isk >= 0 else wallet,
-        cargo_m3=wanted.cargo_m3 if wanted.cargo_m3 >= 0 else (ship.cargo_m3 if ship else 0.0),
+        cargo_m3=wanted.cargo_m3 if wanted.cargo_m3 >= 0 else own_cargo,
         highsec_only=wanted.highsec_only,
         min_profit=wanted.min_profit,
     )
