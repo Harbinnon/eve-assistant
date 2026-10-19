@@ -9,8 +9,8 @@ from fastapi.testclient import TestClient
 
 from eve_assistant import campaigns, industry, refresh, signals, snapshots, store
 from eve_assistant.config import Config, ConfigError, load_config
-from eve_assistant.esi import SCOPES
-from eve_assistant.esi.client import EsiRateLimited
+from eve_assistant.esi import PLANETS_SCOPE, SCOPES
+from eve_assistant.esi.client import EsiError, EsiRateLimited
 from eve_assistant.web import create_app
 
 NOW = datetime(2026, 10, 17, 18, 0, tzinfo=UTC)
@@ -91,6 +91,14 @@ def fake_esi(monkeypatch):
         "refresh",
         lambda db, _esi, now: signals._mark(db, campaigns.SETTING, now),
     )
+    monkeypatch.setattr(
+        refresh.sovereignty,
+        "refresh",
+        lambda db, _esi, now: db.execute(
+            "INSERT OR REPLACE INTO sov_systems VALUES (1, NULL, NULL, NULL, ?)",
+            (now.isoformat(timespec="seconds"),),
+        ),
+    )
     return calls, prices
 
 
@@ -112,6 +120,26 @@ def test_a_tick_fetches_only_what_is_due(db_path, fake_esi):
     later = refresh.auto_refresh_once(CONFIG, None, db_path, now=NOW + timedelta(minutes=6))
     assert calls[-1] == {"online"}
     assert later.checked == {"Miner": 1}
+
+
+def test_corporation_and_colony_layouts_follow_their_kinds(monkeypatch):
+    seen = []
+    monkeypatch.setattr(refresh.corporation, "refresh", lambda *_a: seen.append("corporation"))
+    monkeypatch.setattr(refresh.planets, "refresh", lambda *_a: seen.append("planets"))
+    refresh._extras(None, None, 7, "Miner", {"wallet"}, SCOPES)
+    assert seen == []
+    refresh._extras(None, None, 7, "Miner", {"public", "planets"}, SCOPES)
+    assert seen == ["corporation"]  # the login hasn't the planets scope
+    refresh._extras(None, None, 7, "Miner", {"planets"}, (*SCOPES, PLANETS_SCOPE))
+    assert seen == ["corporation", "planets"]
+
+    def failing(*_args):
+        raise EsiError("timed out")
+
+    monkeypatch.setattr(refresh.corporation, "refresh", failing)
+    assert refresh._extras(None, None, 7, "Miner", {"public"}, SCOPES) == [
+        "Miner, corporation: timed out"
+    ]
 
 
 def test_a_rate_limit_stops_the_tick_and_says_when_to_retry(db_path, fake_esi, monkeypatch):

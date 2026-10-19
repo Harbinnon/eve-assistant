@@ -160,6 +160,30 @@ def _manufacture_costs(d: dict) -> str:
     )
 
 
+def _extractor_stopped(d: dict) -> str:
+    count = d.get("extractors", 1)
+    what = "An extractor has" if count == 1 else f"{count} extractors have"
+    hours = d.get("hours_ago")
+    when = f", {hours:.0f} hours ago" if hours and hours >= 1 else ""
+    return (
+        f"{what} stopped on {d.get('planet', 'your planet')}{when}: while stopped, the "
+        "colony makes nothing new."
+    )
+
+
+def _corp_tax(d: dict) -> str:
+    rate = d.get("rate", 0.0)
+    who = d.get("corporation") or "your corporation"
+    if d.get("source") == "unknown":
+        return f"No corp tax counted: {who}'s rate isn't known yet."
+    source = {
+        "corporation": "its rate on EVE's public record",
+        "journal": "what your wallet journal shows it took from rewards",
+        "npc": "what NPC corporations take",
+    }.get(d.get("source"), "")
+    return f"{who} takes {rate:.1%} of mission rewards and bounties ({source})."
+
+
 def describe(code: str, detail: dict | None = None) -> str:
     d = detail or {}
     texts = {
@@ -287,6 +311,35 @@ def describe(code: str, detail: dict | None = None) -> str:
             "and 750 LP a mission, EVE University, a third less a level below, three an hour)."
         ),
         "lp_value": lambda: _lp_value(d),
+        "corp_tax": lambda: _corp_tax(d),
+        "buyback": lambda: (
+            f"Your corporation's buyback in {d.get('system', '?')} pays {d.get('share', 0):.0%} "
+            f"of Jita's best buy ({numbers.isk(d.get('jita_buy', 0))} ISK a unit), by contract; "
+            "no sales tax. From Settings: check it's still what your corporation pays."
+        ),
+        "friendly_space": lambda: (
+            "Nullsec held by your alliance: quiet, so rated like lowsec. Still check local."
+        ),
+        "hostile_null": lambda: (
+            "Nullsec not held by your alliance: anyone can shoot you there, and help is far."
+        ),
+        "extractor_stopped": lambda: _extractor_stopped(d),
+        "planet_output": lambda: (
+            f"Running, the colony makes about {numbers.isk(d.get('a_day', 0))} ISK a day more, "
+            f"so about {d.get('program_hours', 24):.0f} hours (your last program) is counted. "
+            "Valued at CCP's average prices less a guessed "
+            f"{d.get('customs_tax', 0.1):.0%} customs office export tax; each cycle's yield "
+            "varies and falls over a program."
+            + (
+                f" {numbers.isk(d['waiting'])} ISK of goods are waiting to be exported."
+                if d.get("waiting", 0) >= 1000
+                else ""
+            )  # fmt: skip
+        ),
+        "planet_in_system": lambda: (
+            f"Done from {d.get('system', 'the planet')}'s own system: managing a planet from "
+            "further away takes Remote Sensing, an Omega skill."
+        ),
         "campaign_objective": lambda: _campaign_objective(d),
         "manufacture_costs": lambda: _manufacture_costs(d),
         "trade_run": lambda: _trade_run(d),

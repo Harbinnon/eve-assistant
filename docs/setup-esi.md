@@ -47,6 +47,13 @@ see the design, section 6.2).
      ```
      The last three were added in version 0.6: an application made earlier
      needs them ticked before anyone logs in again, or EVE refuses the login.
+
+     **Optional, for Planetary Interaction** (version 0.10): also tick
+     `esi-planets.manage_planets.v1`. Despite "manage" in its name it only
+     reads your colonies. Then set `planets = true` under `[esi]` in
+     `config/local.toml`, restart, and log each character in again. Set it
+     only after ticking: EVE refuses a login that asks for a scope the
+     application doesn't have.
      Scopes can be changed later on the application page, but characters
      then need to log in to the tool again to pick up the new ones.
 3. Save. The page shows a **Client ID** and a **Secret Key**.

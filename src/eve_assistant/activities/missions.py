@@ -11,11 +11,13 @@ and the distance), so income starts from a guess: one published figure,
 about 400k ISK and 750 LP a level 4 mission (EVE University, with
 Negotiation V), a third less a level below, and three missions an hour. It
 learns from the mission rewards in the wallet journal (corrections.py).
+Corp tax (corporation.py) is taken off the ISK, as EVE does before paying.
 """
 
 import sqlite3
 
 from eve_assistant import (
+    corporation,
     corrections,
     loyalty,
     risk,
@@ -107,6 +109,8 @@ def _mission_item(db, esi, character_id, agent, jumps, working, net_worth, conte
     level = agent["level"]
     isk_per_lp = _lp_value(db, esi, agent["corporation_id"])
     isk_hour, lp_hour = per_hour(level)
+    corp_tax = corporation.tax(db, character_id)
+    kept = isk_hour * (1 - corp_tax.rate)  # the journal's rewards are after tax too
     lp = lp_hour * working / 60
     path = routes.jumps_between(db, origin, agent["system_id"], highsec_only) or [origin]
     assessed = risk.assess(db, path)
@@ -120,7 +124,7 @@ def _mission_item(db, esi, character_id, agent, jumps, working, net_worth, conte
         key=f"{agent['agent_id']}",
         title=f"Distribution missions for {agent['name']} (level {level}, {_distance(jumps)}) "
         f"for {working:.0f} min",
-        isk=isk_hour * learned.factor * working / 60 + lp * (isk_per_lp or 0.0),
+        isk=kept * learned.factor * working / 60 + lp * (isk_per_lp or 0.0),
         minutes=minutes,
         risk=risk.rate(
             assessed.band,
@@ -132,6 +136,7 @@ def _mission_item(db, esi, character_id, agent, jumps, working, net_worth, conte
             Reason(
                 "mission_guess", {"level": level, "isk_per_hour": isk_hour, "lp_per_hour": lp_hour}
             ),  # fmt: skip
+            corp_tax.reason(),
             learned.reason(),
             Reason(
                 "lp_value",
@@ -150,7 +155,8 @@ def _mission_item(db, esi, character_id, agent, jumps, working, net_worth, conte
             "agent_id": agent["agent_id"],
             "level": level,
             "mission_minutes": working,
-            "isk_per_hour": isk_hour,
+            "isk_per_hour": kept,
+            "corp_tax": corp_tax.rate,
             "lp_per_hour": lp_hour,
             "isk_per_lp": isk_per_lp,
             "corporation_id": agent["corporation_id"],

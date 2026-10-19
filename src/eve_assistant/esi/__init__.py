@@ -35,6 +35,16 @@ SCOPES = (
     "esi-killmails.read_killmails.v1",
 )
 
+# Planetary Interaction (roadmap 6.3), read-only despite its name. Asked for
+# only when config/local.toml says `planets = true` under [esi]: EVE's login
+# fails for every character if the ESI application doesn't have it ticked.
+PLANETS_SCOPE = "esi-planets.manage_planets.v1"
+
+
+def scopes(planets: bool = False) -> tuple[str, ...]:
+    """The scopes a login asks for."""
+    return (*SCOPES, PLANETS_SCOPE) if planets else SCOPES
+
 
 def user_agent(contact: str | None) -> str:
     """CCP asks for a descriptive User-Agent with a way to reach the operator."""

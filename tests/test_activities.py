@@ -16,6 +16,7 @@ def test_every_activity_has_the_interface():
         "projects",
         "selling",
         "manufacturing",
+        "planets",
         "mining",
         "gas",
         "exploration",

@@ -135,6 +135,12 @@ def sell_into_buy_orders(book: list[Order], quantity: int, station_id: int, syst
     return Fill(quantity - left, gross, lowest)
 
 
+def highest_buy(book: list[Order], station_id: int, system_id: int) -> float | None:
+    """The best buy order that takes items sold at this station."""
+    bids = [o.price for o in book if o.is_buy and _buy_order_reaches(o, station_id, system_id)]
+    return max(bids) if bids else None
+
+
 def lowest_sell(book: list[Order], station_id: int) -> float | None:
     """The price to beat when listing a sell order at this station."""
     asks = [o.price for o in book if not o.is_buy and o.location_id == station_id]

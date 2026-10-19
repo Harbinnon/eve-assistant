@@ -22,7 +22,7 @@
 
 {% if missing %}
 <div class="banner" role="status">
-  <p><strong>{{ missing|length }} character{{ "s" if missing|length != 1 }} need{{ "s" if missing|length == 1 }} to log in again</strong> for new read-only permissions (Freelance Jobs, loyalty points, your own losses).</p>
+  <p><strong>{{ missing|length }} character{{ "s" if missing|length != 1 }} need{{ "s" if missing|length == 1 }} to log in again</strong> for new read-only permissions (Freelance Jobs, loyalty points, your own losses{% if planets_on %}, your planets{% endif %}).</p>
   <p>First tick them on your ESI application (docs/setup-esi.md lists them), then press <strong>Add a character</strong> and pick each character again.</p>
 </div>
 {% endif %}
@@ -60,6 +60,10 @@
     <dl class="facts">
       <dt>Skill points</dt><dd>{{ "{:,}".format(c.total_sp) }}</dd>
       <dt>Wallet</dt><dd>{{ c.wallet|isk }} ISK</dd>
+      {% with k = corps.get(c.character_id) %}{% if k %}
+      <dt>Corporation</dt><dd>{{ k.corp.name or "unknown" }}
+        <span class="muted">· {{ "NPC corporation" if k.corp.is_npc else "player corporation" }}{% if k.tax.source != "unknown" %} · {{ (k.tax.rate * 100)|round(1) }}% tax on missions and bounties{% endif %}</span></dd>
+      {% endif %}{% endwith %}
       {% with w = worth_lines.get(c.character_id) %}{% if w %}<dt>Net worth</dt><dd>{% include "_worth.html" %}</dd>{% endif %}{% endwith %}
       <dt>Location</dt>
       <dd>{% if c.system_name %}{{ c.system_name }}
@@ -78,6 +82,13 @@
       {% if c.alpha_locked_skills %}
       <dt>Alpha-locked</dt><dd>{{ c.alpha_locked_skills }} trained skills wait for Omega</dd>
       {% endif %}
+      {% for t in timers.get(c.character_id, []) %}
+      <dt>{{ "Planet" if loop.first else "" }}</dt>
+      <dd>{{ t.planet }}
+        {% if t.stopped %}<span class="pill amber">stopped</span>{% if t.stopped_at %} <span class="muted">{{ t.stopped_at.isoformat()|ago }}</span>{% endif %}
+        {% elif t.stops %}<span class="muted">· extractors stop {{ t.stops.isoformat()|when_ago }}</span>{% endif %}
+        <span class="muted">· about {{ t.a_day|isk }} ISK a day{% if t.waiting >= 1000 %} · {{ t.waiting|isk }} ISK of goods waiting{% endif %}</span></dd>
+      {% endfor %}
     </dl>
     <p class="sub checked">Checked {{ c.last_checked|when_ago }}</p>
   </article>

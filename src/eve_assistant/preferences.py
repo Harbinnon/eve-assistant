@@ -13,6 +13,7 @@ KNOWN = {
     "kind:mining": "mining",
     "kind:gas": "gas harvesting",
     "kind:manufacturing": "manufacturing",
+    "kind:planet": "restarting extractors on your planets",
     "kind:mission": "agent missions",
     "kind:exploration": "exploration",
     "kind:trade": "trade runs between the hubs",

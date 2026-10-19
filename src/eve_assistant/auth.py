@@ -13,7 +13,7 @@ from dataclasses import dataclass
 import httpx
 
 from eve_assistant.config import Config
-from eve_assistant.esi import SCOPES, sso, user_agent
+from eve_assistant.esi import SCOPES, scopes, sso, user_agent
 from eve_assistant.esi.callback import wait_for_code
 from eve_assistant.secrets_store import SecretStore
 
@@ -29,7 +29,10 @@ class LoggedInCharacter:
 
     @property
     def missing_scopes(self) -> tuple[str, ...]:
-        return tuple(s for s in SCOPES if s not in self.scopes)
+        return self.missing(SCOPES)
+
+    def missing(self, wanted: tuple[str, ...]) -> tuple[str, ...]:
+        return tuple(s for s in wanted if s not in self.scopes)
 
 
 def http_client(config: Config) -> httpx.Client:
@@ -64,7 +67,9 @@ def login_character(
     background can't save over the new character."""
     pkce = sso.make_pkce_pair()
     state = sso.make_state()
-    url = sso.authorize_url(config.client_id, config.callback_url, SCOPES, state, pkce.challenge)
+    url = sso.authorize_url(
+        config.client_id, config.callback_url, scopes(config.planets), state, pkce.challenge
+    )
     open_browser(url)
     code = wait(config.callback_url, state)
 

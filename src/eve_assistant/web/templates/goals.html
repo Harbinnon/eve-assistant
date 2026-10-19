@@ -24,6 +24,9 @@
   <p>At your {{ '%g'|format(hours_a_week|round(1)) }} hours a week, Omega would add about <span class="isk">{{ extra|isk }} ISK</span> a month,
     against <strong>{{ o.month_cost|isk }} ISK</strong> for the month in PLEX{% if o.hours_to_pay %}: it pays for itself only past about {{ o.hours_to_pay|round|int }} hours of mining a month{% endif %}.</p>
   {% endif %}
+  {% if o.planets_a_month %}
+  <p>Planetary Interaction: your best colony makes about <span class="isk">{{ o.planet_a_day|isk }} ISK</span> a day. Omega can train up to {{ o.extra_planets + o.planets_now }} planets: {{ o.extra_planets }} more like it would add about <span class="isk">{{ o.planets_a_month|isk }} ISK</span> a month, before bigger command centres, for a few minutes a day.</p>
+  {% endif %}
   <p class="muted small-print">Mining speed is the published figure with your ships as fitted now{% if o.isk_per_m3 %}; ISK is at your latest plan's sale price for your ore{% else %}; plan a mining session to see it in ISK{% endif %}. Omega also trains faster (assumed twice as fast; not yet confirmed).</p>
   <form class="inline" method="post" action="/goals">
     <input type="hidden" name="token" value="{{ form_token }}">

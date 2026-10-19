@@ -174,12 +174,15 @@ def _promised_stacks(db, character_id) -> set[tuple]:
 
 def _quick_jobs(fit: _Fitting, usable: list[PlanItem]) -> None:
     """1. Quick jobs where the character is docked: skills, the best build job,
-    then selling here."""
+    restarting extractors on planets in this system, then selling here."""
     for item in [i for i in usable if i.kind == "skill"]:
         fit.take(item)
     builds = sorted((i for i in usable if i.kind == "manufacturing"), key=lambda i: -i.adjusted_isk)
     for item in builds[:1]:
         if item.minutes <= fit.time_left and not (item.new_to_you and fit.new_used):
+            fit.take(item)
+    for item in (i for i in usable if i.kind == "planet" and i.inputs.get("jumps") == 0):
+        if item.minutes <= fit.time_left:
             fit.take(item)
     sells = sorted(
         (
@@ -212,6 +215,8 @@ def _main_pool(fit: _Fitting, usable: list[PlanItem], open_count: int) -> list[P
     def eligible(i: PlanItem) -> bool:
         if i.kind in ("courier", "trade") or (i.kind in SIZED_KINDS and i.kind != "project_start"):
             return True
+        if i.kind == "planet":
+            return i.inputs.get("jumps", 0) > 0  # a trip to the planet's system
         if i.kind == "project_start":
             return open_count < projects.MAX_OPEN and not (
                 i.inputs.get("station_id") and _stack_of(i) in fit.sold_stacks

@@ -88,7 +88,7 @@ def test_an_uninsured_hull_still_pays_forty_percent(db):
         ([HIGH_A, HIGH_B], [(HIGH_A, 19)], "low", ["recent_kills"]),  # busy, not a hotspot
         ([HIGH_A, HIGH_B], [(HIGH_A, 20)], "medium", ["recent_kills", "hotspot"]),
         ([HIGH_A, LOW], [(LOW, 10)], "high", ["recent_kills", "camped"]),
-        ([NULL], [], "high", ["no_recent_kills"]),
+        ([NULL], [], "high", ["no_recent_kills", "hostile_null"]),
     ],
 )
 def test_the_band_follows_kills_along_the_way(db, systems, kills, band, codes):

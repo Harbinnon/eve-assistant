@@ -28,6 +28,7 @@ class Config:
     gamelogs_dir: Path | None = None  # EVE's Gamelogs folder; None: don't read logs
     auto_refresh: bool = True  # refresh from EVE in the background while the dashboard runs
     backups_dir: Path | None = None  # None: var/backups next to the database
+    planets: bool = False  # ask for the Planetary Interaction scope at login
 
 
 def _is_placeholder(value: str | None) -> bool:
@@ -61,6 +62,9 @@ def load_config(path: Path = DEFAULT_CONFIG_PATH) -> Config:
     auto_refresh = app.get("auto_refresh", True)
     if not isinstance(auto_refresh, bool):
         raise ConfigError(f"[app] auto_refresh in {path} must be true or false.")
+    planets = esi.get("planets", False)
+    if not isinstance(planets, bool):
+        raise ConfigError(f"[esi] planets in {path} must be true or false.")
     return Config(
         client_id=client_id.strip(),
         callback_url=esi.get("callback_url", DEFAULT_CALLBACK_URL),
@@ -69,4 +73,5 @@ def load_config(path: Path = DEFAULT_CONFIG_PATH) -> Config:
         gamelogs_dir=None if _is_placeholder(gamelogs) else Path(gamelogs.strip()),
         auto_refresh=auto_refresh,
         backups_dir=None if _is_placeholder(backups) else Path(backups.strip()),
+        planets=planets,
     )
