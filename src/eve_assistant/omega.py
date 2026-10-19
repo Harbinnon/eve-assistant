@@ -5,14 +5,19 @@ Mining speed comes from the static data (the published figures, before the
 learned correction), with each owned ship as it's fitted now. ISK per m3 is
 what the character's latest plan priced its ore at (buyers' prices after
 tax, as plans value ore); without a plan, only the m3 figures are given.
+
+Planetary Interaction: an Alpha runs one planet; Omega can train up to six
+(Interplanetary Consolidation). The best colony the character has now is the
+measure of what each extra planet could make, before bigger command centres.
 """
 
 import dataclasses
 import json
 import sqlite3
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
-from eve_assistant import fleet, goals, mining, skills
+from eve_assistant import fleet, goals, mining, planets, skills
 
 PLEX_TYPE_ID = goals.PLEX_TYPE_ID
 PLEX_PER_MONTH = goals.OMEGA_PLEX_PER_MONTH
@@ -32,6 +37,19 @@ class OmegaComparison:
     omega: Mining | None  # best mining ship flyable as Omega
     isk_per_m3: float | None  # from the latest plan; None without one
     plex_price: float | None
+    planet_a_day: float | None = None  # the best colony's ISK a day; None without one
+    planets_now: int = 0
+
+    @property
+    def extra_planets(self) -> int:
+        return max(0, planets.OMEGA_PLANETS - self.planets_now)
+
+    @property
+    def planets_a_month(self) -> float | None:
+        """What Omega's extra planets could make in a month, each like the best one now."""
+        if not self.planet_a_day:
+            return None
+        return self.planet_a_day * self.extra_planets * 365 / 12
 
     def per_hour(self, which: Mining | None) -> float | None:
         if which is None or self.isk_per_m3 is None:
@@ -108,10 +126,16 @@ def compare(db: sqlite3.Connection, character_id: int) -> OmegaComparison | None
     name = db.execute(
         "SELECT name FROM characters WHERE character_id = ?", (character_id,)
     ).fetchone()
+    now = datetime.now(UTC)
+    colonies = planets.colonies(db, character_id)
     return OmegaComparison(
         character_name=name["name"] if name else str(character_id),
         alpha=alpha,
         omega=omega,
         isk_per_m3=isk_per_m3(db, character_id),
         plex_price=goals.price_of(db, PLEX_TYPE_ID),
+        planet_a_day=max(
+            (planets.a_day(db, c, now, all_running=True) for c in colonies), default=None
+        ),
+        planets_now=len(colonies),
     )

@@ -28,6 +28,9 @@ STALE_AFTER = timedelta(hours=3)
 # 35); in lowsec 95% had under 5, the top being PvP hubs (Obe 65, Amamake 55).
 HIGHSEC_HOTSPOT = 20  # a gank hotspot or a busy hub
 LOWSEC_CAMP = 10  # likely camped
+# Nullsec is quieter (18 Oct 2026: 95% of its systems lost under 3 an hour,
+# 99% under 9), so a camp shows sooner there.
+NULLSEC_CAMP = 5
 UNINSURED_SHARE = 0.4  # of the Platinum payout, for a hull with no insurance
 SETTING = "signals_checked"
 INSURANCE_SETTING = "insurance_checked"
@@ -117,7 +120,8 @@ def kills_in(db: sqlite3.Connection, system_ids) -> dict[int, int]:
 def hotspots(db: sqlite3.Connection, now: str | None = None) -> dict[int, tuple[int, bool]]:
     """Systems over their security's threshold right now, with (kills, is
     highsec); none when the signals are stale. Highsec gank hotspots and hubs
-    from HIGHSEC_HOTSPOT, likely camps elsewhere from LOWSEC_CAMP."""
+    from HIGHSEC_HOTSPOT, likely camps from LOWSEC_CAMP in lowsec and
+    NULLSEC_CAMP in nullsec and wormholes."""
     if not fresh(db, now):
         return {}
     rows = db.execute(
@@ -125,8 +129,8 @@ def hotspots(db: sqlite3.Connection, now: str | None = None) -> dict[int, tuple[
         "ROUND(s.security_status, 1) >= 0.5 AS highsec FROM system_kills k "
         "JOIN sde_solar_systems s USING (system_id) "
         "WHERE k.ship_kills + k.pod_kills >= CASE WHEN ROUND(s.security_status, 1) >= 0.5 "
-        "THEN ? ELSE ? END",
-        (HIGHSEC_HOTSPOT, LOWSEC_CAMP),
+        "THEN ? WHEN ROUND(s.security_status, 1) > 0.0 THEN ? ELSE ? END",
+        (HIGHSEC_HOTSPOT, LOWSEC_CAMP, NULLSEC_CAMP),
     )
     return {r["system_id"]: (r["kills"], bool(r["highsec"])) for r in rows}
 

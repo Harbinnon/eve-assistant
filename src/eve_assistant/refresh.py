@@ -17,6 +17,7 @@ from eve_assistant import (
     backups,
     campaigns,
     contracts,
+    corporation,
     freelance,
     gamelogs,
     goals,
@@ -25,15 +26,18 @@ from eve_assistant import (
     market,
     market_data,
     outcomes,
+    planets,
     planner,
     sde,
     signals,
     snapshots,
+    sovereignty,
     store,
     structures,
     trade,
 )
 from eve_assistant.config import Config
+from eve_assistant.esi import PLANETS_SCOPE
 from eve_assistant.esi.client import EsiClient, EsiError, EsiRateLimited
 from eve_assistant.esi.sso import SSOError
 from eve_assistant.secrets_store import SecretStore
@@ -94,6 +98,7 @@ def refresh_all(
             except EsiError as exc:
                 report.problems.append(f"Market prices: {exc}")
             report.problems.extend(_refresh_signals(db, esi, datetime.now(UTC)))
+            report.problems.extend(_refresh_sovereignty(db, esi, datetime.now(UTC)))
     finally:
         db.close()
     return report
@@ -182,6 +187,7 @@ def _snapshot_one(
             losses.update(db, esi, character_id)
         except EsiError as exc:
             problems.append(f"{name}, losses: {exc}")
+    problems.extend(_extras(db, esi, character_id, name, kinds, granted))
     contracts.sync_projects(db, character_id)  # delivered couriers close their projects
     outcomes.update(db, character_id)  # newer data may settle earlier sessions
     failed = [r for r in results if r.outcome == "failed"]
@@ -191,6 +197,23 @@ def _snapshot_one(
         f"{len(results) - changed - len(failed)} unchanged, {len(failed)} failed"
     )
     return line, [*(f"{name}, {r.kind}: {r.detail}" for r in failed), *problems]
+
+
+def _extras(db, esi: EsiClient, character_id: int, name: str, kinds, granted) -> list[str]:
+    """The character's corporation (after its public record) and its colonies'
+    layouts (after the colony list). Returns problem lines."""
+    problems = []
+    if kinds is None or "public" in kinds:
+        try:
+            corporation.refresh(db, esi, character_id)
+        except EsiError as exc:
+            problems.append(f"{name}, corporation: {exc}")
+    if (kinds is None or "planets" in kinds) and (granted is None or PLANETS_SCOPE in granted):
+        try:
+            planets.refresh(db, esi, character_id)
+        except EsiError as exc:
+            problems.append(f"{name}, planets: {exc}")
+    return problems
 
 
 @_one_at_a_time
@@ -332,6 +355,17 @@ def _refresh_signals(db, esi: EsiClient, now: datetime) -> list[str]:
     return []
 
 
+def _refresh_sovereignty(db, esi: EsiClient, now: datetime) -> list[str]:
+    """Who holds each system, twice a day; a problem line if ESI fails."""
+    if not sovereignty.due(db, now):
+        return []
+    try:
+        sovereignty.refresh(db, esi, now)
+    except EsiError as exc:
+        return [f"Sovereignty: {exc}"]
+    return []
+
+
 def _public_due(db, now: datetime) -> bool:
     return (
         _prices_due(db, now)
@@ -339,6 +373,7 @@ def _public_due(db, now: datetime) -> bool:
         or signals.due(db, now)
         or industry.due(db, now)
         or campaigns.due(db, now)
+        or sovereignty.due(db, now)
     )
 
 
@@ -364,6 +399,7 @@ def _refresh_public(db, esi: EsiClient, now: datetime) -> list[str]:
             campaigns.refresh(db, esi, now)
         except EsiError as exc:
             problems.append(f"Military campaigns: {exc}")
+    problems.extend(_refresh_sovereignty(db, esi, now))
     return problems
 
 

@@ -10,6 +10,7 @@ import json
 import sqlite3
 from dataclasses import dataclass
 
+from eve_assistant.esi import PLANETS_SCOPE
 from eve_assistant.esi.client import EsiClient, EsiError, EsiRateLimited
 from eve_assistant.store import utc_now
 
@@ -60,6 +61,8 @@ KINDS = (
         "/characters/{id}/killmails/recent",
         scope="esi-killmails.read_killmails.v1",
     ),
+    # Colonies; planets.py reads each one's layout after it.
+    Kind("planets", "/characters/{id}/planets", scope=PLANETS_SCOPE),
 )
 
 

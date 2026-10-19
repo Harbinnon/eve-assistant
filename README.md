@@ -5,7 +5,7 @@ and haul. Set a goal, say how long you can play, and it reads your
 characters through CCP's API (ESI) and suggests the best use of that time,
 then learns from what actually happened.
 
-**Status: version 0.9. Built: login, snapshots, skill plans, goals, the
+**Status: version 0.10. Built: login, snapshots, skill plans, goals, the
 dashboard, the session planner (mining, ore, couriers, Freelance Jobs, your
 whole fleet, multi-session projects, risk ratings, decline buttons),
 learning from results (play sessions, noticed from EVE's login times;
@@ -20,8 +20,10 @@ routes around camps, risk lines that move with your choices), and more
 things to do (gas harvesting, exploration, distribution missions with LP
 store values, manufacturing from your blueprints, military campaigns), and a trade tool
 (trade runs between the hubs, station trading, your orders watched, the
-best run in plans). Next: corporations, nullsec and Planetary
-Interaction.** The design is in
+best run in plans), and corporations, nullsec and Planetary Interaction
+(corp tax and your corp's buyback, the sovereignty map and jump bridges,
+your colonies' extractor timers and what they make). Next: alerts and
+hosted mode.** The design is in
 [docs/design.md](docs/design.md) and the plan from here in
 [docs/roadmap.md](docs/roadmap.md).
 
@@ -131,6 +133,18 @@ eve-assistant shortcut [--folder <path>]     a desktop shortcut that starts it (
 
 Data lives in `var/` (the database and downloaded static data) and is
 gitignored. Tokens are stored encrypted outside the project.
+
+### Corporations, nullsec and planets
+
+- **Corp tax** is found by itself; a **buyback** (the share of Jita's buy
+  price your corporation pays for ore) goes in Settings.
+- **Jump bridges:** paste your alliance's list in Settings, one bridge a
+  line (`1DQ1-A » 8QT-H4`).
+- **Planetary Interaction** is off until you switch it on, because it needs
+  one more permission: tick `esi-planets.manage_planets.v1` on your ESI
+  application (docs/setup-esi.md), then add `planets = true` under `[esi]`
+  in `config/local.toml`, restart the dashboard and log each character in
+  again.
 
 ### Backups
 

@@ -392,6 +392,81 @@ def test_open_projects_show_on_today_and_can_be_closed(planning_client, db_path)
     assert "Open projects" not in done.text
 
 
+def test_buyback_and_jump_bridges_are_set_in_settings(client):
+    page = client.get("/settings").text
+    assert "Corporation buyback" in page
+    assert "0 bridges saved" in page
+    assert "Off. To see your planets" in page
+    token = _token(page)
+    saved = client.post("/settings/buyback", data={"token": token, "percent": "90",
+                                                   "system": "jita"})  # fmt: skip
+    assert "Buyback saved" in saved.text
+    assert 'value="90"' in saved.text
+    assert 'value="Jita"' in saved.text
+    wrong = client.post("/settings/buyback", data={"token": token, "percent": "90",
+                                                   "system": "Nowhere"})  # fmt: skip
+    assert wrong.status_code == 400
+    assert "No solar system is called" in wrong.text
+    cleared = client.post("/settings/buyback", data={"token": token, "percent": "", "system": ""})
+    assert "Buyback removed." in cleared.text
+    bad = client.post("/settings/bridges", data={"token": token, "bridges": "Jita nowhere"})
+    assert bad.status_code == 400
+    assert "Couldn&#39;t find two system names on line 1" in bad.text
+    empty = client.post("/settings/bridges", data={"token": token, "bridges": ""})
+    assert "Jump bridges saved." in empty.text
+
+
+def test_corporation_and_planets_show_on_characters_and_today(db_path):
+    conn = store.connect(db_path)
+    conn.execute(
+        "INSERT INTO sde_npc_corporations VALUES (1000044, 1, 'School of Applied Knowledge')"
+    )
+    conn.execute("INSERT INTO sde_planets VALUES (40009077, 30000142, 4, 11)")
+    snapshots.record(conn, 7, "public", {"race_id": 1, "corporation_id": 1000044})
+    snapshots.record(
+        conn,
+        7,
+        "planets",
+        [
+            {
+                "planet_id": 40009077,
+                "planet_type": "barren",
+                "solar_system_id": 30000142,
+                "upgrade_level": 0,
+            }
+        ],
+    )
+    snapshots.record(
+        conn,
+        7,
+        "planet_layouts",
+        {
+            "40009077": {
+                "pins": [
+                    {
+                        "extractor_details": {
+                            "product_type_id": 2268,
+                            "qty_per_cycle": 1000,
+                            "cycle_time": 1800,
+                        },
+                        "install_time": "2026-10-01T00:00:00Z",
+                        "expiry_time": "2026-10-02T00:00:00Z",
+                    }
+                ]
+            }
+        },
+    )
+    conn.close()  # fmt: skip
+    with TestClient(create_app(db_path, planets_on=True), base_url=LOCAL) as c:
+        characters = c.get("/characters").text
+        today = c.get("/today").text
+    assert "School of Applied Knowledge" in characters
+    assert "NPC corporation · 11.0% tax on missions and bounties" in characters
+    assert "Jita IV" in characters
+    assert '<span class="pill amber">stopped</span>' in characters
+    assert "Test Pilot's extractor on Jita IV has stopped (" in today
+
+
 def test_play_time_is_set_on_preferences(planning_client):
     token = _token(planning_client.get("/settings").text)
     saved = planning_client.post("/settings/play-time", data={"token": token, "hours": "9.5"})

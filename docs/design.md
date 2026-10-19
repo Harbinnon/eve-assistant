@@ -112,11 +112,12 @@ and the risk.
 | **Hauling own goods to a better market** | Price difference between hubs against travel time | Good | Wallet results |
 | **Gas harvesting** (milestone 5) | Scoop yield from the static data (ship role and per-level bonuses; one active harvester a level of Gas Cloud Harvesting), about 20 minutes to find a nebula, valued at the average highsec booster gas price | Rough: which gas a site holds varies | The mining ledger's gas, if it records it |
 | **Exploration**: relic and data sites (milestone 5) | Needs a probe launcher and an analyzer the character can use; a starting guess of about 1M ISK an hour in highsec (players' reports) | A guess: loot is luck | The change in net worth across the session |
-| **Distribution missions** (milestone 5) | The nearest Distribution agents the character's standing opens; a guess built on one published figure (level 4: about 400k ISK and 750 LP a mission), LP valued at the corporation's store (median of its ten best offers) | A guess | Mission rewards in the wallet journal |
+| **Distribution missions** (milestone 5) | The nearest Distribution agents the character's standing opens; a guess built on one published figure (level 4: about 400k ISK and 750 LP a mission), less corp tax, LP valued at the corporation's store (median of its ten best offers) | A guess | Mission rewards in the wallet journal |
+| **Planetary Interaction** (milestone 6) | Each colony's layout: running extractors at the rate EVE reports, then each factory's schematic, basic ones first; valued at CCP's averages less a guessed 10% customs export tax. Restarting a stopped extractor is a plan step in the planet's system (Remote Sensing, to manage it from further, is Omega) | Rough: yields vary by cycle and fall over a program | Not learned yet |
 
 Military campaigns (Cradle of War) are read from ESI and the static data;
 a running objective that fits a modelled activity is mentioned in plans
-with its ISK, LP and standing. Later: Planetary Industry, reactions. Each is just another model in the
+with its ISK, LP and standing. Later: reactions. Each is just another model in the
 same planner.
 
 **Trading** (roadmap 5.5; the owner decided on 18 October 2026 to build our
@@ -638,23 +639,43 @@ against CCP's current EULA):
 
 | Level | What | Plan |
 |---|---|---|
-| **1. Corp-aware planning** | Corp tax (public in ESI); corp facilities, buyback programs and rules entered once in settings (not in ESI); corp courier contracts as hauling options | Included, phases 2–4 |
+| **1. Corp-aware planning** | Corp tax (public in ESI); corp facilities, buyback programs and rules entered once in settings (not in ESI); corp courier contracts as hauling options | Built in milestone 6: corp tax and the buyback. Corp contracts and corporation projects wait for a player corp |
 | **2. Corp data for officers** | Corp hangars, jobs, moon extraction schedules, wallet, contracts. Needs extra scopes **and** in-game roles. | Deferred, optional module |
 | **3. Running a corporation** | Member tracking, recruitment, member tax ledgers, ship replacement | Not built: SeAT, Alliance Auth |
+
+**Corp tax** (milestone 6) is taken from mission rewards and bounties before
+they're paid. The rate is, best first: a player corporation's own (public in
+ESI), what the wallet journal shows was taken (entries paid to the current
+corporation only), or 11% for an NPC corporation (ESI has no rate for them;
+a character's journal showed 11% taken, 18 Oct 2026). **The buyback** is
+entered in Settings as a share of Jita's best buy and the system it's in;
+selling ore to it (by contract, no sales tax) is then weighed against the
+market. **Corp contracts and corporation projects** need
+`esi-contracts.read_corporation_contracts.v1` and
+`esi-corporations.read_projects.v1`, and a player corporation: none of the
+owner's characters is in one (19 Oct 2026), so they wait.
 
 Large corps usually run their own auth, buyback and fitting tools; they
 coexist with this one. Corp data comes from CCP's servers through each
 person's own login, so "no sharing between copies" still holds.
 
-### 6.5 Nullsec (phase 4)
+### 6.5 Nullsec (milestone 6)
 
-- **Risk** from kill data, with stricter starting lines (no CONCORD).
-- **Jump bridges in routes:** ESI's route planner accepts extra one-way
-  connections. An alliance's bridge list is pasted into settings (not
-  published in ESI). The September 2026 Ansiblex changes still need
-  checking against the patch notes.
-- **Sovereignty:** holders are public in ESI. Whether ESI exposes which
-  ore anomalies a system's upgrades give is unverified.
+Built for the coworker's corp; none of the owner's characters lives in null.
+
+- **Risk** from kill data. Nullsec is quieter than lowsec (18 Oct 2026: 95%
+  of its systems lost under 3 ships an hour, 99% under 9), so a camp counts
+  from 5 kills an hour there, against 10 in lowsec. A quiet route that stays
+  in space held by your own alliance is rated medium; anywhere else in null
+  stays high.
+- **Jump bridges in routes:** an alliance's bridge list is pasted into
+  Settings (no API lists it for a character), one bridge a line, and the
+  tool's own routes use them both ways, a bridge counting as one jump. The
+  September 2026 Ansiblex changes still need checking against the patch
+  notes.
+- **Sovereignty:** holders are public in ESI (/sovereignty/systems), read
+  twice a day and kept as IDs only. Whether ESI exposes which ore anomalies
+  a system's upgrades give is unverified.
 - **No live intel.** Reading intel channels means processing other
   players' messages, which conflicts with the privacy rule (section 8).
   The dashboard links to dedicated intel tools.
@@ -1029,9 +1050,10 @@ refresh, and the new one is always saved. Read-only scopes:
 | `esi-characters.read_freelance_jobs.v1` | Freelance Jobs you've accepted and your progress on them, so plans include them and outcomes count them (roadmap 3.3; owner's decision, 17 Oct 2026) |
 | `esi-characters.read_loyalty.v1` | Loyalty points, for LP-store value of missions and other LP sources (milestone 5; requested now so characters log in again once) |
 | `esi-killmails.read_killmails.v1` | Your own losses, to replace guessed loss chances with real ones (milestone 4). Only the owner's losses: other players named in a killmail are not kept |
+| `esi-planets.manage_planets.v1` | **Optional** (milestone 6): your colonies, extractor timers and what they make. Read-only despite its name. Asked for only with `planets = true` under `[esi]` in config/local.toml, because EVE refuses the whole login when an application lacks a requested scope |
 
-Later, if needed: `esi-planets.manage_planets.v1` (PI), corp scopes for the
-officer module. No write scopes, no mail. Adding scopes later means each
+Later, if needed: corp contracts and projects (section 6.4), corp scopes for
+the officer module. No write scopes, no mail. Adding scopes later means each
 character logs in once more (and the scope ticked on the ESI application
 first). Until then, snapshot kinds needing a scope a character's login
 lacks are skipped for that character, and Characters says who needs to log

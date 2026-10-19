@@ -127,6 +127,20 @@ def sample_zip(tmp_path):
                 },
             },
         ],
+        "mapPlanets.jsonl": [
+            {"_key": 40009077, "solarSystemID": 30000142, "celestialIndex": 4, "typeID": 13},
+        ],
+        "planetSchematics.jsonl": [
+            {
+                "_key": 121,
+                "cycleTime": 1800,
+                "name": {"en": "Water"},
+                "types": [
+                    {"_key": 2268, "isInput": True, "quantity": 3000},
+                    {"_key": 3645, "isInput": False, "quantity": 20},
+                ],
+            },
+        ],  # fmt: skip
         "dogmaAttributes.jsonl": [
             {"_key": 9, "name": "hp"},
             {"_key": 182, "name": "requiredSkill1"},
@@ -197,6 +211,18 @@ def test_load_fills_tables_with_english_names(db, sample_zip):
         1,
         "[]",
     )
+    assert tuple(db.execute("SELECT * FROM sde_planets").fetchone()) == (
+        40009077, 30000142, 4, 13,
+    )  # fmt: skip
+    assert tuple(db.execute("SELECT * FROM sde_planet_schematics").fetchone()) == (
+        121, "Water", 1800,
+    )  # fmt: skip
+    assert [
+        tuple(r)
+        for r in db.execute(
+            "SELECT type_id, quantity, is_input FROM sde_planet_schematic_types ORDER BY is_input"
+        )
+    ] == [(3645, 20, 0), (2268, 3000, 1)]
     assert not sde.needs_reload(db)
 
 

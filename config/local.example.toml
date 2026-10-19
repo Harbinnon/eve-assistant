@@ -12,6 +12,11 @@ callback_url = "http://localhost:8765/callback"
 # the operator. Use whatever contact you are happy for CCP to see.
 contact = "<your EVE character name or email>"
 
+# Planetary Interaction: tick esi-planets.manage_planets.v1 (read-only) on
+# your ESI application first, then set this and log each character in again.
+# Leave it out until then: EVE's login fails if the application lacks it.
+# planets = true
+
 [app]
 # "local" (default) or "hosted". Hosted mode is not built yet.
 mode = "local"

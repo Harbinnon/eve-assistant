@@ -10,7 +10,17 @@ import math
 import sqlite3
 from dataclasses import dataclass, field
 
-from eve_assistant import corrections, fees, market, routes, sde, skills, structures, travel
+from eve_assistant import (
+    corporation,
+    corrections,
+    fees,
+    market,
+    routes,
+    sde,
+    skills,
+    structures,
+    travel,
+)
 from eve_assistant.esi.client import EsiClient, EsiError
 from eve_assistant.skills import Reason
 
@@ -19,6 +29,7 @@ MINUTES_PER_JUMP = travel.MINUTES_PER_JUMP  # before the player's pace is learne
 MINUTES_TO_SELL = 2.0
 MINUTES_TO_REFINE = 2.0
 MINUTES_TO_LIST = 3.0
+MINUTES_TO_CONTRACT = 3.0  # an item exchange contract to the corporation
 
 SKILL_NAMES = ("Accounting", "Broker Relations", "Reprocessing", "Reprocessing Efficiency")
 
@@ -136,6 +147,35 @@ def _is_asteroid(db: sqlite3.Connection, type_id: int) -> bool:
         (type_id,),
     ).fetchone()
     return row is not None
+
+
+def _buyback_option(db, here, type_id: int, quantity: int, ore_m3: float, book,
+                    travel_limits: tuple[bool, float]) -> Option | None:  # fmt: skip
+    """Selling to the corporation's buyback (Settings): a share of Jita's best buy,
+    by contract, at its system. travel_limits: (highsec only, minutes a jump)."""
+    deal = corporation.buyback(db)
+    if deal is None:
+        return None
+    highsec_only, a_jump = travel_limits
+    jita = market.HUBS[0]
+    best = market.highest_buy(book(jita.region_id, type_id), jita.station_id, jita.system_id)
+    jumps = routes.jump_count(db, here["system_id"], deal.system_id, highsec_only)
+    if not best or jumps is None:
+        return None
+    return Option(
+        key="buyback",
+        title=f"Sell the ore to your corporation's buyback in {deal.system_name}"
+        + (f" ({jumps} jumps)" if jumps else ""),
+        isk=quantity * best * deal.share,
+        active_minutes=MINUTES_TO_CONTRACT + jumps * a_jump,
+        instant=True,
+        location=deal.system_name,
+        jumps=jumps,
+        hauled_m3=ore_m3 if jumps else 0.0,
+        reasons=(
+            Reason("buyback", {"share": deal.share, "jita_buy": best, "system": deal.system_name}),
+        ),  # fmt: skip
+    )
 
 
 def analyse(
@@ -332,6 +372,10 @@ def analyse(
                     ),
                 )
             )
+
+    buyback = _buyback_option(db, here, type_id, quantity, ore_m3, book, (highsec_only, a_jump))
+    if buyback is not None:
+        options.append(buyback)
 
     if here["region_name"] == "Exordium":
         reasons.append(Reason("exordium_fees", {"surcharge": fees.EXORDIUM_ORDER_SURCHARGE}))

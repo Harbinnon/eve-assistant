@@ -34,6 +34,7 @@ from eve_assistant import (
     activities,
     backups,
     checklist,
+    corporation,
     corrections,
     detection,
     explain,
@@ -48,6 +49,7 @@ from eve_assistant import (
     outcomes,
     overview,
     pace,
+    planets,
     planner,
     preferences,
     projects,
@@ -56,6 +58,7 @@ from eve_assistant import (
     session_flow,
     sessions,
     skills,
+    sovereignty,
     store,
     trade,
     train_next,
@@ -183,6 +186,9 @@ MESSAGES = {
     "project_done": "Project marked done.",
     "project_dropped": "Project dropped.",
     "play_time": "Play time saved.",
+    "buyback": "Buyback saved: plans compare it with the market.",
+    "buyback_cleared": "Buyback removed.",
+    "bridges": "Jump bridges saved.",
     "session_started": "Session started. Press “I’m done” when you stop.",
     "session_finished": "Session recorded.",
     "session_cancelled": "Session cancelled.",
@@ -229,6 +235,17 @@ def _losses(conn) -> list[SimpleNamespace]:
             )
         )
     return rows
+
+
+def _corps_and_planets(conn, character_ids) -> tuple[dict, dict]:
+    """Each character's corporation (with its tax) and its colonies' timers."""
+    corps, timers = {}, {}
+    for cid in character_ids:
+        corp = corporation.of(conn, cid)
+        if corp is not None:
+            corps[cid] = SimpleNamespace(corp=corp, tax=corporation.tax(conn, cid))
+        timers[cid] = planets.timers(conn, cid, _now())
+    return corps, timers
 
 
 def _amount(text: str, default: float) -> float:
@@ -358,6 +375,7 @@ def create_app(
     fetch_image: images.Fetch | None = None,
     missing_scopes: Callable[[], dict[int, tuple[str, ...]]] | None = None,
     scan_markets: Callable[..., list[str]] | None = None,
+    planets_on: bool = False,
 ) -> FastAPI:
     """refresh: called by the Refresh button; returns problem lines, empty when all went well.
     make_plan: builds and records a plan (needs ESI), returning its ID.
@@ -645,6 +663,12 @@ def create_app(
             results = outcomes.recent(conn, 5)
             noticed = detection.suggestions(conn)
             outbid = sum(w.outbid for w in trade.watch_orders(conn, active[0])) if active else 0
+            stopped = [
+                (name, timer)
+                for cid, name in conn.execute("SELECT character_id, name FROM characters")
+                for timer in planets.timers(conn, cid, _now())
+                if timer.stopped
+            ]
         finally:
             conn.close()
         return render(
@@ -662,6 +686,7 @@ def create_app(
             ship_type_id=ship_type_id,
             compared=compared,
             outbid=outbid,
+            stopped_planets=stopped,
         )
 
     @app.post("/sessions/{session_id}/steps/{item_id}/{action}")
@@ -867,6 +892,8 @@ def create_app(
             play_time = pace.weekly_play(conn)
             folder = Path(backups_dir) if backups_dir else backups.default_folder(db_path)
             kept = backups.list_backups(folder)
+            buyback = corporation.buyback(conn)
+            bridges = sovereignty.bridges_text(conn)
         finally:
             conn.close()
         return render(
@@ -878,7 +905,43 @@ def create_app(
             play_time=play_time,
             backups_folder=folder,
             backups_kept=kept,
+            buyback=buyback,
+            bridges=bridges,
+            bridge_count=len(bridges.splitlines()),
+            planets_on=planets_on,
         )
+
+    @app.post("/settings/buyback")
+    def change_buyback(
+        request: Request,
+        token: str = Form(...),
+        percent: str = Form(""),
+        system: str = Form(""),
+    ):
+        check_form(request, token)
+        conn = db()
+        try:
+            if not percent.strip() and not system.strip():
+                corporation.clear_buyback(conn)
+                return back(SETTINGS, anchor="buyback", msg="buyback_cleared")
+            corporation.set_buyback(conn, _amount(percent, 0.0), system)
+        except corporation.BuybackError as exc:
+            raise HTTPException(400, str(exc)) from None
+        finally:
+            conn.close()
+        return back(SETTINGS, anchor="buyback", msg="buyback")
+
+    @app.post("/settings/bridges")
+    def change_bridges(request: Request, token: str = Form(...), bridges: str = Form("")):
+        check_form(request, token)
+        conn = db()
+        try:
+            sovereignty.save_bridges(conn, bridges)
+        except sovereignty.BridgeError as exc:
+            raise HTTPException(400, str(exc)) from None
+        finally:
+            conn.close()
+        return back(SETTINGS, anchor="bridges", msg="bridges")
 
     @app.post("/settings/play-time")
     def change_play_time(request: Request, token: str = Form(...), hours: float = Form(...)):
@@ -953,6 +1016,7 @@ def create_app(
         try:
             summaries = overview.all_characters(conn)
             worth_lines = {c.character_id: _worth(conn, [c.character_id]) for c in summaries}
+            corps, timers = _corps_and_planets(conn, [c.character_id for c in summaries])
         finally:
             conn.close()
         recent = login["at"] and (_minutes_since(login["at"]) or 0) < LOGIN_NEWS_MINUTES
@@ -968,6 +1032,9 @@ def create_app(
             worth_lines=worth_lines,
             problems=[],
             missing=missing,
+            corps=corps,
+            timers=timers,
+            planets_on=planets_on,
             login=login if login["state"] == "waiting" or recent else None,
             can_add=add_character is not None,
             # While EVE's login page is open, check back every few seconds.
@@ -1035,6 +1102,7 @@ def create_app(
         try:
             summaries = overview.all_characters(conn)
             worth_lines = {c.character_id: _worth(conn, [c.character_id]) for c in summaries}
+            corps, timers = _corps_and_planets(conn, [c.character_id for c in summaries])
         finally:
             conn.close()
         return render(
@@ -1042,6 +1110,8 @@ def create_app(
             "characters.html",
             characters=summaries,
             worth_lines=worth_lines,
+            corps=corps,
+            timers=timers,
             problems=problems,
         )
 

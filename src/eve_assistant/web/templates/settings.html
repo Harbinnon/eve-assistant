@@ -2,7 +2,7 @@
 {% block title %}Settings · EVE Assistant{% endblock %}
 {% block content %}
 <h1>Settings</h1>
-<p class="lede">What the planner should stop suggesting, your play time, and backups. Muting is never permanent: undo it here any time. The theme is at the bottom of every page.</p>
+<p class="lede">What the planner should stop suggesting, your play time, your corporation's buyback and jump bridges, Planetary Interaction, and backups. Muting is never permanent: undo it here any time. The theme is at the bottom of every page.</p>
 
 <div class="table-wrap">
   <table>
@@ -38,6 +38,48 @@ goal dates. Your setting is the starting point; recorded sessions take over as w
   </label>
   <button class="primary" type="submit">Save</button>
 </form>
+
+<h2 id="buyback">Corporation buyback</h2>
+<p class="lede">If your corporation buys its members' ore at a share of Jita's best buy price, plans compare it with the market.
+EVE doesn't publish buybacks, so enter it here. Leave both empty to remove it.</p>
+<form class="stack card" method="post" action="/settings/buyback">
+  <input type="hidden" name="token" value="{{ form_token }}">
+  <div class="field-row">
+    <label for="buyback-percent">Percent of Jita buy
+      <input id="buyback-percent" name="percent" type="text" inputmode="decimal" class="narrow"
+        value="{{ '%g'|format(buyback.share * 100) if buyback else '' }}" placeholder="90">
+    </label>
+    <label for="buyback-system">In system
+      <input id="buyback-system" name="system" type="text" class="narrow"
+        value="{{ buyback.system_name if buyback else '' }}" placeholder="Jita">
+    </label>
+  </div>
+  <button class="primary" type="submit">Save</button>
+</form>
+
+<h2 id="bridges">Jump bridges</h2>
+<p class="lede">Your alliance's jump bridges (Ansiblex gates), for routes in nullsec. No API lists them,
+so paste the list your alliance shares: one bridge a line, two system names on it
+(for example <span class="mono">1DQ1-A » 8QT-H4</span>). Saving replaces the list.</p>
+<form class="stack card" method="post" action="/settings/bridges">
+  <input type="hidden" name="token" value="{{ form_token }}">
+  <label for="bridges-text">{{ bridge_count }} bridge{{ "s" if bridge_count != 1 }} saved
+    <textarea id="bridges-text" name="bridges" rows="6" spellcheck="false">{{ bridges }}</textarea>
+  </label>
+  <button class="primary" type="submit">Save bridges</button>
+</form>
+
+<h2 id="planets">Planetary Interaction</h2>
+{% if planets_on %}
+<p class="lede">On: plans and the Characters page show your colonies, when their extractors stop and what they make.
+A character that logged in before it was switched on has to log in again (Characters says which).</p>
+{% else %}
+<p class="lede">Off. To see your planets' extractor timers and what they make: tick
+<span class="mono">esi-planets.manage_planets.v1</span> (read-only) on your ESI application, add
+<span class="mono">planets = true</span> under <span class="mono">[esi]</span> in your local settings file
+(the README's "Corporations, nullsec and planets" section says where), restart the dashboard, and log each character
+in again. Switching it on before ticking the scope makes EVE's login fail.</p>
+{% endif %}
 
 <h2>Backups</h2>
 <p class="lede">A copy of your history is saved once a day while the dashboard runs. It can't be

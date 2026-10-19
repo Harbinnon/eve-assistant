@@ -19,6 +19,9 @@ loss can't swing a chance far:
 Every rating says whether its chance is still a guess or how many trips it
 was learned from. "none" (Exordium) stays at zero: no player can attack there.
 
+Nullsec is "high", except a quiet route that stays in space held by the
+owner's own alliance (sovereignty.py): "medium" there, as in lowsec.
+
 The net-worth lines move with the player's choices (design 4.6, risk
 appetite). Each Caution or Risky step with something at stake is a vote:
 taken (answered "do", or left unanswered in a session that was played) or
@@ -35,7 +38,7 @@ import sqlite3
 from collections import Counter
 from dataclasses import dataclass, field
 
-from eve_assistant import goals, losses, routes, signals, snapshots, worth
+from eve_assistant import goals, losses, routes, signals, snapshots, sovereignty, worth
 from eve_assistant.skills import Reason
 
 # "none": Exordium, where PvP is switched off, so other players cannot take anything.
@@ -151,14 +154,51 @@ def _worse(a: str, b: str) -> str:
     return max(a, b, key=BANDS.index)
 
 
-def _by_kills(lowest: float, any_kills: bool) -> str:
-    """Quiet or busy, by security: highsec very low or low, lowsec low or medium."""
+def _by_kills(lowest: float, any_kills: bool, friendly_null: bool = False) -> str:
+    """Quiet or busy, by security: highsec very low or low, lowsec low or medium,
+    nullsec high (medium while quiet in your own alliance's space)."""
     rounded = round(lowest, 1)
     if rounded >= 0.5:
         return "low" if any_kills else "very_low"
     if rounded > 0.0:
         return "medium" if any_kills else "low"
-    return "high"
+    return "medium" if friendly_null and not any_kills else "high"
+
+
+def _null_systems(db: sqlite3.Connection, systems: list[int]) -> list[int]:
+    marks = ",".join("?" * len(systems))
+    return [
+        r[0]
+        for r in db.execute(
+            f"SELECT system_id FROM sde_solar_systems WHERE system_id IN ({marks}) "  # noqa: S608
+            "AND ROUND(security_status, 1) <= 0.0",
+            systems,
+        )
+    ]
+
+
+def _kill_reason(db: sqlite3.Connection, systems: list[int], kills: dict[int, int]) -> Reason:
+    if not kills:
+        return Reason("no_recent_kills", {"systems": len(systems)})
+    most = sorted(kills, key=kills.get, reverse=True)[:3]
+    return Reason("recent_kills", {
+        "kills": sum(kills.values()),
+        "most": [[name, kills[s]] for name, s in zip(_names(db, most), most, strict=True)],
+    })  # fmt: skip
+
+
+def _hotspots(db, systems: list[int], band: str, reasons: list, now: str | None) -> str:
+    """The band after hotspots and camps along the way, each added to reasons."""
+    hot = {s: found for s, found in signals.hotspots(db, now).items() if s in systems}
+    for system_id, (count, highsec) in sorted(hot.items(), key=lambda h: -h[1][0]):
+        name = _names(db, [system_id])[0]
+        if highsec:
+            band = _worse(band, "medium")
+            reasons.append(Reason("hotspot", {"system": name, "kills": count}))
+        else:
+            band = "high"
+            reasons.append(Reason("camped", {"system": name, "kills": count}))
+    return band
 
 
 def assess(
@@ -174,24 +214,14 @@ def assess(
     if not signals.fresh(db, now):
         return Assessment(band_for_security(lowest))  # the plan notes it once
     kills = signals.kills_in(db, systems)
-    band = _by_kills(lowest, bool(kills))
-    if kills:
-        most = sorted(kills, key=kills.get, reverse=True)[:3]
-        reasons = [Reason("recent_kills", {
-            "kills": sum(kills.values()),
-            "most": [[name, kills[s]] for name, s in zip(_names(db, most), most, strict=True)],
-        })]  # fmt: skip
-    else:
-        reasons = [Reason("no_recent_kills", {"systems": len(systems)})]
-    hot = {s: found for s, found in signals.hotspots(db, now).items() if s in systems}
-    for system_id, (count, highsec) in sorted(hot.items(), key=lambda h: -h[1][0]):
-        name = _names(db, [system_id])[0]
-        if highsec:
-            band = _worse(band, "medium")
-            reasons.append(Reason("hotspot", {"system": name, "kills": count}))
-        else:
-            band = "high"
-            reasons.append(Reason("camped", {"system": name, "kills": count}))
+    null = _null_systems(db, systems) if round(lowest, 1) <= 0.0 else []
+    friendly = bool(null) and set(null) <= sovereignty.friendly_systems(db)
+    band = _by_kills(lowest, bool(kills), friendly)
+    reasons = [_kill_reason(db, systems, kills)]
+    if null:
+        reasons.append(Reason("friendly_space" if friendly else "hostile_null",
+                              {"systems": len(null)}))  # fmt: skip
+    band = _hotspots(db, systems, band, reasons, now)
     infested = signals.incursions_in(db, systems)
     if infested:
         band = _worse(band, "medium")

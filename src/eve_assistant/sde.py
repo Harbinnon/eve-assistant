@@ -74,7 +74,7 @@ AGENT_TYPE_BASIC = 2
 
 # Bump when load() starts filling new tables or attributes; a database loaded
 # by an older loader is then reported as needing a reload.
-LOADER_VERSION = 4
+LOADER_VERSION = 5
 
 
 def _kept_attribute_ids(names: dict[int, str]) -> frozenset[int]:
@@ -181,6 +181,9 @@ def load(db: sqlite3.Connection, zip_path: Path) -> SdeBuild:
                 "sde_agents",
                 "sde_campaigns",
                 "sde_campaign_objectives",
+                "sde_planets",
+                "sde_planet_schematics",
+                "sde_planet_schematic_types",
             ):
                 db.execute(f"DELETE FROM {table}")  # noqa: S608  # fixed table names
 
@@ -306,6 +309,7 @@ def load(db: sqlite3.Connection, zip_path: Path) -> SdeBuild:
             )
             _load_industry_and_agents(db, archive)
             _load_campaigns(db, archive)
+            _load_planets(db, archive)
             db.execute(
                 "INSERT INTO sde_meta (build_number, release_date, loaded_at, loader_version) "
                 "VALUES (?, ?, ?, ?)",
@@ -391,6 +395,26 @@ def _load_campaigns(db: sqlite3.Connection, archive: zipfile.ZipFile) -> None:
                 json.dumps(method.get("parameters", [])),
             ),
         )  # fmt: skip
+
+
+def _load_planets(db: sqlite3.Connection, archive: zipfile.ZipFile) -> None:
+    """Planets (for their names) and Planetary Interaction schematics."""
+    db.executemany(
+        "INSERT INTO sde_planets VALUES (?, ?, ?, ?)",
+        (
+            (r["_key"], r["solarSystemID"], r.get("celestialIndex"), r.get("typeID"))
+            for r in _optional_rows(archive, "mapPlanets.jsonl")
+        ),
+    )
+    for r in _optional_rows(archive, "planetSchematics.jsonl"):
+        db.execute(
+            "INSERT INTO sde_planet_schematics VALUES (?, ?, ?)",
+            (r["_key"], _english(r.get("name")), r.get("cycleTime", 0)),
+        )
+        db.executemany(
+            "INSERT OR REPLACE INTO sde_planet_schematic_types VALUES (?, ?, ?, ?)",
+            [(r["_key"], t["_key"], t["quantity"], int(t["isInput"])) for t in r.get("types", [])],
+        )
 
 
 def needs_reload(db: sqlite3.Connection) -> bool:

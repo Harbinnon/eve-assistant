@@ -35,7 +35,7 @@ from eve_assistant import (
 )
 from eve_assistant.accounts import AccountError
 from eve_assistant.config import ConfigError, load_config
-from eve_assistant.esi import user_agent
+from eve_assistant.esi import scopes, user_agent
 from eve_assistant.esi.client import EsiClient, EsiError
 from eve_assistant.esi.sso import SSOError
 from eve_assistant.goals import GoalError
@@ -52,9 +52,10 @@ def _cmd_login(_args) -> int:
     with auth.http_client(config) as client:
         character = auth.login_character(config, secrets, client)
     print(f"Logged in: {character.name} ({character.character_id}).")
-    if character.missing_scopes:
+    missing = character.missing(scopes(config.planets))
+    if missing:
         print("Warning: these permissions were not granted, so some features won't work:")
-        for scope in character.missing_scopes:
+        for scope in missing:
             print(f"  {scope}")
         print("Check the scopes on your ESI application (docs/setup-esi.md), then log in again.")
     if config.contact is None:
@@ -171,8 +172,10 @@ def _cmd_serve(args) -> int:
             add_character=do_add_character,
             fetch_image=lambda address: images.download(address, user_agent(config.contact)),
             missing_scopes=lambda: {
-                c.character_id: c.missing_scopes for c in auth.list_characters(secrets)
+                c.character_id: c.missing(scopes(config.planets))
+                for c in auth.list_characters(secrets)
             },
+            planets_on=config.planets,
             scan_markets=lambda force=False: refresh.scan_markets(config, force=force),
         ),
         host="127.0.0.1",

@@ -90,9 +90,9 @@ data, not assumed.
 
 | # | What | Done when |
 |---|---|---|
-| 6.1 | **Corp-aware planning:** corp tax, buyback, corp contracts, corporation projects. | Plans account for the character's corp. |
-| 6.2 | **Nullsec basics** (sovereignty, jump bridges) for the coworker's corp. | Routes and risk work in their space. |
-| 6.3 | **Planetary Interaction.** Alpha clones can't train any PI skill, so it is one planet with a basic command centre until Omega; worth it alongside the Omega comparison. | Extractor timers and PI income in plans. Tag `v0.9.0`. |
+| 6.1 | **Corp-aware planning:** corp tax, buyback, corp contracts, corporation projects. | Plans account for the character's corp. Built: corp tax (a player corp's public rate, the wallet journal, or NPC corps' 11%) in mission income; a buyback entered in Settings, compared with the market for ore. Corp contracts and corporation projects wait for a player corp (two more scopes). |
+| 6.2 | **Nullsec basics** (sovereignty, jump bridges) for the coworker's corp. | Routes and risk work in their space. Built: the sovereignty map (public), jump bridges pasted in Settings and used in routes, nullsec camps from 5 kills an hour, quiet space held by your alliance rated medium instead of high. |
+| 6.3 | **Planetary Interaction.** Alpha clones can't train any PI skill, so it is one planet with a basic command centre until Omega; worth it alongside the Omega comparison. | Extractor timers and PI income in plans. Built behind `[esi] planets = true` (the scope must be ticked first): colonies, timers, what each makes a day, restarting stopped extractors in plans, PI in the Omega comparison. Tag `v0.10.0` (0.9 went to the trade tool). |
 
 ## Milestone 7: Alerts and hosted mode (phase 5)
 
@@ -120,4 +120,5 @@ data, not assumed.
 | 2.1 | Decided 17 Oct: the direction is approved, with Windows' own fonts (Bahnschrift, Segoe UI); no font files. |
 | 3.2 | The new read-only scopes, and when to log in again. |
 | 5.5 | Decided 18 Oct: build our own trade tool, covering what the external ones offer. |
+| 6 | Decided 19 Oct (the recommendations): the PI scope, switched on in config once ticked; corp contracts and projects wait for a player corp; nullsec built for the coworker's corp. |
 | 7.1 | Whether a minimal Discord alert should come earlier. |
