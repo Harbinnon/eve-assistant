@@ -184,6 +184,11 @@ def _quick_jobs(fit: _Fitting, usable: list[PlanItem]) -> None:
     for item in (i for i in usable if i.kind == "planet" and i.inputs.get("jumps") == 0):
         if item.minutes <= fit.time_left:
             fit.take(item)
+    _sell_here(fit, usable)
+
+
+def _sell_here(fit: _Fitting, usable: list[PlanItem]) -> None:
+    """Selling where the character is docked, best first, each stack once."""
     sells = sorted(
         (
             i

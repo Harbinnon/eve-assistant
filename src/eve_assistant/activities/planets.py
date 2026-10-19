@@ -39,6 +39,59 @@ def _rating(db, character_id, colony, path, net_worth) -> tuple[risk.RiskRating,
     return rating, assessed.reasons
 
 
+def _restart(db, character_id: int, colony, stopped, path, now, context) -> PlanItem:
+    """The step restarting a colony's stopped extractors.
+    context: (net worth, minutes a jump, the reason for that pace)."""
+    net_worth, per_jump, jump_reason = context
+    jumps = len(path) - 1
+    gain = planets.a_day(db, colony, now, all_running=True) - planets.a_day(db, colony, now)
+    hours = _program_hours(stopped)
+    rating, risk_reasons = _rating(db, character_id, colony, path, net_worth)
+    ago = [(now - e.expires).total_seconds() / 3600 for e in stopped if e.expires is not None]
+    plural = "s" if len(stopped) > 1 else ""
+    away = ""
+    if jumps:
+        away = f" ({jumps} jump{'s' if jumps != 1 else ''} away)"
+    return PlanItem(
+        kind="planet",
+        key=str(colony.planet_id),
+        title=f"Restart the extractor{plural} on {colony.name}{away}",
+        isk=gain * hours / 24,
+        minutes=MINUTES_TO_RESTART + jumps * per_jump + (2.0 if jumps else 0.0),
+        risk=rating,
+        reasons=(
+            Reason(
+                "extractor_stopped",
+                {
+                    "planet": colony.name,
+                    "extractors": len(stopped),
+                    "hours_ago": max(ago) if ago else None,
+                },
+            ),
+            Reason(
+                "planet_output",
+                {
+                    "a_day": gain,
+                    "program_hours": hours,
+                    "customs_tax": planets.CUSTOMS_TAX,
+                    "waiting": planets.waiting(db, colony),
+                },
+            ),
+            Reason("planet_in_system", {"system": colony.system_name}),
+            *([jump_reason] if jumps else []),
+            *risk_reasons,
+        ),
+        inputs={
+            "planet_id": colony.planet_id,
+            "system_id": colony.system_id,
+            "jumps": jumps,
+            "gain_per_day": gain,
+            "program_hours": hours,
+            "extractors": len(stopped),
+        },
+    )
+
+
 def planet_candidates(
     db: sqlite3.Connection,
     character_id: int,
@@ -55,57 +108,10 @@ def planet_candidates(
     items = []
     for colony in planets.colonies(db, character_id):
         stopped = colony.stopped(now, within_minutes=minutes)
-        if not stopped:
-            continue
-        path = routes.jumps_between(db, origin, colony.system_id, highsec_only)
-        if path is None:
-            continue
-        jumps = len(path) - 1
-        gain = planets.a_day(db, colony, now, all_running=True) - planets.a_day(db, colony, now)
-        hours = _program_hours(stopped)
-        rating, risk_reasons = _rating(db, character_id, colony, path, net_worth)
-        ago = [(now - e.expires).total_seconds() / 3600 for e in stopped if e.expires is not None]
-        items.append(
-            PlanItem(
-                kind="planet",
-                key=str(colony.planet_id),
-                title=f"Restart the extractor{'s' if len(stopped) > 1 else ''} on {colony.name}"
-                + (f" ({jumps} jump{'s' if jumps != 1 else ''} away)" if jumps else ""),
-                isk=gain * hours / 24,
-                minutes=MINUTES_TO_RESTART + jumps * per_jump + (2.0 if jumps else 0.0),
-                risk=rating,
-                reasons=(
-                    Reason(
-                        "extractor_stopped",
-                        {
-                            "planet": colony.name,
-                            "extractors": len(stopped),
-                            "hours_ago": max(ago) if ago else None,
-                        },
-                    ),
-                    Reason(
-                        "planet_output",
-                        {
-                            "a_day": gain,
-                            "program_hours": hours,
-                            "customs_tax": planets.CUSTOMS_TAX,
-                            "waiting": planets.waiting(db, colony),
-                        },
-                    ),
-                    Reason("planet_in_system", {"system": colony.system_name}),
-                    *([jump_reason] if jumps else []),
-                    *risk_reasons,
-                ),
-                inputs={
-                    "planet_id": colony.planet_id,
-                    "system_id": colony.system_id,
-                    "jumps": jumps,
-                    "gain_per_day": gain,
-                    "program_hours": hours,
-                    "extractors": len(stopped),
-                },
-            )
-        )
+        path = routes.jumps_between(db, origin, colony.system_id, highsec_only) if stopped else None
+        if path is not None:
+            items.append(_restart(db, character_id, colony, stopped, path, now,
+                                  (net_worth, per_jump, jump_reason)))  # fmt: skip
     return items
 
 

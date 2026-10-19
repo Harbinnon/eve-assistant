@@ -127,6 +127,18 @@ def _system(db: sqlite3.Connection, word: str) -> int | None:
     return row[0] if row else None
 
 
+def _systems_on(db: sqlite3.Connection, line: str) -> list[int]:
+    """The systems named on a line, in order, each once. Arrows split words at
+    their ">" or "<", and the dashes left over are trimmed off."""
+    systems = []
+    for word in re.split(r"[\s»<>,|@]+", line):
+        name = word.strip("-")
+        system = _system(db, name) if name else None
+        if system is not None and system not in systems:
+            systems.append(system)
+    return systems
+
+
 def parse_bridges(db: sqlite3.Connection, text: str) -> list[tuple[int, int]]:
     """Bridges from pasted text: the first two system names on each line.
     Raises BridgeError naming the lines it couldn't read."""
@@ -134,11 +146,7 @@ def parse_bridges(db: sqlite3.Connection, text: str) -> list[tuple[int, int]]:
     for number, line in enumerate(text.splitlines(), start=1):
         if not line.strip():
             continue
-        systems = []
-        for word in re.split(r"[\s»>,|@]+|-->|<->|->", line):
-            system = _system(db, word.strip(" -")) if word.strip(" -") else None
-            if system is not None and system not in systems:
-                systems.append(system)
+        systems = _systems_on(db, line)
         if len(systems) < 2:
             unread.append(str(number))
         else:

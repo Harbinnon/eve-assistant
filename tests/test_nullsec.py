@@ -85,6 +85,7 @@ def test_sovereignty_is_read_in_esis_current_shape(db):
 def test_bridges_are_read_from_the_usual_formats(db):
     text = "1DQ1-A » T5ZI-S\n\n8qt-h4 --> M-OEE8\n1DQ1-A @ 1DQ1-A V - Moon 2 <-> T5ZI-S @ x\n"
     assert sovereignty.parse_bridges(db, text) == [(A, D), (B, C), (A, D)]
+    assert sovereignty.parse_bridges(db, "1DQ1-A->T5ZI-S\nM-OEE8<->8QT-H4") == [(A, D), (C, B)]
     assert sovereignty.save_bridges(db, text) == 2  # the same bridge twice counts once
     assert sovereignty.bridges(db) == [(A, D), (B, C)]
     assert sovereignty.bridges_text(db) == "1DQ1-A » T5ZI-S\n8QT-H4 » M-OEE8"
