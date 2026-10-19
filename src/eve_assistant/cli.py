@@ -8,6 +8,7 @@ from eve_assistant import (
     __version__,
     accounts,
     activities,
+    alerts,
     auth,
     backups,
     couriers,
@@ -790,6 +791,54 @@ def _cmd_account_state(args) -> int:
     return 0
 
 
+def _cmd_alerts_setup(_args, ask=None) -> int:
+    """Enter the Discord webhook and ntfy topic at a hidden prompt (never echoed)."""
+    import getpass
+
+    ask = ask or getpass.getpass
+    secrets = default_store()
+    saved = alerts.addresses(secrets)
+    print("Alerts: in-game actions go to Discord, the tool's health to ntfy. Both are optional.")
+    print("Press Enter to keep what's saved, or type - to remove it. Nothing you type is shown.")
+    for channel, what in (("discord", "Discord webhook address"), ("ntfy", "ntfy topic address")):
+        state = "saved" if channel in saved else "not set"
+        answer = ask(f"{what} ({state}): ").strip()
+        if not answer:
+            continue
+        try:
+            alerts.save_address(secrets, channel, None if answer == "-" else answer)
+        except alerts.AlertError as exc:
+            print(f"Not saved: {exc}")
+            return 1
+        print(f"{what}: {'removed' if answer == '-' else 'saved'}.")
+    return 0
+
+
+def _cmd_alerts_test(_args) -> int:
+    """Send a test alert to each channel that has an address."""
+    config = load_config()
+    secrets = default_store()
+    saved = alerts.addresses(secrets)
+    if not saved:
+        print("No alert channels yet. Run: eve-assistant alerts-setup")
+        return 1
+    db = store.connect()
+    try:
+        tests = [
+            alerts.Alert(f"test:{channel}:{store.utc_now()}", channel,
+                         "Test alert from EVE Assistant: this channel works.")
+            for channel in saved
+        ]  # fmt: skip
+        with auth.http_client(config) as http:
+            sent, problems = alerts.send(db, secrets, http, tests)
+    finally:
+        db.close()
+    for problem in problems:
+        print(problem)
+    print(f"Sent {sent} test alert{'s' if sent != 1 else ''}.")
+    return 1 if problems else 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="eve-assistant", description="EVE Assistant")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
@@ -804,6 +853,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--check", action="store_true", help="also check each character's token with EVE"
     )
     characters.set_defaults(func=_cmd_characters)
+
+    commands.add_parser(
+        "alerts-setup", help="enter the Discord webhook and ntfy topic for alerts"
+    ).set_defaults(func=_cmd_alerts_setup)
+    commands.add_parser("alerts-test", help="send a test alert to each channel").set_defaults(
+        func=_cmd_alerts_test
+    )
 
     logout = commands.add_parser("logout", help="forget a character's token on this PC")
     logout.add_argument("character_id", type=int)
