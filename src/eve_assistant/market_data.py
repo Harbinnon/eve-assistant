@@ -25,7 +25,7 @@ SCAN_EVERY = timedelta(minutes=30)
 WORKERS = 6  # pages fetched at a time
 HISTORY_DAYS = 30
 VOLUME_EVERY = timedelta(days=1)
-MAX_HISTORY = 60  # market history requests per call; the rest wait
+MAX_HISTORY = 150  # market history requests per call; the rest wait
 
 
 def kept_locations(db: sqlite3.Connection, hub: Hub) -> set[int]:

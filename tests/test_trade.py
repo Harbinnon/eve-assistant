@@ -153,3 +153,50 @@ def test_plans_get_the_best_run_that_fits_while_the_data_is_fresh(db):
     assert item.isk == pytest.approx(30 * 150 * 0.925 - 3000)  # Alpha's 7.5% tax, no skills
     assert item.inputs["unit_prices"] == {str(GOODS): pytest.approx(150.0)}
     assert trading.trade_candidates(db, 7, ships, 5, 1e9, True, []) == []  # too short a session
+
+
+def _book(db, type_id, buys, sells, start=100):
+    rows = [
+        (start + n, JITA.region_id, JITA.station_id, type_id, 1, p, 100) for n, p in enumerate(buys)
+    ]
+    rows += [(start + 50 + n, JITA.region_id, JITA.station_id, type_id, 0, p, 100)
+             for n, p in enumerate(sells)]  # fmt: skip
+    db.executemany("INSERT INTO market.orders VALUES (?, ?, ?, ?, ?, ?, ?, 1, 'x')", rows)
+
+
+def test_station_trades_need_a_real_spread_and_real_volume(db):
+    db.executemany(
+        "INSERT INTO sde_types (type_id, name, group_id, published, volume) VALUES (?, ?, 1, 1, 1)",
+        [(5001, "Ammo"), (5002, "Junk SKIN"), (5003, "Quiet thing")],
+    )
+    _book(db, 5001, [80, 79.9, 79, 78, 77], [100, 100.5, 101, 102, 103], start=100)
+    _book(db, 5002, [0.01] * 5, [1e9] * 5, start=200)  # a 0.01 bid on a billion ask
+    _book(db, 5003, [80, 79, 78, 77, 76], [100, 101, 102, 103, 104], start=300)
+    volumes = {(JITA.region_id, 5001): 5000.0, (JITA.region_id, 5003): 50.0}  # 5 a day: too few
+    (ammo,) = trade.station_trades(db, FEES, volumes, [JITA])
+    assert ammo.name == "Ammo"
+    assert (ammo.buy_at, ammo.sell_at) == (80.01, 99.99)
+    assert ammo.profit_per_unit == pytest.approx(99.99 * (1 - 0.08 - 0.03) - 80.01 * 1.03)
+    assert ammo.units_a_day == 500  # a tenth of the daily volume
+    assert ammo.competing_buys == 2  # 80 and 79.9 are within 1% of the best
+    assert ammo.isk_a_day == pytest.approx(500 * ammo.profit_per_unit)
+    (poorer,) = trade.station_trades(db, FEES, volumes, [JITA], isk=8240.0)
+    assert poorer.units_a_day == 99  # what 8,240 ISK buys at 80.01 plus broker fee
+
+
+def test_your_orders_are_watched_against_the_market(db):
+    snapshots.ensure_character(db, 7, "Trader")
+    snapshots.record(db, 7, "orders", [
+        {"order_id": 9001, "type_id": GOODS, "location_id": JITA.station_id,
+         "is_buy_order": False, "price": 105.0, "volume_remain": 7},  # undercut: 100 is cheaper
+        {"order_id": 9002, "type_id": GOODS, "location_id": AMARR.station_id,
+         "is_buy_order": True, "price": 160.0, "volume_remain": 3},  # best bid: 150 is lower
+        {"order_id": 9003, "type_id": SHIP, "location_id": 60000001,
+         "is_buy_order": True, "price": 1.0, "volume_remain": 1},  # nothing read there
+    ])  # fmt: skip
+    watched = {w.order_id: w for w in trade.watch_orders(db, 7)}
+    assert watched[9001].outbid and watched[9001].best_other == 100.0
+    assert watched[9001].place == "Jita"
+    assert not watched[9002].outbid and watched[9002].best_other == 150.0
+    assert watched[9003].best_other is None and not watched[9003].outbid
+    assert watched[9003].place == "elsewhere"

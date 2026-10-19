@@ -1300,6 +1300,17 @@ def test_the_trade_page_reads_the_markets_and_shows_runs(db_path):
         assert "Mining" in page  # the item (a skill book, in this little world)
         assert "1 jumps" in page
 
+        conn = store.connect(db_path)
+        snapshots.record(conn, 7, "orders", [
+            {"order_id": 77, "type_id": SKILL, "location_id": jita.station_id,
+             "is_buy_order": False, "price": 150_000.0, "volume_remain": 2}])  # fmt: skip
+        conn.close()
+        page = test_client.get("/trade", params={"mode": "station"}).text
+        assert "Your orders" in page
+        assert "undercut" in page
+        assert "No station trades yet" in page
+        assert "been undercut or outbid" in test_client.get("/today").text
+
         token = _token(page)
         response = test_client.post("/trade/refresh", data={"token": token},
                                     headers={"Origin": LOCAL}, follow_redirects=False)  # fmt: skip

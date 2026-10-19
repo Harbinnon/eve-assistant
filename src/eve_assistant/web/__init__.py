@@ -158,7 +158,7 @@ TRADE = "/trade"
 RETURN_PAGES = {
     page: page for page in (TODAY, CHARACTERS, GOALS, "/skills", "/history", SETTINGS, TRADE)
 }
-TRADE_MODES = ("instant", "listed")
+TRADE_MODES = ("instant", "listed", "station")
 AMOUNT_UNITS = {"k": 1e3, "m": 1e6, "b": 1e9}
 
 BAND_LABELS = {
@@ -643,6 +643,7 @@ def create_app(
             session_views = checklist.views(conn)
             results = outcomes.recent(conn, 5)
             noticed = detection.suggestions(conn)
+            outbid = sum(w.outbid for w in trade.watch_orders(conn, active[0])) if active else 0
         finally:
             conn.close()
         return render(
@@ -659,6 +660,7 @@ def create_app(
             noticed=noticed,
             ship_type_id=ship_type_id,
             compared=compared,
+            outbid=outbid,
         )
 
     @app.post("/sessions/{session_id}/steps/{item_id}/{action}")
@@ -1249,7 +1251,7 @@ def create_app(
                         dest=None if dest == "any" else dest,
                         isk=_amount(isk, -1.0),
                         cargo_m3=_amount(cargo, -1.0),
-                        listed=mode == "listed",
+                        mode=mode,
                         highsec_only=not lowsec,
                         min_profit=_amount(min_profit, 0.0),
                         by_hour=sort == "hour",

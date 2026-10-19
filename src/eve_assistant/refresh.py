@@ -143,7 +143,14 @@ def scan_markets(
             with auth.http_client(config) as http:
                 esi = EsiClient(http, db)
                 problems = market_data.scan(db, esi, now, _hubs_to_scan(db, now, force))
-                for region_id, type_ids in trade.listing_candidates(db, DEFAULT_TRADE_FEES).items():
+                wanted: dict[int, list[int]] = {}
+                for found in (
+                    trade.listing_candidates(db, DEFAULT_TRADE_FEES),
+                    trade.station_volume_candidates(db, DEFAULT_TRADE_FEES),
+                ):
+                    for region_id, type_ids in found.items():
+                        wanted.setdefault(region_id, []).extend(type_ids)
+                for region_id, type_ids in wanted.items():
                     market_data.volumes(db, esi, region_id, type_ids, now)
                 return problems
         finally:

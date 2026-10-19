@@ -33,6 +33,7 @@ from eve_assistant import (
     routes,
     skills,
     snapshots,
+    store,
 )
 from eve_assistant.market import Hub, Order
 
@@ -285,12 +286,7 @@ def offers(
     trade_fees = character_fees(db, character_id)
     worth = risk.net_worth(db, character_id)
     model = risk.model(db)
-    volumes = None
-    if listed:
-        volumes = {
-            (r["region_id"], r["type_id"]): r["daily_volume"]
-            for r in db.execute("SELECT region_id, type_id, daily_volume FROM market.volumes")
-        }
+    volumes = _volumes(db) if listed else None
     found = []
     for run in runs(db, limits, trade_fees, listed, volumes, pairs, limit * 2):
         journey = trip(db, origin, run, per_jump, limits.highsec_only)
@@ -310,7 +306,7 @@ class Wanted:
     dest: str | None = None
     isk: float = -1.0
     cargo_m3: float = -1.0
-    listed: bool = False
+    mode: str = "instant"  # instant, listed or station
     highsec_only: bool = True
     min_profit: float = 0.0
     by_hour: bool = False  # sort by ISK an hour rather than profit
@@ -323,6 +319,8 @@ class Board:
     ship: object | None  # fleet.FleetShip whose cargo is the default
     wallet: float
     fees: Fees | None = None
+    station: list = field(default_factory=list)  # StationTrade, in station mode
+    watches: list = field(default_factory=list)  # the character's orders
 
 
 def board(db: sqlite3.Connection, character_id: int, wanted: Wanted) -> Board:
@@ -349,10 +347,195 @@ def board(db: sqlite3.Connection, character_id: int, wanted: Wanted) -> Board:
         if a != b and wanted.source in (None, a.name) and wanted.dest in (None, b.name)
     ]
     try:
-        found = offers(db, character_id, limits, wanted.listed, pairs)
-        if wanted.by_hour:
-            found.sort(key=lambda o: -o.isk_per_hour)
         trade_fees = character_fees(db, character_id)
     except skills.SkillsError:
-        found, trade_fees = [], None
-    return Board(found, limits, ship, wallet, trade_fees)
+        return Board([], limits, ship, wallet, None, [], watch_orders(db, character_id))
+    found, station = [], []
+    if wanted.mode == "station":
+        hubs = [h for h in market.HUBS if wanted.source in (None, h.name)]
+        station = station_trades(db, trade_fees, _volumes(db), hubs, isk=limits.isk)
+    else:
+        found = offers(db, character_id, limits, wanted.mode == "listed", pairs)
+        if wanted.by_hour:
+            found.sort(key=lambda o: -o.isk_per_hour)
+    return Board(found, limits, ship, wallet, trade_fees, station, watch_orders(db, character_id))
+
+
+def _volumes(db: sqlite3.Connection) -> dict[tuple[int, int], float]:
+    store.ensure_market(db)
+    return {
+        (r["region_id"], r["type_id"]): r["daily_volume"]
+        for r in db.execute("SELECT region_id, type_id, daily_volume FROM market.volumes")
+    }
+
+
+def station_volume_candidates(db: sqlite3.Connection, trade_fees: Fees) -> dict[int, list[int]]:
+    """Items worth checking the daily volume of for station trading, by region."""
+    found: dict[int, list[int]] = {}
+    for hub in market.HUBS:
+        broker = trade_fees.broker.get(hub.station_id, 0.03)
+        rows = station_candidates(db, hub, 1 - trade_fees.sales_tax - broker, broker, limit=30)
+        found.setdefault(hub.region_id, []).extend(r["type_id"] for r in rows)
+    return found
+
+
+# Station trading: buying with a buy order a step above the best one and selling
+# with a sell order a step under the cheapest, at one hub, for the margin.
+STATION_SHARE = 0.1  # of the daily volume one trader is expected to take
+MIN_MARGIN = 0.05
+TICK = 0.01
+CROWDED = 0.01  # orders within 1% of the best price count as competing
+MIN_ORDERS = 5  # on each side, for an item to count as trading at the hub
+MIN_BUY_SHARE = 0.5  # the best buy, as a share of the best sell, at least
+
+
+@dataclass(frozen=True)
+class StationTrade:
+    type_id: int
+    name: str
+    hub: Hub
+    buy_at: float  # your buy order
+    sell_at: float  # your sell order
+    profit_per_unit: float  # after broker fees both ways and sales tax
+    daily_volume: float
+    competing_buys: int
+    competing_sells: int
+    broker: float
+    units_a_day: int  # a tenth of the daily volume, or what the ISK to spend buys
+
+    @property
+    def margin(self) -> float:
+        cost = self.buy_at * (1 + self.broker)
+        return self.profit_per_unit / cost if cost else 0.0
+
+    @property
+    def isk_a_day(self) -> float:
+        return self.units_a_day * self.profit_per_unit
+
+    @property
+    def capital(self) -> float:
+        return self.units_a_day * self.buy_at * (1 + self.broker)
+
+
+def _competing(db, locations: list[int], type_id: int, is_buy: bool, best: float) -> int:
+    marks = ",".join("?" * len(locations))
+    edge = best * (1 - CROWDED) if is_buy else best * (1 + CROWDED)
+    return db.execute(
+        f"SELECT COUNT(*) FROM market.orders WHERE location_id IN ({marks}) "  # noqa: S608  # placeholders only
+        f"AND type_id = ? AND is_buy = ? AND price {'>=' if is_buy else '<='} ?",
+        (*locations, type_id, int(is_buy), edge),
+    ).fetchone()[0]
+
+
+def station_candidates(db, hub: Hub, keep: float, broker: float, limit: int = 40) -> list:
+    """(type_id, best buy, best sell) at the hub whose spread pays MIN_MARGIN after fees,
+    among items that really trade there: MIN_ORDERS orders or more on each side and a
+    best buy at least MIN_BUY_SHARE of the best sell (a 0.01 ISK bid against a billion
+    ISK ask isn't a spread anyone can trade). Most orders on the thinner side first:
+    those are the items that trade every day."""
+    locations = list(market_data.kept_locations(db, hub))
+    marks = ",".join("?" * len(locations))
+    return db.execute(
+        f"SELECT type_id, MAX(CASE WHEN is_buy = 1 THEN price END) AS best_buy, "  # noqa: S608  # placeholders only
+        f"MIN(CASE WHEN is_buy = 0 THEN price END) AS best_sell, "
+        f"SUM(is_buy) AS buys, SUM(1 - is_buy) AS sells FROM market.orders "
+        f"WHERE location_id IN ({marks}) GROUP BY type_id "
+        f"HAVING buys >= ? AND sells >= ? AND best_buy >= best_sell * ? "
+        f"AND ((best_sell - ?) * ? - (best_buy + ?) * (1 + ?)) >= (best_buy + ?) * (1 + ?) * ? "
+        f"ORDER BY MIN(buys, sells) DESC LIMIT ?",
+        (*locations, MIN_ORDERS, MIN_ORDERS, MIN_BUY_SHARE, TICK, keep, TICK, broker, TICK,
+         broker, MIN_MARGIN, limit),
+    ).fetchall()  # fmt: skip
+
+
+def station_trades(
+    db: sqlite3.Connection,
+    trade_fees: Fees,
+    volumes: dict[tuple[int, int], float],
+    hubs: list[Hub] | None = None,
+    min_daily_units: int = 10,
+    limit: int = 25,
+    isk: float | None = None,
+) -> list[StationTrade]:
+    """The best margins at the hubs that trade enough a day, most ISK a day first,
+    within the ISK to spend if given."""
+    found = []
+    for hub in hubs or market.HUBS:
+        broker = trade_fees.broker.get(hub.station_id, 0.03)
+        keep = 1 - trade_fees.sales_tax - broker
+        locations = list(market_data.kept_locations(db, hub))
+        for row in station_candidates(db, hub, keep, broker):
+            volume = volumes.get((hub.region_id, row["type_id"]))
+            if not volume or volume * STATION_SHARE < min_daily_units:
+                continue
+            buy_at, sell_at = row["best_buy"] + TICK, row["best_sell"] - TICK
+            units = int(volume * STATION_SHARE)
+            if isk is not None:
+                units = min(units, int(isk // (buy_at * (1 + broker))))
+            if units <= 0:
+                continue
+            found.append(
+                StationTrade(
+                    row["type_id"],
+                    skills.type_name(db, row["type_id"]),
+                    hub,
+                    buy_at,
+                    sell_at,
+                    sell_at * keep - buy_at * (1 + broker),
+                    volume,
+                    _competing(db, locations, row["type_id"], True, row["best_buy"]),
+                    _competing(db, locations, row["type_id"], False, row["best_sell"]),
+                    broker,
+                    units,
+                )
+            )
+    return sorted(found, key=lambda t: -t.isk_a_day)[:limit]
+
+
+@dataclass(frozen=True)
+class Watch:
+    """One of the character's market orders against the last market read."""
+
+    order_id: int
+    type_id: int
+    name: str
+    place: str
+    is_buy: bool
+    price: float
+    volume_remain: int
+    best_other: float | None  # the best competing price there, if read
+
+    @property
+    def outbid(self) -> bool:
+        if self.best_other is None:
+            return False
+        return self.best_other > self.price if self.is_buy else self.best_other < self.price
+
+
+def watch_orders(db: sqlite3.Connection, character_id: int) -> list[Watch]:
+    """The character's open orders, each with the best other order at its place."""
+    store.ensure_market(db)
+    hubs = {h.station_id: h.name for h in market.HUBS}
+    found = []
+    for order in snapshots.latest(db, character_id, "orders") or []:
+        if not isinstance(order, dict) or "order_id" not in order:
+            continue
+        is_buy = bool(order.get("is_buy_order"))
+        row = db.execute(
+            f"SELECT {'MAX' if is_buy else 'MIN'}(price) FROM market.orders "  # noqa: S608  # MIN or MAX only
+            "WHERE location_id = ? AND type_id = ? AND is_buy = ? AND order_id != ?",
+            (order["location_id"], order["type_id"], int(is_buy), order["order_id"]),
+        ).fetchone()
+        found.append(
+            Watch(
+                order["order_id"],
+                order["type_id"],
+                skills.type_name(db, order["type_id"]),
+                hubs.get(order["location_id"], "elsewhere"),
+                is_buy,
+                float(order.get("price", 0.0)),
+                int(order.get("volume_remain", 0)),
+                row[0] if row else None,
+            )
+        )
+    return found
