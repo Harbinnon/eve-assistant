@@ -19,12 +19,15 @@ slow down), each at most once an hour.
 
 Both addresses let whoever holds them post, so they are secrets: they live in
 the secret store, entered through `eve-assistant alerts-setup` (a hidden
-prompt), never in config, the database or chat. Every alert sent is kept in
+prompt), never in config, the database or chat. On the hosted server they can
+come from its root-owned env file instead (ENV_ADDRESSES, which win), with an
+ntfy token for a topic that needs one. Every alert sent is kept in
 sent_alerts (append-only), and its key stops it being sent twice.
 """
 
 import hashlib
 import json
+import os
 import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -39,6 +42,8 @@ COURIER_WARNING = timedelta(hours=6)
 STORE_ENTRY = "alerts"
 DISCORD_PREFIXES = ("https://discord.com/api/webhooks/", "https://discordapp.com/api/webhooks/")
 DEFAULT_DASHBOARD = "http://127.0.0.1:8700"
+ENV_ADDRESSES = {"discord": "EVE_ASSISTANT_DISCORD_WEBHOOK", "ntfy": "EVE_ASSISTANT_NTFY_URL"}
+NTFY_AUTH_ENV = "EVE_ASSISTANT_NTFY_TOKEN"
 
 
 class AlertError(Exception):
@@ -60,9 +65,14 @@ def _at(text: str | None) -> datetime | None:
     return moment if moment.tzinfo else moment.replace(tzinfo=UTC)
 
 
-def addresses(store: SecretStore) -> dict[str, str]:
-    """The saved Discord webhook and ntfy topic, by channel."""
-    return dict(store.load().get(STORE_ENTRY, {}))
+def addresses(store: SecretStore | None) -> dict[str, str]:
+    """The Discord webhook and ntfy topic, by channel: from the environment if
+    set there, otherwise as saved in the secret store."""
+    found = dict(store.load().get(STORE_ENTRY, {})) if store is not None else {}
+    for channel, name in ENV_ADDRESSES.items():
+        if os.environ.get(name):
+            found[channel] = os.environ[name]
+    return found
 
 
 def save_address(store: SecretStore, channel: str, address: str | None) -> None:
@@ -245,8 +255,10 @@ def _post(http: httpx.Client, channel: str, address: str, alert: Alert, dashboar
     if channel == "discord":
         response = http.post(address, json={"content": f"{alert.text}\n<{link}>"})
     else:
-        response = http.post(address, content=alert.text.encode(),
-                             headers={"Title": "EVE Assistant", "Click": link})  # fmt: skip
+        headers = {"Title": "EVE Assistant", "Click": link}
+        if os.environ.get(NTFY_AUTH_ENV):
+            headers["Authorization"] = f"Bearer {os.environ[NTFY_AUTH_ENV]}"
+        response = http.post(address, content=alert.text.encode(), headers=headers)
     response.raise_for_status()
 
 

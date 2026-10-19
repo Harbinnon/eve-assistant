@@ -1098,10 +1098,14 @@ in again.
 
 Refresh tokens and webhook URLs are entered through a local prompt, never
 echoed, and stored outside the project folder, **encrypted with Windows
-DPAPI** in local mode. Storage sits behind one small interface, so macOS
-or Linux backends can be added when a contributor needs them. In hosted
-mode they become protected secrets on the server. The ESI client secret is
-not used at all.
+DPAPI** in local mode. Off Windows (the hosted copy on a Linux server) the
+file is encrypted with Fernet from the cryptography library (already a
+dependency), with the key from the server's root-owned env file
+(`EVE_ASSISTANT_SECRET_KEY`), readable by the service's user only, and
+always written to a temporary file and swapped in, because login tokens
+change on every refresh. On the server, the alert addresses and an ntfy
+token can come from the same env file. The ESI client secret is not used at
+all.
 
 ---
 

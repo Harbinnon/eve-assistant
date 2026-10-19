@@ -473,7 +473,7 @@ def auto_refresh_once(
 def send_alerts(config: Config, secrets: SecretStore, db, problems: list[str], now) -> list[str]:
     """Game alerts to Discord and this tick's problems to ntfy, when set up
     (roadmap 7.1). Returns problem lines about sending."""
-    if secrets is None or not alerts.addresses(secrets):
+    if not alerts.addresses(secrets):
         return []
     found = alerts.game_alerts(db, now) + alerts.health_alerts(problems, now)
     with auth.http_client(config) as http:
