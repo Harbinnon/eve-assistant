@@ -455,10 +455,17 @@ replaces on reinstall. Its window starts minimised; closing it stops the
 dashboard.
 
 **Discord** (optional, via webhook) gets alerts that need action in game:
-job finished, order undercut, skill queue empty, goal reached, each linking
-back to the dashboard. **Health of the tool itself** (token refresh
-failing, errors, rate-limit trouble) goes to a separate, optional push
-channel (e.g. ntfy), never mixed with game alerts.
+job finished, order sold or undercut, skill queue empty, courier due within
+six hours, extractor stopped, goal reached, each linking back to the
+dashboard. **Health of the tool itself** (token refresh failing, errors,
+rate-limit trouble) goes to a separate, optional ntfy topic, at most once an
+hour each, never mixed with game alerts. Built in milestone 7: checked after
+every background refresh, each alert sent once (kept, append-only, in
+sent_alerts). Both addresses let whoever has them post, so they're secrets:
+entered at a hidden prompt (`eve-assistant alerts-setup`) and kept in the
+secret store with the login tokens, never in config, the database or chat;
+Settings shows only whether each is set up. "Sold" means an order gone since
+the last check with a matching trade in the wallet since it was placed.
 
 After a game update, a **"what changed for you"** panel lists changes to
 items and ships the player owns or plans to buy.

@@ -397,6 +397,7 @@ def test_buyback_and_jump_bridges_are_set_in_settings(client):
     assert "Corporation buyback" in page
     assert "0 bridges saved" in page
     assert "Off. To see your planets" in page
+    assert 'Discord: <span class="muted">not set up</span>' in page
     token = _token(page)
     saved = client.post("/settings/buyback", data={"token": token, "percent": "90",
                                                    "system": "jita"})  # fmt: skip

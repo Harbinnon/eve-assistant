@@ -65,6 +65,48 @@ def test_game_alerts_cover_jobs_queues_and_couriers(db):
     assert found["job:1"].channel == "discord"
 
 
+def test_a_sold_order_and_a_reached_goal(db):
+    order = {
+        "order_id": 5,
+        "type_id": 34,
+        "location_id": 60003760,
+        "is_buy_order": False,
+        "issued": "2026-10-18T10:00:00Z",
+        "price": 5.0,
+        "volume_remain": 100,
+    }
+    snapshots.record(db, 7, "orders", [order, {**order, "order_id": 6}])
+    snapshots.record(db, 7, "orders", [{**order, "order_id": 6}])  # 5 is gone
+    snapshots.record(
+        db,
+        7,
+        "wallet_transactions",
+        [
+            {
+                "transaction_id": 1,
+                "date": "2026-10-19T09:00:00Z",
+                "type_id": 34,
+                "location_id": 60003760,
+                "is_buy": False,
+                "unit_price": 5.0,
+                "quantity": 100,
+            }
+        ],
+    )
+    db.execute(
+        "INSERT INTO sde_types (type_id, name, group_id, published) VALUES (34, 'Tritanium', 18, 1)"
+    )
+    db.execute(
+        "INSERT INTO goals (kind, character_id, isk, label, status, created_at) "
+        "VALUES ('isk', 7, 1000, 'A thousand ISK', 'active', 'x')"
+    )
+    snapshots.record(db, 7, "wallet", 5000.0)  # fmt: skip
+    found = {a.key: a for a in alerts.game_alerts(db, NOW)}
+    assert found["sold:5"].text == "Miner: your sell order for Tritanium has sold."
+    assert "sold:6" not in found
+    assert found["goal:1"].text == "Goal reached: A thousand ISK."
+
+
 def _queue_snapshot(db):
     return db.execute(
         "SELECT MAX(snapshot_id) FROM snapshots WHERE kind = 'skillqueue'"

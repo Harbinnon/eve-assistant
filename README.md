@@ -99,6 +99,8 @@ happened.
 eve-assistant login                    log a character in (opens EVE's login page)
 eve-assistant characters [--check]     list logged-in characters, optionally test tokens
 eve-assistant logout <character id>    forget a character's token on this PC
+eve-assistant alerts-setup             enter the Discord webhook and ntfy topic (hidden prompt)
+eve-assistant alerts-test              send a test alert to each channel set up
 eve-assistant sde-update               download and load CCP's static data (~100 MB)
 eve-assistant snapshot                 record every character's current state
 eve-assistant accounts                 show characters grouped by account

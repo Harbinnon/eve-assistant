@@ -177,6 +177,7 @@ def _cmd_serve(args) -> int:
                 for c in auth.list_characters(secrets)
             },
             planets_on=config.planets,
+            alert_channels=lambda: set(alerts.addresses(secrets)),
             scan_markets=lambda force=False: refresh.scan_markets(config, force=force),
         ),
         host="127.0.0.1",

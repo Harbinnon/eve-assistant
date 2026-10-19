@@ -376,6 +376,7 @@ def create_app(
     missing_scopes: Callable[[], dict[int, tuple[str, ...]]] | None = None,
     scan_markets: Callable[..., list[str]] | None = None,
     planets_on: bool = False,
+    alert_channels: Callable[[], set[str]] | None = None,
 ) -> FastAPI:
     """refresh: called by the Refresh button; returns problem lines, empty when all went well.
     make_plan: builds and records a plan (needs ESI), returning its ID.
@@ -909,6 +910,7 @@ def create_app(
             bridges=bridges,
             bridge_count=len(bridges.splitlines()),
             planets_on=planets_on,
+            alert_channels=alert_channels() if alert_channels else set(),
         )
 
     @app.post("/settings/buyback")

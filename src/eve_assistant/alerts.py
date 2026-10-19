@@ -5,10 +5,13 @@ Discord (a channel's webhook) gets what needs action in game, each with a
 link back to the dashboard:
 
 - an industry job has finished;
+- a market order has sold (or a buy order filled): gone from your orders, with
+  a matching trade in the wallet since it was placed;
 - a market order has been undercut or outbid;
 - a skill queue is empty;
 - a courier contract you accepted is due within COURIER_WARNING;
-- an extractor on a planet has stopped.
+- an extractor on a planet has stopped;
+- a goal has been reached: its skills trained and its ISK in the wallet.
 
 ntfy (a topic's address) gets the tool's health: the problems a background
 refresh reports (a login that can't be refreshed, ESI errors, being asked to
@@ -21,13 +24,14 @@ sent_alerts (append-only), and its key stops it being sent twice.
 """
 
 import hashlib
+import json
 import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 import httpx
 
-from eve_assistant import planets, snapshots, trade
+from eve_assistant import goals, planets, skills, snapshots, trade
 from eve_assistant.secrets_store import SecretStore
 from eve_assistant.store import utc_now
 
@@ -110,6 +114,60 @@ def _orders(db, character_id: int, name: str) -> list[Alert]:
     ]
 
 
+def _two_latest(db, character_id: int, kind: str) -> tuple[list, list]:
+    """The latest payload of a kind and the one before it."""
+    rows = db.execute(
+        "SELECT payload FROM snapshots WHERE character_id = ? AND kind = ? "
+        "ORDER BY snapshot_id DESC LIMIT 2",
+        (character_id, kind),
+    ).fetchall()
+    payloads = [json.loads(r["payload"]) for r in rows]
+    return (payloads + [[], []])[0], (payloads + [[], []])[1]
+
+
+def _sold(db, character_id: int, name: str) -> list[Alert]:
+    """Orders gone since the last check that the wallet shows trades for."""
+    now_open, before = _two_latest(db, character_id, "orders")
+    still = {o.get("order_id") for o in now_open if isinstance(o, dict)}
+    trades = [t for t in snapshots.latest(db, character_id, "wallet_transactions") or []
+              if isinstance(t, dict)]  # fmt: skip
+    found = []
+    for order in before:
+        if not isinstance(order, dict) or order.get("order_id") in still:
+            continue
+        is_buy = bool(order.get("is_buy_order"))
+        if any(
+            t.get("type_id") == order.get("type_id")
+            and t.get("location_id") == order.get("location_id")
+            and bool(t.get("is_buy")) == is_buy
+            and (t.get("date") or "") >= (order.get("issued") or "")
+            for t in trades
+        ):
+            what = skills.type_name(db, order.get("type_id"))
+            done = "filled" if is_buy else "sold"
+            found.append(Alert(f"sold:{order['order_id']}", "discord",
+                               f"{name}: your {'buy' if is_buy else 'sell'} order for {what} "
+                               f"has {done}.", "/trade"))  # fmt: skip
+    return found
+
+
+def _goals(db) -> list[Alert]:
+    """Goals whose skills are trained and whose ISK is in the wallet."""
+    found = []
+    for goal in goals.active_goals(db):
+        try:
+            status = goals.evaluate(db, goal)
+        except skills.SkillsError:
+            continue
+        trained = status.requirement is None or status.requirement.usable_now
+        paid = status.isk_needed is None or status.isk_needed <= 0
+        known = status.requirement is not None or status.isk_needed is not None
+        if known and trained and paid:
+            found.append(Alert(f"goal:{goal.goal_id}", "discord",
+                               f"Goal reached: {goal.label}.", "/goals"))  # fmt: skip
+    return found
+
+
 def _queue(db, character_id: int, name: str) -> list[Alert]:
     row = db.execute(
         "SELECT snapshot_id, payload FROM snapshots WHERE character_id = ? AND kind = 'skillqueue' "
@@ -162,10 +220,11 @@ def game_alerts(db: sqlite3.Connection, now: datetime | None = None) -> list[Ale
     for character_id, name in _names(db).items():
         found += _jobs(db, character_id, name, now)
         found += _orders(db, character_id, name)
+        found += _sold(db, character_id, name)
         found += _queue(db, character_id, name)
         found += _couriers(db, character_id, name, now)
         found += _extractors(db, character_id, name, now)
-    return found
+    return found + _goals(db)
 
 
 def health_alerts(problems: list[str], now: datetime | None = None) -> list[Alert]:
