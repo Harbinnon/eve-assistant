@@ -119,3 +119,37 @@ def test_the_board_uses_the_wallet_and_the_active_ships_cargo(db):
     assert offer.isk_per_hour > 0
     assert offer.rating.rating in ("green", "amber", "red")
     assert trade.board(db, 7, trade.Wanted(source="Amarr", dest="Jita")).offers == []
+
+
+def _trader(db):
+    snapshots.ensure_character(db, 7, "Trader")
+    snapshots.record(db, 7, "public", {"race_id": 1})
+    names = ("charisma", "intelligence", "memory", "perception", "willpower")
+    snapshots.record(db, 7, "attributes", {n: 20 for n in names})
+    snapshots.record(db, 7, "skills", {"total_sp": 1, "skills": []})
+    snapshots.record(db, 7, "wallet", 5000.0)
+    snapshots.record(db, 7, "location", {"solar_system_id": JITA.system_id,
+                                         "station_id": JITA.station_id})  # fmt: skip
+    db.execute("UPDATE sde_types SET capacity = 3900 WHERE type_id = ?", (HAULER,))
+    snapshots.record(db, 7, "ship", {"ship_type_id": HAULER, "ship_item_id": 9001})
+
+
+def test_plans_get_the_best_run_that_fits_while_the_data_is_fresh(db):
+    from eve_assistant import fleet
+    from eve_assistant.activities import trading
+
+    _trader(db)
+    ships = fleet.owned_ships(db, 7)
+    notes = []
+    assert trading.trade_candidates(db, 7, ships, 60, 1e9, True, notes) == []
+    assert [n.code for n in notes] == ["trade_data_old"]  # never read
+
+    now = store.utc_now()
+    for hub in market.HUBS:
+        db.execute("INSERT INTO market.scans VALUES (?, ?, 1, 1)", (hub.region_id, now))
+    (item,) = trading.trade_candidates(db, 7, ships, 60, 1e9, True, [])
+    assert item.kind == "trade"
+    assert item.title == "Trade: buy 30 Goods in Jita, sell them in Amarr (1 jumps)"
+    assert item.isk == pytest.approx(30 * 150 * 0.925 - 3000)  # Alpha's 7.5% tax, no skills
+    assert item.inputs["unit_prices"] == {str(GOODS): pytest.approx(150.0)}
+    assert trading.trade_candidates(db, 7, ships, 5, 1e9, True, []) == []  # too short a session

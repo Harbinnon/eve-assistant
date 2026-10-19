@@ -709,6 +709,7 @@ def create_app(
         compare: bool = Form(False),
     ):
         check_form(request, token)
+        start_market_scan()  # for the plans after this one, if the markets are old
         if make_plan is None:
             return today_page(request, error="Planning is not available here.")
         conn = db()
