@@ -39,9 +39,9 @@
     </label>
     <label for="mode">Selling
       <select id="mode" name="mode">
-        <option value="instant" {% if filters.mode == "instant" %}selected{% endif %}>To buy orders on arrival</option>
-        <option value="listed" {% if filters.mode == "listed" %}selected{% endif %}>As a sell order (waits for buyers)</option>
-        <option value="station" {% if filters.mode == "station" %}selected{% endif %}>Station trading (buy and sell orders at one hub)</option>
+        <option value="instant" {% if filters.mode == "instant" %}selected{% endif %}>To buy orders there</option>
+        <option value="listed" {% if filters.mode == "listed" %}selected{% endif %}>As a sell order there</option>
+        <option value="station" {% if filters.mode == "station" %}selected{% endif %}>Station trading at one hub</option>
       </select>
     </label>
   </div>

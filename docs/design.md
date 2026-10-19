@@ -116,10 +116,37 @@ and the risk.
 
 Military campaigns (Cradle of War) are read from ESI and the static data;
 a running objective that fits a modelled activity is mentioned in plans
-with its ISK, LP and standing. Trade hauling (buying to sell elsewhere)
-waits for the owner's decision (roadmap 5.5); the design's position is
-to keep using the dedicated market tools (section 11). Later: Planetary
-Industry, reactions. Each is just another model in the same planner.
+with its ISK, LP and standing. Later: Planetary Industry, reactions. Each is just another model in the
+same planner.
+
+**Trading** (roadmap 5.5; the owner decided on 18 October 2026 to build our
+own rather than keep the external tools). The trade hubs' whole order books
+are read from ESI (about 910 pages for all five, a minute with six pages at
+a time, well within the market routes' 12,000 tokens per 15 minutes) when
+the Trade page or a plan wants them and they're over 30 minutes old, never
+otherwise. They live in var/market.sqlite3, attached as "market": bulky,
+always fetched again, so out of the main database and its backups. On the
+Trade page:
+
+- **Trade runs between hubs** (as EVE Trade): instant (buy from sell orders
+  at A, sell to buy orders at B, both books walked while it pays after
+  sales tax) or listed (list at B a step under its cheapest sell order,
+  capped at a tenth of B's daily volume, broker fee included), within the
+  ISK to spend and the cargo (packaged volumes), with the character's own
+  fees, the trip from where it is at its learned pace, ISK an hour, and the
+  live risk on the way against net worth.
+- **Station trading** (as Eve-hub.ru): a buy order a step above the best
+  buy and a sell order a step under the cheapest, at one hub, among items
+  that really trade there (five orders a side, a best buy at least half the
+  best sell), with the 30-day daily volume from ESI's history, competing
+  orders, ISK a day at a tenth of the volume and the capital tied up.
+- **Your orders**: each open order against the last market read, as
+  undercut, outbid or the best price; Today says when any need changing.
+  ESI is read-only, so no tool can change orders: that stays in game.
+
+The best instant run that fits a session is also offered in plans, weighed
+against everything else. What we can't match: years of price history (ours
+starts with the first read) and data fresher than ESI's 5-minute cache.
 
 ### 4.3 The session planner: "I have an hour"
 
@@ -1076,7 +1103,7 @@ Checked October 2026.
 | Ship fitting and stats | **Pyfa**, EVEShip.fit, Theorycrafter | Pyfa released Oct 2026; EVEShip.fit Sep 2026 |
 | Appraisal | **Janice** | Up. Evepraisal shut down in 2023. |
 | Industry cost tables | Fuzzwork, EVE-IPH | Active |
-| Market browsing and arbitrage | EVE TradeLooper, ISK.GG, Marquette, Space Markets | Active |
+| Market browsing and arbitrage | Built in since 0.9 (Trade page). Also: EVE Trade, Trading Matrix, Eve-hub.ru, EVE Courier, EVE TradeLooper, ISK.GG, Marquette, Space Markets | Active |
 | Map and kills | Dotlan, zKillboard | Up |
 | Companion apps with alerts | EVE Empire, Neocom Desk, EVE Buddy | Active; none sends to Discord, sets goals or plans sessions |
 | Corp management | SeAT, Alliance Auth | — |
