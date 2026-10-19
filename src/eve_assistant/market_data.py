@@ -87,11 +87,12 @@ def stale(db: sqlite3.Connection, now: datetime, hubs: Iterable[Hub] = market.HU
 
 
 def scan(
-    db: sqlite3.Connection, esi: EsiClient, now: datetime, hubs: Iterable[Hub] = market.HUBS
+    db: sqlite3.Connection, esi: EsiClient, now: datetime, hubs: Iterable[Hub] | None = None
 ) -> list[str]:
-    """Scan the hubs that are due. Returns problem lines; stops at a rate limit."""
+    """Scan these hubs (by default the stale ones). Returns problem lines; stops at a
+    rate limit."""
     problems = []
-    for hub in stale(db, now, hubs):
+    for hub in stale(db, now) if hubs is None else hubs:
         try:
             scan_hub(db, esi, hub, now)
         except EsiRateLimited as exc:

@@ -75,7 +75,7 @@ def test_only_stale_hubs_are_scanned_and_a_rate_limit_stops(db):
     assert market_data.stale(db, NOW + timedelta(minutes=29), [JITA]) == []
     assert market_data.stale(db, NOW + timedelta(minutes=30), [JITA]) == [JITA]
     limited = FakeEsi(fail=EsiRateLimited("slow down", 30))
-    problems = market_data.scan(db, limited, NOW + timedelta(hours=1), market.HUBS)
+    problems = market_data.scan(db, limited, NOW + timedelta(hours=1))  # the stale ones
     assert problems == ["Market scan paused: slow down"]  # the other hubs wait
 
 

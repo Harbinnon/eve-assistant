@@ -173,6 +173,7 @@ def _cmd_serve(args) -> int:
             missing_scopes=lambda: {
                 c.character_id: c.missing_scopes for c in auth.list_characters(secrets)
             },
+            scan_markets=lambda force=False: refresh.scan_markets(config, force=force),
         ),
         host="127.0.0.1",
         port=args.port,

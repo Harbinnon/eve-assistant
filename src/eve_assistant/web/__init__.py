@@ -41,6 +41,8 @@ from eve_assistant import (
     history,
     images,
     losses,
+    market,
+    market_data,
     numbers,
     omega,
     outcomes,
@@ -55,6 +57,7 @@ from eve_assistant import (
     sessions,
     skills,
     store,
+    trade,
     train_next,
     worth,
 )
@@ -151,7 +154,12 @@ THEME_COOKIE = "theme"
 THEME_MAX_AGE = 365 * 24 * 3600
 # Pages the theme form may return to; anything else goes to Today.
 # Each maps to itself, so the redirect is always one of these constants.
-RETURN_PAGES = {page: page for page in (TODAY, CHARACTERS, GOALS, "/skills", "/history", SETTINGS)}
+TRADE = "/trade"
+RETURN_PAGES = {
+    page: page for page in (TODAY, CHARACTERS, GOALS, "/skills", "/history", SETTINGS, TRADE)
+}
+TRADE_MODES = ("instant", "listed")
+AMOUNT_UNITS = {"k": 1e3, "m": 1e6, "b": 1e9}
 
 BAND_LABELS = {
     "none": "No player risk (Exordium)",
@@ -162,6 +170,7 @@ BAND_LABELS = {
 }
 
 MESSAGES = {
+    "market_refreshing": "Reading the trade hubs' markets from EVE: about a minute.",
     "goal_added": "Goal added.",
     "goal_done": "Goal marked done.",
     "goal_dropped": "Goal dropped.",
@@ -220,6 +229,18 @@ def _losses(conn) -> list[SimpleNamespace]:
             )
         )
     return rows
+
+
+def _amount(text: str, default: float) -> float:
+    """ "929m", "1.5b", "40,000" or empty (the default) as a number."""
+    cleaned = text.replace(",", "").replace("_", "").strip().lower()
+    if not cleaned:
+        return default
+    scale = AMOUNT_UNITS.get(cleaned[-1], 1.0)
+    try:
+        return float(cleaned[:-1] if scale != 1.0 else cleaned) * scale
+    except ValueError:
+        return default
 
 
 def _worth(conn, character_ids) -> SimpleNamespace | None:
@@ -335,6 +356,7 @@ def create_app(
     add_character: Callable[[], str] | None = None,
     fetch_image: images.Fetch | None = None,
     missing_scopes: Callable[[], dict[int, tuple[str, ...]]] | None = None,
+    scan_markets: Callable[..., list[str]] | None = None,
 ) -> FastAPI:
     """refresh: called by the Refresh button; returns problem lines, empty when all went well.
     make_plan: builds and records a plan (needs ESI), returning its ID.
@@ -345,6 +367,25 @@ def create_app(
     # browser); one at a time.
     login: dict = {"state": None, "message": None, "at": None}
     login_running = threading.Lock()
+    # The trade hubs' markets are read in the background (about a minute), when the
+    # Trade page or a plan wants them and they're old; one scan at a time.
+    market_status: dict = {"running": False, "problems": []}
+
+    def start_market_scan(force: bool = False) -> None:
+        if scan_markets is None or market_status["running"]:
+            return
+        market_status["running"] = True
+
+        def run() -> None:
+            try:
+                market_status["problems"] = scan_markets(force=force)
+            except Exception as exc:  # noqa: BLE001  # shown on the Trade page
+                log.warning("Market scan failed: %s", exc)
+                market_status["problems"] = [f"Market scan failed: {exc}"]
+            finally:
+                market_status["running"] = False
+
+        threading.Thread(target=run, daemon=True).start()
 
     async def auto_loop() -> None:
         while True:
@@ -402,6 +443,7 @@ def create_app(
     templates.env.globals["per_hour"] = numbers.per_hour
     templates.env.globals["plan_value"] = planner.plan_value
     templates.env.globals["risk_labels"] = RISK_LABELS
+    templates.env.globals["days_to_sell"] = trade.days_to_sell
     templates.env.globals["category_labels"] = preferences.KNOWN
     form_token = secrets.token_urlsafe(32)
 
@@ -1173,5 +1215,72 @@ def create_app(
             train_capped=train_capped,
             error=error,
         )
+
+    @app.get(TRADE, response_class=HTMLResponse)
+    def trade_page(
+        request: Request,
+        source: str = "any",
+        dest: str = "any",
+        isk: str = "",
+        cargo: str = "",
+        mode: str = "instant",
+        lowsec: bool = False,
+        min_profit: str = "",
+        sort: str = "profit",
+    ):
+        hub_names = [h.name for h in market.HUBS]
+        source = source if source in hub_names else "any"
+        dest = dest if dest in hub_names else "any"
+        mode = mode if mode in TRADE_MODES else TRADE_MODES[0]
+        conn = db()
+        try:
+            active = active_character(request, conn)
+            scans = [(h.name, market_data.scanned_at(conn, h)) for h in market.HUBS]
+            if market_data.stale(conn, _now()):
+                start_market_scan()
+            board = None
+            if active and any(at for _, at in scans):
+                board = trade.board(
+                    conn,
+                    active[0],
+                    trade.Wanted(
+                        source=None if source == "any" else source,
+                        dest=None if dest == "any" else dest,
+                        isk=_amount(isk, -1.0),
+                        cargo_m3=_amount(cargo, -1.0),
+                        listed=mode == "listed",
+                        highsec_only=not lowsec,
+                        min_profit=_amount(min_profit, 0.0),
+                        by_hour=sort == "hour",
+                    ),
+                )
+        finally:
+            conn.close()
+        return render(
+            request,
+            "trade.html",
+            hubs=hub_names,
+            scans=scans,
+            scanning=market_status["running"],
+            scan_problems=market_status["problems"],
+            can_scan=scan_markets is not None,
+            board=board,
+            filters={
+                "source": source,
+                "dest": dest,
+                "isk": isk,
+                "cargo": cargo,
+                "mode": mode,
+                "lowsec": lowsec,
+                "min_profit": min_profit,
+                "sort": "hour" if sort == "hour" else "profit",
+            },
+        )
+
+    @app.post(f"{TRADE}/refresh")
+    def refresh_markets(request: Request, token: str = Form("")):
+        check_form(request, token)
+        start_market_scan(force=True)
+        return RedirectResponse(f"{TRADE}?msg=market_refreshing", status_code=303)
 
     return app

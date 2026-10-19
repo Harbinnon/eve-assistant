@@ -22,6 +22,8 @@ from eve_assistant import (
     goals,
     industry,
     losses,
+    market,
+    market_data,
     outcomes,
     planner,
     sde,
@@ -29,6 +31,7 @@ from eve_assistant import (
     snapshots,
     store,
     structures,
+    trade,
 )
 from eve_assistant.config import Config
 from eve_assistant.esi.client import EsiClient, EsiError, EsiRateLimited
@@ -36,6 +39,9 @@ from eve_assistant.esi.sso import SSOError
 from eve_assistant.secrets_store import SecretStore
 
 ESI_LOCK = threading.Lock()
+MARKET_LOCK = threading.Lock()  # market scans: their own lock, so refreshes aren't held up
+# Fees assumed when picking items to check the daily volume of (any character's are close).
+DEFAULT_TRADE_FEES = trade.Fees(0.075, {hub.station_id: 0.03 for hub in market.HUBS})
 
 
 def _one_at_a_time(function):
@@ -105,6 +111,45 @@ def read_game_logs(config: Config, db) -> list[str]:
         ]
     gamelogs.import_folder(db, config.gamelogs_dir)
     return []
+
+
+def _hubs_to_scan(db, now: datetime, force: bool) -> list:
+    """Hubs whose data is old: over 30 minutes, or over 5 when asked to refresh now."""
+    if not force:
+        return market_data.stale(db, now)
+    found = []
+    for hub in market.HUBS:
+        at = market_data.scanned_at(db, hub)
+        if at is None or now - datetime.fromisoformat(at) >= FORCE_AFTER:
+            found.append(hub)
+    return found
+
+
+def scan_markets(
+    config: Config,
+    db_path: Path | str = store.DEFAULT_DB_PATH,
+    force: bool = False,
+    now: datetime | None = None,
+) -> list[str]:
+    """Scan the trade hubs whose data is old, then fetch daily volumes for items
+    worth listing. One scan at a time; a second ask while one runs does nothing.
+    Returns problem lines."""
+    if not MARKET_LOCK.acquire(blocking=False):
+        return []
+    try:
+        now = now or datetime.now(UTC)
+        db = store.connect(db_path)
+        try:
+            with auth.http_client(config) as http:
+                esi = EsiClient(http, db)
+                problems = market_data.scan(db, esi, now, _hubs_to_scan(db, now, force))
+                for region_id, type_ids in trade.listing_candidates(db, DEFAULT_TRADE_FEES).items():
+                    market_data.volumes(db, esi, region_id, type_ids, now)
+                return problems
+        finally:
+            db.close()
+    finally:
+        MARKET_LOCK.release()
 
 
 def _rate_limited(exc: EsiRateLimited) -> str:
@@ -211,6 +256,7 @@ ONLINE_FAST = timedelta(minutes=2)
 ONLINE_MEDIUM = timedelta(minutes=15)
 EVERYTHING = timedelta(hours=1)
 ONLINE_CHECK = timedelta(minutes=5)  # how soon a character logging in is noticed
+FORCE_AFTER = timedelta(minutes=5)  # ESI caches market orders this long
 PRICES_EVERY = timedelta(hours=6)
 FREELANCE_EVERY = timedelta(minutes=30)
 FREELANCE_SETTING = "freelance_checked"
