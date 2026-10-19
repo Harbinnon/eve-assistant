@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "eve-assistant"
-version = "0.8.0"
+version = "0.9.0"
 description = "Goal-driven planning assistant for EVE Online mining, industry and hauling."
 readme = "README.md"
 license = "MIT"
@@ -40,7 +40,7 @@ eve-assistant = "eve_assistant.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-"eve_assistant.store" = ["migrations/*.sql"]
+"eve_assistant.store" = ["migrations/*.sql", "market_schema.sql"]
 "eve_assistant.web" = ["templates/*.html", "static/*"]
 
 [tool.pytest.ini_options]

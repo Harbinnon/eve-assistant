@@ -15,6 +15,7 @@ KNOWN = {
     "kind:manufacturing": "manufacturing",
     "kind:mission": "agent missions",
     "kind:exploration": "exploration",
+    "kind:trade": "trade runs between the hubs",
     "kind:courier": "courier contracts",
     "kind:skill": "skill training reminders",
     "route:lowsec": "anything that goes through lowsec",

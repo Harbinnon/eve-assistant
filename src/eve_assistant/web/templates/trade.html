@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block title %}Trade · EVE Assistant{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Trade</h1>
+    <p class="lede">Buy at one trade hub, carry it, sell at another: with your own fees, your ships' cargo, your pace and the live risk on the way.</p>
+  </div>
+  {% if can_scan %}
+  <div class="head-actions">
+    <form method="post" action="/trade/refresh">
+      <input type="hidden" name="token" value="{{ form_token }}">
+      <button type="submit" {% if scanning %}disabled{% endif %}>Refresh market data</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+
+<p class="market-age muted small-print">Market data:
+  {% for name, at in scans %}{{ name }} {% if at %}{{ at|ago }}{% else %}not read yet{% endif %}{% if not loop.last %} · {% endif %}{% endfor %}
+  {% if scanning %} · <strong>reading the hubs now</strong> (about a minute; reload the page){% endif %}
+</p>
+{% for p in scan_problems %}<p class="error" role="alert">{{ p }}</p>{% endfor %}
+
+<form class="stack card trade-filters" method="get" action="/trade">
+  {% if active %}<p class="form-for">For <strong>{{ active.name }}</strong><span class="muted small-print">switch at the top</span></p>{% endif %}
+  <div class="field-row">
+    <label for="source">From
+      <select id="source" name="source">
+        <option value="any">Any hub</option>
+        {% for h in hubs %}<option {% if filters.source == h %}selected{% endif %}>{{ h }}</option>{% endfor %}
+      </select>
+    </label>
+    <label for="dest">To
+      <select id="dest" name="dest">
+        <option value="any">Any hub</option>
+        {% for h in hubs %}<option {% if filters.dest == h %}selected{% endif %}>{{ h }}</option>{% endfor %}
+      </select>
+    </label>
+    <label for="mode">Selling
+      <select id="mode" name="mode">
+        <option value="instant" {% if filters.mode == "instant" %}selected{% endif %}>To buy orders there</option>
+        <option value="listed" {% if filters.mode == "listed" %}selected{% endif %}>As a sell order there</option>
+        <option value="station" {% if filters.mode == "station" %}selected{% endif %}>Station trading at one hub</option>
+      </select>
+    </label>
+  </div>
+  <div class="field-row">
+    <label for="isk">ISK to spend
+      <input id="isk" name="isk" value="{{ filters.isk }}" placeholder="{% if board %}{{ board.wallet|isk }} (your wallet){% else %}your wallet{% endif %}" autocomplete="off">
+    </label>
+    <label for="cargo">Cargo m³
+      <input id="cargo" name="cargo" value="{{ filters.cargo }}" placeholder="{% if board and board.ship %}{{ board.ship.cargo_m3|round|int }} ({{ board.ship.name }}){% else %}your ship's{% endif %}" autocomplete="off">
+    </label>
+    <label for="min_profit">Least profit
+      <input id="min_profit" name="min_profit" value="{{ filters.min_profit }}" placeholder="e.g. 1m" autocomplete="off">
+    </label>
+    <label for="sort">Best first by
+      <select id="sort" name="sort">
+        <option value="profit" {% if filters.sort == "profit" %}selected{% endif %}>Profit</option>
+        <option value="hour" {% if filters.sort == "hour" %}selected{% endif %}>ISK an hour</option>
+      </select>
+    </label>
+  </div>
+  <div class="checks">
+    <label for="lowsec"><input id="lowsec" name="lowsec" type="checkbox" value="true" {% if filters.lowsec %}checked{% endif %}> Allow lowsec routes</label>
+  </div>
+  <button class="primary" type="submit">Find trades</button>
+</form>
+
+{% if board and board.watches %}
+<section class="card your-orders">
+  <h2 class="history-title">Your orders</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Item</th><th>Where</th><th>Order</th><th class="num">Your price</th><th class="num">Best other</th><th>State</th></tr></thead>
+      <tbody>
+      {% for w in board.watches %}
+        <tr>
+          <td data-label="Item">{{ w.name }}</td>
+          <td data-label="Where">{{ w.place }}</td>
+          <td data-label="Order">{{ "Buy" if w.is_buy else "Sell" }} · {{ "{:,}".format(w.volume_remain) }} left</td>
+          <td data-label="Your price" class="num">{{ w.price|isk }}</td>
+          <td data-label="Best other" class="num">{% if w.best_other is not none %}{{ w.best_other|isk }}{% else %}<span class="muted">none read</span>{% endif %}</td>
+          <td data-label="State">{% if w.outbid %}<span class="pill amber">{{ "outbid" if w.is_buy else "undercut" }}</span>{% elif w.best_other is none %}<span class="muted">not read</span>{% else %}<span class="pill good">best price</span>{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="muted small-print">Against the last market read; change orders in game (EVE doesn't let any tool do it).</p>
+</section>
+{% endif %}
+
+{% if board and filters.mode == "station" %}
+{% if not board.station %}
+<p class="muted spaced">No station trades yet with a margin of 5% or more and enough daily volume{% if scanning %}; daily volumes are still being read{% endif %}.</p>
+{% else %}
+<section class="card trade-results">
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Item</th><th>Hub</th><th class="num">Buy order at</th><th class="num">Sell order at</th><th class="num">Margin</th><th class="num">A day</th><th class="num">Competing</th><th class="num">ISK a day</th></tr></thead>
+      <tbody>
+      {% for t in board.station %}
+        <tr>
+          <td data-label="Item">{{ t.name }}</td>
+          <td data-label="Hub">{{ t.hub.name }}</td>
+          <td data-label="Buy order at" class="num">{{ t.buy_at|isk }}</td>
+          <td data-label="Sell order at" class="num">{{ t.sell_at|isk }}</td>
+          <td data-label="Margin" class="num isk">{{ (t.margin * 100)|round|int }}% <span class="muted small-print">{{ t.profit_per_unit|isk }} a unit</span></td>
+          <td data-label="A day" class="num">{{ "{:,}".format(t.daily_volume|round|int) }} <span class="muted small-print">units traded</span></td>
+          <td data-label="Competing" class="num">{{ t.competing_buys }} buy · {{ t.competing_sells }} sell</td>
+          <td data-label="ISK a day" class="num isk">{{ t.isk_a_day|isk }} <span class="muted small-print">{{ t.capital|isk }} tied up</span></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="muted small-print">
+    Buy with an order a step above the best buy order and sell with one a step under the cheapest sell order, at the same hub. The margin is after broker fees both ways and your sales tax.
+    ISK a day assumes you get a tenth of the units traded there a day (30-day average), or what your ISK to spend buys; competing counts other orders within 1% of the best price, each one a reason to expect less.
+    Alpha can hold 5 orders plus 4 a level of Trade (up to 17 at Trade 3).
+  </p>
+</section>
+{% endif %}
+{% elif not board %}
+<p class="muted spaced">{% if scanning %}The hubs' markets are being read; this page shows trades once the first is in.{% elif can_scan %}No market data yet: press Refresh market data.{% else %}No market data yet.{% endif %}</p>
+{% elif not board.offers %}
+<p class="muted spaced">No trade makes money with these limits{% if board.limits.cargo_m3 < 1 %}: there's no cargo space to carry anything{% endif %}.</p>
+{% else %}
+<section class="card trade-results">
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Item</th><th>Route</th><th class="num">Units</th><th class="num">Buy</th><th class="num">Sell</th><th class="num">Profit</th><th class="num">ISK an hour</th><th>Risk</th></tr></thead>
+      <tbody>
+      {% for o in board.offers %}{% set r = o.run %}
+        <tr>
+          <td data-label="Item">{{ r.name }}</td>
+          <td data-label="Route">{{ r.source.name }} → {{ r.dest.name }} <span class="muted small-print">{{ o.trip.jumps }} jumps{% if o.trip.path_to_source|length > 1 %}, {{ o.trip.path_to_source|length - 1 }} to get there{% endif %}, {{ o.trip.minutes|round|int }} min</span></td>
+          <td data-label="Units" class="num">{{ "{:,}".format(r.units) }} <span class="muted small-print">{{ "{:,.1f}".format(r.m3) }} m³</span></td>
+          <td data-label="Buy" class="num">{{ r.buy_cost|isk }} <span class="muted small-print">at {{ r.first_buy|isk }}{% if r.last_buy != r.first_buy %}–{{ r.last_buy|isk }}{% endif %}</span></td>
+          <td data-label="Sell" class="num">{{ r.sell_value|isk }} <span class="muted small-print">at {{ r.first_sell|isk }}{% if r.last_sell != r.first_sell %}–{{ r.last_sell|isk }}{% endif %}{% if r.listed %}, sells in about {{ days_to_sell(r) }} days{% endif %}</span></td>
+          <td data-label="Profit" class="num isk">{{ r.profit|isk }} <span class="muted small-print">{{ (r.margin * 100)|round|int }}%</span></td>
+          <td data-label="ISK an hour" class="num">{{ o.isk_per_hour|isk }}</td>
+          <td data-label="Risk"><span class="pill risk {{ o.rating.rating }}">{{ risk_labels[o.rating.rating] }}</span></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="muted small-print">
+    Prices are from the last market read (up to 30 minutes old): check them in game before buying.
+    Sell value is after your {% if board.fees %}{{ "%.1f"|format(board.fees.sales_tax * 100) }}% {% endif %}sales tax{% if filters.mode == "listed" %} and broker fee; listed runs are capped at a tenth of the destination's daily volume{% endif %}.
+    Buying from sell orders costs no broker fee. ISK an hour counts the trip from where you are, at your learned minutes a jump; risk is the goods' cost against your net worth on the way.
+  </p>
+</section>
+{% endif %}
+{% endblock %}

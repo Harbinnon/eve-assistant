@@ -130,6 +130,22 @@ def _campaign_objective(d: dict) -> str:
     )
 
 
+def _trade_run(d: dict) -> str:
+    def prices(first, last) -> str:
+        if not first:
+            return ""
+        return numbers.isk(first) if first == last else f"{numbers.isk(first)}-{numbers.isk(last)}"
+
+    return (
+        f"Buy {d.get('units', 0):,} {d.get('item')} in {d.get('from')} from sell orders at "
+        f"{prices(d.get('first_buy'), d.get('last_buy'))} ({numbers.isk(d.get('buy_cost'))} ISK); "
+        f"sell them to buy orders in {d.get('to')} at "
+        f"{prices(d.get('first_sell'), d.get('last_sell'))} "
+        f"({numbers.isk(d.get('sell_value'))} ISK after tax). Prices from the last market read: "
+        "check them in game first."
+    )
+
+
 def _manufacture_costs(d: dict) -> str:
     runs = d.get("runs", 1)
     cost = d.get("materials", 0) + d.get("job_fee", 0)
@@ -273,6 +289,11 @@ def describe(code: str, detail: dict | None = None) -> str:
         "lp_value": lambda: _lp_value(d),
         "campaign_objective": lambda: _campaign_objective(d),
         "manufacture_costs": lambda: _manufacture_costs(d),
+        "trade_run": lambda: _trade_run(d),
+        "trade_data_old": lambda: (
+            "No trade runs: the trade hubs' markets haven't been read in the last two hours. "
+            "They're read in the background now; open Trade to see them."
+        ),
         "mission_cargo": lambda: (
             "Distribution missions need cargo space: a few m3 at level 1, up to thousands at "
             "level 4. Some send you to lowsec; decline those if you don't go there."

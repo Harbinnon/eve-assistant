@@ -47,6 +47,7 @@
 <p class="lede">Say how long you have; get a plan for it. Quick jobs first, then the best use of the rest.</p>
 
 {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+{% if outbid %}<p class="notice" role="status">{{ outbid }} of your market order{{ "s" if outbid != 1 }} {{ "have" if outbid != 1 else "has" }} been undercut or outbid: see <a href="/trade">Trade</a>.</p>{% endif %}
 
 {% if noticed %}
 <h2>Sessions EVE saw you play</h2>

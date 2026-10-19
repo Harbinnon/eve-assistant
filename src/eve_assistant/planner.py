@@ -49,6 +49,7 @@ ACTIVITY_KINDS = (
     "manufacturing",
     "mission",
     "exploration",
+    "trade",
 )
 # Main activities sized to the time left (the rest take the minutes they need).
 SIZED_KINDS = ("mining", "project_start", "gas", "mission", "exploration")
@@ -209,7 +210,7 @@ def _open_projects(fit: _Fitting, usable: list[PlanItem]) -> None:
 
 def _main_pool(fit: _Fitting, usable: list[PlanItem], open_count: int) -> list[PlanItem]:
     def eligible(i: PlanItem) -> bool:
-        if i.kind == "courier" or (i.kind in SIZED_KINDS and i.kind != "project_start"):
+        if i.kind in ("courier", "trade") or (i.kind in SIZED_KINDS and i.kind != "project_start"):
             return True
         if i.kind == "project_start":
             return open_count < projects.MAX_OPEN and not (

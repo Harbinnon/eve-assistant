@@ -83,7 +83,7 @@ data, not assumed.
 | 5.2 | **Exploration** (relic and data sites). | Yes, skills to 3. | Offered as "new to you"; income learned from outcomes. |
 | 5.3 | **Distribution missions and LP store values.** | Yes. | Missions offered with ISK plus LP value. |
 | 5.4 | **Manufacturing** from your blueprints, with job costs. | Yes, Industry 5 (no research or invention). | A build suggested with its payback. |
-| 5.5 | **◆ Trade hauling** (buy to haul and sell elsewhere): build it in, or keep using external tools as the design says. | Partly (Trade 3, Broker Relations 2). | Decided, and built if wanted. |
+| 5.5 | **◆ Trade hauling** (buy to haul and sell elsewhere): build it in, or keep using external tools as the design says. Decided 18 Oct: build our own, covering what EVE Trade, Trading Matrix, Eve-hub.ru and EVE Courier offer. | Partly (Trade 3, Broker Relations 2). | Built: hub order books, trade runs (instant and listed), station trading, your orders, trade runs in plans. Tag `v0.9.0`. |
 | 5.6 | **Military campaigns** (Cradle of War): check what is open to Alpha and add it if it fits. | To check. | Tag `v0.8.0`. |
 
 ## Milestone 6: Corporations, nullsec and Planetary Interaction (phase 4d)
@@ -119,5 +119,5 @@ data, not assumed.
 | 1.7 | Decided 17 Oct: use it (what-if notes from saved fits). |
 | 2.1 | Decided 17 Oct: the direction is approved, with Windows' own fonts (Bahnschrift, Segoe UI); no font files. |
 | 3.2 | The new read-only scopes, and when to log in again. |
-| 5.5 | Build trade hauling in, or keep external tools. |
+| 5.5 | Decided 18 Oct: build our own trade tool, covering what the external ones offer. |
 | 7.1 | Whether a minimal Discord alert should come earlier. |

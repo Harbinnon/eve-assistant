@@ -444,6 +444,7 @@ def test_pages_have_no_inline_styles_or_scripts(planning_client):
         "/skills",
         "/preferences",
         "/history",
+        "/trade",
     ):
         page = planning_client.get(path).text
         assert "<script" not in page, path
@@ -628,7 +629,7 @@ def test_no_internal_words_on_any_page(planning_client):
     planning_client.post(
         "/today/plan", data={"token": token, "character": "Test Pilot", "minutes": "45"}
     )
-    for path in ("/today", "/characters", "/goals", "/skills", "/history", "/settings"):
+    for path in ("/today", "/characters", "/goals", "/skills", "/history", "/settings", "/trade"):
         text = _visible(planning_client.get(path).text).lower()
         for word in JARGON:
             assert word not in text, (path, word)
@@ -1155,7 +1156,7 @@ def test_tables_can_become_cards_on_a_phone(planning_client, db_path):
     projects.start(conn, 7, "haul", "1:2:x", "Haul ore", 120, 5e6, {})
     conn.close()
     checked = 0
-    for path in (plan_url, "/today", "/history", "/settings", "/skills?item=Big%20Barge"):
+    for path in (plan_url, "/today", "/history", "/settings", "/trade", "/skills?item=Big%20Barge"):
         reader = _Tables()
         reader.feed(planning_client.get(path).text)
         for table in reader.tables:
@@ -1252,3 +1253,81 @@ def test_goals_say_what_omega_would_change(client, monkeypatch):
         data={"token": _token(page), "kind": "omega", "target": "1", "character": "Test Pilot"},
     )
     assert "Omega for 1 month (500 PLEX)" in added.text
+
+
+def test_the_trade_page_reads_the_markets_and_shows_runs(db_path):
+    import time
+
+    from eve_assistant import market
+
+    jita, amarr = market.HUBS[0], market.HUBS[1]
+    asked = []
+    with TestClient(
+        create_app(db_path, scan_markets=lambda force=False: asked.append(force) or []),
+        base_url=LOCAL,
+    ) as test_client:
+        page = test_client.get("/trade").text
+        assert "No market data yet" in page
+        for _ in range(50):  # the scan runs in the background
+            if asked:
+                break
+            time.sleep(0.02)
+        assert asked == [False]
+
+        conn = store.connect(db_path)
+        store.ensure_market(conn)
+        conn.execute("INSERT INTO sde_solar_systems VALUES (?, 'Amarr', ?, 1, 1.0, 'A')",
+                     (amarr.system_id, amarr.region_id))  # fmt: skip
+        link = [(jita.system_id, amarr.system_id), (amarr.system_id, jita.system_id)]
+        conn.executemany("INSERT INTO sde_jumps VALUES (?, ?)", link)
+        conn.executemany(
+            "INSERT INTO sde_npc_stations VALUES (?, ?, 1000035, 1, 0.5, 0.05)",
+            [(jita.station_id, jita.system_id), (amarr.station_id, amarr.system_id)],
+        )
+        conn.execute("UPDATE sde_types SET volume = 1.0 WHERE type_id = ?", (SKILL,))
+        conn.executemany(
+            "INSERT INTO market.orders VALUES (?, ?, ?, ?, ?, ?, 10, 1, 'x')",
+            [(1, jita.region_id, jita.station_id, SKILL, 0, 100_000.0),
+             (2, amarr.region_id, amarr.station_id, SKILL, 1, 300_000.0)],
+        )  # fmt: skip
+        now = store.utc_now()
+        for hub in market.HUBS:
+            conn.execute("INSERT INTO market.scans VALUES (?, ?, 1, 1)", (hub.region_id, now))
+        conn.commit()
+        conn.close()
+        page = test_client.get("/trade", params={"cargo": "100"}).text
+        assert "Jita → Amarr" in page
+        assert "Mining" in page  # the item (a skill book, in this little world)
+        assert "1 jumps" in page
+
+        conn = store.connect(db_path)
+        snapshots.record(conn, 7, "orders", [
+            {"order_id": 77, "type_id": SKILL, "location_id": jita.station_id,
+             "is_buy_order": False, "price": 150_000.0, "volume_remain": 2}])  # fmt: skip
+        conn.close()
+        page = test_client.get("/trade", params={"mode": "station"}).text
+        assert "Your orders" in page
+        assert "undercut" in page
+        assert "No station trades yet" in page
+        assert "been undercut or outbid" in test_client.get("/today").text
+
+        token = _token(page)
+        response = test_client.post("/trade/refresh", data={"token": token},
+                                    headers={"Origin": LOCAL}, follow_redirects=False)  # fmt: skip
+        assert response.status_code == 303
+        for _ in range(50):
+            if len(asked) == 2:
+                break
+            time.sleep(0.02)
+        assert asked[-1] is True
+
+
+def test_amounts_can_be_typed_as_players_write_them():
+    from eve_assistant.web import _amount
+
+    assert _amount("929m", 0.0) == 929_000_000.0
+    assert _amount("1.5b", 0.0) == 1_500_000_000.0
+    assert _amount("40,000", 0.0) == 40_000.0
+    assert _amount("12k", 0.0) == 12_000.0
+    assert _amount("", 7.0) == 7.0
+    assert _amount("lots", 7.0) == 7.0

@@ -20,6 +20,7 @@ def test_every_activity_has_the_interface():
         "gas",
         "exploration",
         "missions",
+        "trading",
         "couriers",
     ]
     for activity in activities.ALL:
