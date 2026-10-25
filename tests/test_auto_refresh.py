@@ -142,6 +142,31 @@ def test_corporation_and_colony_layouts_follow_their_kinds(monkeypatch):
     ]
 
 
+def test_a_character_added_just_now_is_snapshotted(tmp_path, monkeypatch):
+    path = tmp_path / "new.sqlite3"
+    store.connect(path).close()  # a database that has never seen this character
+    monkeypatch.setattr(
+        refresh.auth,
+        "list_characters",
+        lambda _s: [SimpleNamespace(character_id=8, name="Newbie", scopes=SCOPES)],
+    )
+    monkeypatch.setattr(refresh.auth, "http_client", lambda _c: contextlib.nullcontext(None))
+    monkeypatch.setattr(
+        refresh.auth, "AccessTokens", lambda *_a: SimpleNamespace(get=lambda _cid: "t")
+    )
+
+    def snapshot_one(db, esi, character_id, name, kinds=None, granted=None):
+        snapshots.record(db, character_id, "wallet", 1.0)  # needs the character's row
+        return f"{name}: 1 changed", []
+
+    monkeypatch.setattr(refresh, "_snapshot_one", snapshot_one)
+    assert refresh.snapshot_character(CONFIG, None, 8, path) == []
+    db = store.connect(path)
+    row = db.execute("SELECT name FROM characters WHERE character_id = 8").fetchone()
+    assert row[0] == "Newbie"
+    db.close()
+
+
 def test_a_rate_limit_stops_the_tick_and_says_when_to_retry(db_path, fake_esi, monkeypatch):
     def limited(*_args, **_kwargs):
         raise EsiRateLimited("Slow down.", retry_after=30)
