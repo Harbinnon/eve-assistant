@@ -228,13 +228,11 @@ def snapshot_character(
     logged_in = {c.character_id: c for c in auth.list_characters(secrets)}
     if character_id not in logged_in:
         return ["This character is not logged in, so no snapshot was taken."]
-    granted = logged_in[character_id].scopes
+    granted, name = logged_in[character_id].scopes, logged_in[character_id].name
     db = store.connect(db_path)
     try:
-        row = db.execute(
-            "SELECT name FROM characters WHERE character_id = ?", (character_id,)
-        ).fetchone()
-        name = row["name"] if row else str(character_id)
+        # A character added a moment ago isn't in the database yet; its snapshots need it.
+        snapshots.ensure_character(db, character_id, name)
         log_problems = read_game_logs(config, db)
         with auth.http_client(config) as client:
             esi = EsiClient(client, db, token_for=auth.AccessTokens(config, secrets, client).get)
