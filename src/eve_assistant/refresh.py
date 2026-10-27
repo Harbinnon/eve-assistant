@@ -13,6 +13,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from eve_assistant import (
+    alerts,
     auth,
     backups,
     campaigns,
@@ -463,6 +464,17 @@ def auto_refresh_once(
                 report.problems.extend(problems)
             report.problems.extend(_refresh_public(db, esi, now))
         outcomes.update(db)
+        report.problems.extend(send_alerts(config, secrets, db, report.problems, now))
     finally:
         db.close()
     return report
+
+
+def send_alerts(config: Config, secrets: SecretStore, db, problems: list[str], now) -> list[str]:
+    """Game alerts to Discord and this tick's problems to ntfy, when set up
+    (roadmap 7.1). Returns problem lines about sending."""
+    if not alerts.addresses(secrets):
+        return []
+    found = alerts.game_alerts(db, now) + alerts.health_alerts(problems, now)
+    with auth.http_client(config) as http:
+        return alerts.send(db, secrets, http, found)[1]

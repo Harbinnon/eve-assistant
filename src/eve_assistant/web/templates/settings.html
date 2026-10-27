@@ -81,6 +81,14 @@ A character that logged in before it was switched on has to log in again (Charac
 in again. Switching it on before ticking the scope makes EVE's login fail.</p>
 {% endif %}
 
+<h2 id="alerts">Alerts</h2>
+<p class="lede">Things to do in game go to Discord (a job finished, an order sold or undercut, an empty skill
+queue, a courier due soon, a stopped extractor, a goal reached), each once, linking back here. Problems with
+the tool itself go to ntfy. Their addresses are entered at a hidden prompt, not here: run
+<span class="mono">eve-assistant alerts-setup</span>, then <span class="mono">eve-assistant alerts-test</span>.</p>
+<p>Discord: {% if "discord" in alert_channels %}<span class="pill good">set up</span>{% else %}<span class="muted">not set up</span>{% endif %}
+  · ntfy: {% if "ntfy" in alert_channels %}<span class="pill good">set up</span>{% else %}<span class="muted">not set up</span>{% endif %}</p>
+
 <h2>Backups</h2>
 <p class="lede">A copy of your history is saved once a day while the dashboard runs. It can't be
 downloaded from EVE again, so keep the folder somewhere safe: another drive or a synced folder is

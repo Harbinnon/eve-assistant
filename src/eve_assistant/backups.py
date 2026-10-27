@@ -19,6 +19,8 @@ the last KEEP_MONTHLY months. A restore never deletes the current
 database; it is moved aside first.
 """
 
+import hashlib
+import json
 import os
 import re
 import sqlite3
@@ -35,6 +37,11 @@ NAME = re.compile(r"^eve-assistant-(\d{8})-(\d{6})\.sqlite3$")
 # Downloaded again on demand, so not worth keeping in every backup.
 REGENERABLE_PREFIXES = ("sde_",)
 REGENERABLE_TABLES = ("esi_cache",)
+# Beside the backups: what the newest one is, so a copy taken from the folder
+# (the lab's nightly pull) can tell a fresh backup from a stale one, and a
+# restore can be checked against its row counts.
+STATE_FILE = "latest.json"
+COUNTED = ("snapshots", "plans", "plan_items", "plan_responses", "play_sessions", "goals")
 
 
 class BackupError(Exception):
@@ -111,6 +118,7 @@ def make(
             _strip_regenerable(copy)
             copy.execute("VACUUM")
             _check(copy, "The new backup")
+            rows = _row_counts(copy)
         finally:
             copy.close()
     except Exception:
@@ -119,8 +127,39 @@ def make(
     finally:
         source.close()
     os.replace(partial, final)
+    _write_state(folder, final, now, rows)
     prune(folder, now)
     return Backup(final, now, final.stat().st_size)
+
+
+def _row_counts(db: sqlite3.Connection) -> dict:
+    tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    counts = {
+        t: db.execute(f'SELECT COUNT(*) FROM "{t}"').fetchone()[0]  # noqa: S608  # fixed names
+        for t in COUNTED
+        if t in tables
+    }
+    counts["schema_version"] = db.execute("SELECT MAX(number) FROM schema_migrations").fetchone()[0]
+    return counts
+
+
+def _write_state(folder: Path, final: Path, now: datetime, rows: dict) -> None:
+    """latest.json: when the newest backup finished, its name, size, SHA-256 and
+    row counts. Written to a temporary file and swapped in."""
+    digest = hashlib.sha256()
+    with final.open("rb") as backup:
+        for chunk in iter(lambda: backup.read(1 << 20), b""):
+            digest.update(chunk)
+    state = {
+        "completed_at": now.isoformat(timespec="seconds"),
+        "file": final.name,
+        "bytes": final.stat().st_size,
+        "sha256": digest.hexdigest(),
+        "rows": rows,
+    }
+    temp = folder / f"{STATE_FILE}.tmp"
+    temp.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    os.replace(temp, folder / STATE_FILE)
 
 
 def prune(folder: Path | str, now: datetime | None = None) -> list[Path]:

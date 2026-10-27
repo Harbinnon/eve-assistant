@@ -23,6 +23,23 @@ mode = "local"
 # Refresh from EVE in the background while the dashboard runs (default true).
 # auto_refresh = false
 
+# Hosted mode only (the always-on copy on your own server, behind a reverse
+# proxy that signs people in and passes their Discord ID as X-Auth-Id). Set
+# mode = "hosted" under [app] and callback_url under [esi] to
+# https://<hostname>/callback, then run: eve-assistant serve --hosted
+# [hosted]
+# hostname = "<eve.example.com>"
+# listen = "<the server's own address>"
+# proxy = "<the reverse proxy's address>"
+# home_network = "<e.g. 192.168.1.0/24>"
+# owner_discord_id = "<your Discord user ID>"
+# port = 8700
+
+# On the gaming PC, to send your mining lines to the hosted copy:
+# eve-assistant send-logs --setup (enter the token), then send-logs [--watch 5].
+# [send_logs]
+# url = "<http://the hosted copy's address on your home network:8700>"
+
 [backups]
 # Where the daily database backups go. Default: var/backups next to the
 # database. A folder on another drive, or one your cloud drive syncs, also

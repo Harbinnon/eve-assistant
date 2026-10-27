@@ -98,8 +98,8 @@ data, not assumed.
 
 | # | What | Done when |
 |---|---|---|
-| 7.1 | **Alerts.** In-game actions to Discord (job finished, courier deadline near, order sold, extractor done); tool health to ntfy; nothing else. **◆** A minimal Discord alert could come earlier if wanted. | A finished job reaches Discord with a link to the dashboard. |
-| 7.2 | **Hosted mode:** a secret store that works on Linux, a login, and a log sender for game logs. Home-lab changes go to the lab session as a build request, never made from here. | Runs on the owner's server behind a login. Tag `v1.0.0`. |
+| 7.1 | **Alerts.** In-game actions to Discord (job finished, courier deadline near, order sold, extractor done); tool health to ntfy; nothing else. **◆** A minimal Discord alert could come earlier if wanted. | A finished job reaches Discord with a link to the dashboard. Built: jobs, orders sold or undercut, empty skill queues, couriers due, stopped extractors and goals reached to Discord, refresh problems to ntfy, each once; addresses at a hidden prompt (`alerts-setup`, `alerts-test`). |
+| 7.2 | **Hosted mode:** a secret store that works on Linux, a login, and a log sender for game logs. Home-lab changes go to the lab session as a build request, never made from here. | Runs on the owner's server behind a login. Tag `v1.0.0`. Built (tag `v0.11.0` for the first deployment): `serve --hosted` behind the home lab's Discord sign-in, a key-encrypted secret file, EVE login through the dashboard's `/callback`, `send-logs` from the gaming PC, streaming market reads. `v1.0.0` once it runs on the server. |
 
 **Later:** the MCP server; officer-level corp data.
 
@@ -121,4 +121,4 @@ data, not assumed.
 | 3.2 | The new read-only scopes, and when to log in again. |
 | 5.5 | Decided 18 Oct: build our own trade tool, covering what the external ones offer. |
 | 6 | Decided 19 Oct (the recommendations): the PI scope, switched on in config once ticked; corp contracts and projects wait for a player corp; nullsec built for the coworker's corp. |
-| 7.1 | Whether a minimal Discord alert should come earlier. |
+| 7.1 | Moot: alerts were built in milestone 7. |

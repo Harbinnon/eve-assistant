@@ -52,6 +52,25 @@ def _to_character(character_id: str, entry: dict) -> LoggedInCharacter:
     )
 
 
+@dataclass(frozen=True)
+class PendingLogin:
+    """A login sent to EVE's page, waiting for EVE to send the browser back."""
+
+    url: str  # EVE's login page, for this login
+    state: str  # must come back unchanged
+    verifier: str  # the PKCE secret half, kept here
+    started: float
+
+
+def start_login(config: Config) -> PendingLogin:
+    pkce = sso.make_pkce_pair()
+    state = sso.make_state()
+    url = sso.authorize_url(
+        config.client_id, config.callback_url, scopes(config.planets), state, pkce.challenge
+    )
+    return PendingLogin(url, state, pkce.verifier, time.time())
+
+
 def login_character(
     config: Config,
     store: SecretStore,
@@ -65,15 +84,23 @@ def login_character(
     store_lock is held only while the token store is read and written (not
     while waiting for the browser), so a dashboard refreshing tokens in the
     background can't save over the new character."""
-    pkce = sso.make_pkce_pair()
-    state = sso.make_state()
-    url = sso.authorize_url(
-        config.client_id, config.callback_url, scopes(config.planets), state, pkce.challenge
-    )
-    open_browser(url)
-    code = wait(config.callback_url, state)
+    pending = start_login(config)
+    open_browser(pending.url)
+    code = wait(config.callback_url, pending.state)
+    return finish_login(config, store, client, pending, code, store_lock)
 
-    tokens = sso.exchange_code(client, config.client_id, code, pkce.verifier)
+
+def finish_login(
+    config: Config,
+    store: SecretStore,
+    client: httpx.Client,
+    pending: PendingLogin,
+    code: str,
+    store_lock: contextlib.AbstractContextManager | None = None,
+) -> LoggedInCharacter:
+    """Swap the code EVE sent back for tokens and store the refresh token. The
+    hosted copy calls this from its own /callback page."""
+    tokens = sso.exchange_code(client, config.client_id, code, pending.verifier)
     identity = sso.verify_access_token(
         tokens.access_token, sso.fetch_jwks(client), config.client_id
     )

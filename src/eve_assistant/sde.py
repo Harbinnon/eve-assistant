@@ -16,7 +16,7 @@ from pathlib import Path
 
 import httpx
 
-from eve_assistant.config import PROJECT_ROOT
+from eve_assistant.config import DATA_DIR
 from eve_assistant.store import utc_now
 
 LATEST_URL = "https://developers.eveonline.com/static-data/tranquility/latest.jsonl"
@@ -24,7 +24,7 @@ BUILD_URL = (
     "https://developers.eveonline.com/static-data/tranquility/"
     "eve-online-static-data-{build}-jsonl.zip"
 )
-DEFAULT_SDE_DIR = PROJECT_ROOT / "var" / "sde"
+DEFAULT_SDE_DIR = DATA_DIR / "sde"
 
 # Dogma attribute IDs kept from typeDogma. Extend as features need more.
 REQUIRED_SKILL_ATTRIBUTES = {182: 277, 183: 278, 184: 279, 1285: 1286, 1289: 1287, 1290: 1288}

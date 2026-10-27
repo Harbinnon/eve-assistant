@@ -14,9 +14,9 @@ from datetime import UTC, datetime
 from importlib import resources
 from pathlib import Path
 
-from eve_assistant.config import PROJECT_ROOT
+from eve_assistant.config import DATA_DIR
 
-DEFAULT_DB_PATH = PROJECT_ROOT / "var" / "eve-assistant.sqlite3"
+DEFAULT_DB_PATH = DATA_DIR / "eve-assistant.sqlite3"
 MARKET_FILE = "market.sqlite3"
 MEMORY = ":memory:"  # an in-memory database, as SQLite names it
 MARKET_SCHEMA_VERSION = "1"

@@ -455,10 +455,17 @@ replaces on reinstall. Its window starts minimised; closing it stops the
 dashboard.
 
 **Discord** (optional, via webhook) gets alerts that need action in game:
-job finished, order undercut, skill queue empty, goal reached, each linking
-back to the dashboard. **Health of the tool itself** (token refresh
-failing, errors, rate-limit trouble) goes to a separate, optional push
-channel (e.g. ntfy), never mixed with game alerts.
+job finished, order sold or undercut, skill queue empty, courier due within
+six hours, extractor stopped, goal reached, each linking back to the
+dashboard. **Health of the tool itself** (token refresh failing, errors,
+rate-limit trouble) goes to a separate, optional ntfy topic, at most once an
+hour each, never mixed with game alerts. Built in milestone 7: checked after
+every background refresh, each alert sent once (kept, append-only, in
+sent_alerts). Both addresses let whoever has them post, so they're secrets:
+entered at a hidden prompt (`eve-assistant alerts-setup`) and kept in the
+secret store with the login tokens, never in config, the database or chat;
+Settings shows only whether each is set up. "Sold" means an order gone since
+the last check with a matching trade in the wallet since it was placed.
 
 After a game update, a **"what changed for you"** panel lists changes to
 items and ships the player owns or plans to buy.
@@ -613,6 +620,34 @@ Hosted mode needs three extra things:
    with its public `https://…/callback`.
 3. **Backups.** The database is one SQLite file; a backup is a scheduled
    copy.
+
+**As built (milestone 7, `eve-assistant serve --hosted`).** The owner's home
+lab puts a Discord sign-in in front of its services and passes the signed-in
+Discord ID to the app as `X-Auth-Id`, so the app builds no login of its own.
+The owner approved, for hosted mode only, listening on the server's own
+address instead of 127.0.0.1, behind this guard, which runs before anything
+else:
+
+- The dashboard answers only connections from the reverse proxy's address,
+  and only with an `X-Auth-Id` matching the owner's Discord ID (a second
+  lock behind the proxy's own rule, and one that takes effect at once).
+- `/ingest/` (the gaming PC's log sender) answers only connections straight
+  from the home network, never from the proxy's address, which is on the
+  home network too, so nothing from the internet can reach it. It needs a
+  token and takes at most 1 MB a request and 120 requests an hour.
+- A refusal is a quick 403, so the lab's monitor can tell the app is up.
+- Forms are checked against the public `https://` origin.
+
+The addresses, hostname and Discord ID are in the server's config file
+(`EVE_ASSISTANT_CONFIG`), never in this repository; the data folder is
+`EVE_ASSISTANT_DATA`. Characters log in through the dashboard: EVE sends
+the browser back to its `/callback`. Login tokens are kept in a file
+encrypted with a key from the server's env file (section 9, Secrets).
+`send-logs` on the gaming PC sends only the owner's characters' mining
+lines. The daily backup leaves `latest.json` beside it (when it finished,
+its SHA-256 and row counts), so the lab's nightly copy can refuse a stale
+or broken backup and a restore can be checked. Anything a restart won't
+fix (bad config, a missing key) exits with code 2.
 
 Moving between modes is copying the database file and logging characters
 in again. History, goals and learning come along.
@@ -1091,10 +1126,14 @@ in again.
 
 Refresh tokens and webhook URLs are entered through a local prompt, never
 echoed, and stored outside the project folder, **encrypted with Windows
-DPAPI** in local mode. Storage sits behind one small interface, so macOS
-or Linux backends can be added when a contributor needs them. In hosted
-mode they become protected secrets on the server. The ESI client secret is
-not used at all.
+DPAPI** in local mode. Off Windows (the hosted copy on a Linux server) the
+file is encrypted with Fernet from the cryptography library (already a
+dependency), with the key from the server's root-owned env file
+(`EVE_ASSISTANT_SECRET_KEY`), readable by the service's user only, and
+always written to a temporary file and swapped in, because login tokens
+change on every refresh. On the server, the alert addresses and an ntfy
+token can come from the same env file. The ESI client secret is not used at
+all.
 
 ---
 

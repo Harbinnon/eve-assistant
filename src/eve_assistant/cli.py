@@ -8,6 +8,7 @@ from eve_assistant import (
     __version__,
     accounts,
     activities,
+    alerts,
     auth,
     backups,
     couriers,
@@ -17,6 +18,7 @@ from eve_assistant import (
     goals,
     images,
     launcher,
+    logsender,
     market,
     mining,
     ore,
@@ -122,24 +124,13 @@ def _cmd_snapshot(_args) -> int:
     return 1 if report.problems else 0
 
 
-def _cmd_serve(args) -> int:
-    import uvicorn
+CONFIG_PROBLEM = 2  # exit code: a restart won't fix it, so the server stops retrying
+INGEST_VARIABLE = "EVE_ASSISTANT_INGEST_TOKEN"  # the log sender's token, on the server
 
-    from eve_assistant.web import create_app
 
-    config = load_config()
-    if config.mode != "local":
-        print("Hosted mode is not built yet: the dashboard has no login, so it only runs locally.")
-        return 2
-    if args.open:
-        if launcher.dashboard_running(args.port):
-            print(f"The dashboard is already running: {launcher.url(args.port)}")
-            launcher.open_in_browser(args.port)
-            return 0
-        if launcher.listening(args.port):
-            print(f"Something else is using port {args.port}. Close it or pass --port.")
-            return 2
-    secrets = default_store()
+def _app(config, secrets, **extra):
+    """The dashboard, wired to this config and secret store."""
+    from eve_assistant.web import AccountStatus, create_app
 
     def do_refresh() -> list[str]:
         return refresh.refresh_all(config, secrets).problems
@@ -159,30 +150,158 @@ def _cmd_serve(args) -> int:
         refresh.snapshot_character(config, secrets, character.character_id)
         return character.name
 
-    print(f"Dashboard: http://127.0.0.1:{args.port}  (Ctrl+C or close this window to stop)")
-    if args.open:
-        launcher.open_when_listening(args.port)
-    uvicorn.run(
-        create_app(
-            refresh=do_refresh,
-            make_plan=do_plan,
-            snapshot=do_snapshot,
-            auto_refresh=do_auto_refresh if config.auto_refresh else None,
-            backups_dir=config.backups_dir,
-            add_character=do_add_character,
-            fetch_image=lambda address: images.download(address, user_agent(config.contact)),
+    settings = {
+        "refresh": do_refresh,
+        "make_plan": do_plan,
+        "snapshot": do_snapshot,
+        "auto_refresh": do_auto_refresh if config.auto_refresh else None,
+        "backups_dir": config.backups_dir,
+        "add_character": do_add_character,
+        "fetch_image": lambda address: images.download(address, user_agent(config.contact)),
+        "account": AccountStatus(
             missing_scopes=lambda: {
                 c.character_id: c.missing(scopes(config.planets))
                 for c in auth.list_characters(secrets)
             },
             planets_on=config.planets,
-            scan_markets=lambda force=False: refresh.scan_markets(config, force=force),
+            alert_channels=lambda: set(alerts.addresses(secrets)),
         ),
-        host="127.0.0.1",
-        port=args.port,
-        log_level="warning",
-    )
+        "scan_markets": lambda force=False: refresh.scan_markets(config, force=force),
+    }
+    return create_app(**{**settings, **extra})
+
+
+def _cmd_serve(args) -> int:
+    import uvicorn
+
+    if args.hosted:
+        return _serve_hosted()
+    config = load_config()
+    if config.mode != "local":
+        print("This config is for hosted mode: run eve-assistant serve --hosted.")
+        return CONFIG_PROBLEM
+    if args.open:
+        if launcher.dashboard_running(args.port):
+            print(f"The dashboard is already running: {launcher.url(args.port)}")
+            launcher.open_in_browser(args.port)
+            return 0
+        if launcher.listening(args.port):
+            print(f"Something else is using port {args.port}. Close it or pass --port.")
+            return 2
+    app = _app(config, default_store())
+    print(f"Dashboard: http://127.0.0.1:{args.port}  (Ctrl+C or close this window to stop)")
+    if args.open:
+        launcher.open_when_listening(args.port)
+    uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")
     return 0
+
+
+def _hosted_setup():
+    """The hosted copy's config and secret store, or exit CONFIG_PROBLEM with a reason."""
+    config = load_config()
+    if config.hosted is None:
+        raise ConfigError(
+            'serve --hosted needs mode = "hosted" under [app] and a [hosted] section.'
+        )
+    secrets = default_store()
+    secrets.load()  # a wrong key stops here, not on the first refresh
+    return config, secrets
+
+
+def _serve_hosted() -> int:
+    """The hosted copy (roadmap 7.2): behind the home lab's proxy and sign-in.
+    Exits CONFIG_PROBLEM, with one line saying why, for anything a restart
+    won't fix; a crash exits 1."""
+    import os
+    import socket
+    import types
+
+    import uvicorn
+
+    try:
+        config, secrets = _hosted_setup()
+    except (ConfigError, SecretStoreError) as exc:
+        print(f"Configuration problem: {exc}", file=sys.stderr)
+        return CONFIG_PROBLEM
+    hosted = config.hosted
+    try:
+        socket.create_server((hosted.listen, hosted.port)).close()  # free to listen on?
+    except OSError as exc:
+        print(f"Configuration problem: can't listen on {hosted.listen}:{hosted.port} "
+              f"({exc.strerror}).", file=sys.stderr)  # fmt: skip
+        return CONFIG_PROBLEM
+
+    def finish(pending, code: str) -> str:
+        with auth.http_client(config) as client:
+            character = auth.finish_login(config, secrets, client, pending, code,
+                                          store_lock=refresh.ESI_LOCK)  # fmt: skip
+        refresh.snapshot_character(config, secrets, character.character_id)
+        return character.name
+
+    from eve_assistant.web import Hosting
+
+    login = types.SimpleNamespace(start=lambda: auth.start_login(config), finish=finish)
+    app = _app(
+        config,
+        secrets,
+        add_character=None,
+        hosting=Hosting(hosted, login, os.environ.get(INGEST_VARIABLE) or None),
+    )
+    print(f"Hosted dashboard on {hosted.listen}:{hosted.port} for {hosted.public_origin}",
+          flush=True)  # fmt: skip
+    uvicorn.run(app, host=hosted.listen, port=hosted.port, proxy_headers=False,
+                log_level="warning")  # fmt: skip
+    return 0
+
+
+def _send_logs_setup(secrets, ask) -> int:
+    import getpass
+
+    ask = ask or getpass.getpass
+    answer = ask("The hosted copy's log token (Enter keeps it, - removes it): ").strip()
+    if answer:
+        logsender.save_token(secrets, None if answer == "-" else answer)
+        print("Token removed." if answer == "-" else "Token saved.")
+    return 0
+
+
+def _send_logs_problem(config, secrets) -> str | None:
+    """What stops send-logs from running, if anything."""
+    if not config.send_logs_url:
+        return ("Set [send_logs] url in config/local.toml to the hosted copy's address on "
+                "your home network, e.g. http://192.168.1.21:8700.")  # fmt: skip
+    if config.gamelogs_dir is None:
+        return "Set [logs] gamelogs_dir in config/local.toml to EVE's Gamelogs folder."
+    if not logsender.token(secrets):
+        return "No token yet. Run: eve-assistant send-logs --setup"
+    return None
+
+
+def _cmd_send_logs(args, ask=None) -> int:
+    """Send new mining lines from this PC's game logs to the hosted copy."""
+    import time
+
+    secrets = default_store()
+    if args.setup:
+        return _send_logs_setup(secrets, ask)
+    config = load_config()
+    problem = _send_logs_problem(config, secrets)
+    if problem:
+        print(problem)
+        return 1
+    with store.connect() as db:
+        owners = {r[0] for r in db.execute("SELECT name FROM characters")}
+    while True:
+        with auth.http_client(config) as http:
+            report = logsender.send(http, config.send_logs_url, logsender.token(secrets),
+                                    config.gamelogs_dir, owners)  # fmt: skip
+        print(f"Sent {report.lines:,} mining lines from {report.files} logs "
+              f"({report.stored:,} new cycles).")  # fmt: skip
+        for line in report.problems:
+            print(f"  {line}")
+        if not args.watch:
+            return 1 if report.problems else 0
+        time.sleep(args.watch * 60)
 
 
 def _cmd_shortcut(args) -> int:
@@ -790,6 +909,54 @@ def _cmd_account_state(args) -> int:
     return 0
 
 
+def _cmd_alerts_setup(_args, ask=None) -> int:
+    """Enter the Discord webhook and ntfy topic at a hidden prompt (never echoed)."""
+    import getpass
+
+    ask = ask or getpass.getpass
+    secrets = default_store()
+    saved = alerts.addresses(secrets)
+    print("Alerts: in-game actions go to Discord, the tool's health to ntfy. Both are optional.")
+    print("Press Enter to keep what's saved, or type - to remove it. Nothing you type is shown.")
+    for channel, what in (("discord", "Discord webhook address"), ("ntfy", "ntfy topic address")):
+        state = "saved" if channel in saved else "not set"
+        answer = ask(f"{what} ({state}): ").strip()
+        if not answer:
+            continue
+        try:
+            alerts.save_address(secrets, channel, None if answer == "-" else answer)
+        except alerts.AlertError as exc:
+            print(f"Not saved: {exc}")
+            return 1
+        print(f"{what}: {'removed' if answer == '-' else 'saved'}.")
+    return 0
+
+
+def _cmd_alerts_test(_args) -> int:
+    """Send a test alert to each channel that has an address."""
+    config = load_config()
+    secrets = default_store()
+    saved = alerts.addresses(secrets)
+    if not saved:
+        print("No alert channels yet. Run: eve-assistant alerts-setup")
+        return 1
+    db = store.connect()
+    try:
+        tests = [
+            alerts.Alert(f"test:{channel}:{store.utc_now()}", channel,
+                         "Test alert from EVE Assistant: this channel works.")
+            for channel in saved
+        ]  # fmt: skip
+        with auth.http_client(config) as http:
+            sent, problems = alerts.send(db, secrets, http, tests)
+    finally:
+        db.close()
+    for problem in problems:
+        print(problem)
+    print(f"Sent {sent} test alert{'s' if sent != 1 else ''}.")
+    return 1 if problems else 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="eve-assistant", description="EVE Assistant")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
@@ -804,6 +971,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--check", action="store_true", help="also check each character's token with EVE"
     )
     characters.set_defaults(func=_cmd_characters)
+
+    commands.add_parser(
+        "alerts-setup", help="enter the Discord webhook and ntfy topic for alerts"
+    ).set_defaults(func=_cmd_alerts_setup)
+    commands.add_parser("alerts-test", help="send a test alert to each channel").set_defaults(
+        func=_cmd_alerts_test
+    )
 
     logout = commands.add_parser("logout", help="forget a character's token on this PC")
     logout.add_argument("character_id", type=int)
@@ -949,7 +1123,19 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument(
         "--open", action="store_true", help="open it in the browser (only that, if it's running)"
     )
+    serve.add_argument(
+        "--hosted", action="store_true", help="run as the hosted copy, behind a proxy's sign-in"
+    )
     serve.set_defaults(func=_cmd_serve)
+
+    send_logs = commands.add_parser(
+        "send-logs", help="send this PC's new mining lines to the hosted copy"
+    )
+    send_logs.add_argument("--setup", action="store_true", help="enter the hosted copy's token")
+    send_logs.add_argument(
+        "--watch", type=float, metavar="MINUTES", help="keep sending every MINUTES until stopped"
+    )
+    send_logs.set_defaults(func=_cmd_send_logs)
     shortcut = commands.add_parser(
         "shortcut", help="put a shortcut that starts the dashboard on the desktop (Windows)"
     )

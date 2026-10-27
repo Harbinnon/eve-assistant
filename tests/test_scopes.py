@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from eve_assistant import snapshots, store
 from eve_assistant.esi import SCOPES
-from eve_assistant.web import create_app
+from eve_assistant.web import AccountStatus, create_app
 
 NEW = ("esi-characters.read_freelance_jobs.v1", "esi-characters.read_loyalty.v1",
        "esi-killmails.read_killmails.v1")  # fmt: skip
@@ -48,7 +48,8 @@ def _characters_page(tmp_path, missing):
     snapshots.ensure_character(conn, 7, "Miner")
     conn.close()
     with TestClient(
-        create_app(path, missing_scopes=lambda: missing), base_url="http://127.0.0.1"
+        create_app(path, account=AccountStatus(missing_scopes=lambda: missing)),
+        base_url="http://127.0.0.1",
     ) as c:
         return c.get("/characters").text
 
