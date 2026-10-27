@@ -23,7 +23,9 @@ contributor. Read [docs/design.md](docs/design.md) before changing behaviour.
   self-hosted. No inline `<script>`, `<style>` or `style=""` either: the
   Content-Security-Policy blocks them (a test checks every page).
 - **Weaken the dashboard's Host check or security headers**, or bind it to
-  anything but 127.0.0.1, without the repository owner's approval.
+  anything but 127.0.0.1, without the repository owner's approval. (Approved
+  on 19 Oct 2026 for hosted mode only, behind the guard described in
+  docs/design.md 6.2; local mode stays on 127.0.0.1.)
 - **Deploy to or change anyone's servers or infrastructure.** Hosted mode is
   set up by its owner.
 - **Push to `main` or merge pull requests.** Work on a branch and open a
