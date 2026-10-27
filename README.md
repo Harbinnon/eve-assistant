@@ -5,7 +5,7 @@ and haul. Set a goal, say how long you can play, and it reads your
 characters through CCP's API (ESI) and suggests the best use of that time,
 then learns from what actually happened.
 
-**Status: version 0.10. Built: login, snapshots, skill plans, goals, the
+**Status: version 0.11. Built: login, snapshots, skill plans, goals, the
 dashboard, the session planner (mining, ore, couriers, Freelance Jobs, your
 whole fleet, multi-session projects, risk ratings, decline buttons),
 learning from results (play sessions, noticed from EVE's login times;
@@ -22,8 +22,10 @@ store values, manufacturing from your blueprints, military campaigns), and a tra
 (trade runs between the hubs, station trading, your orders watched, the
 best run in plans), and corporations, nullsec and Planetary Interaction
 (corp tax and your corp's buyback, the sovereignty map and jump bridges,
-your colonies' extractor timers and what they make). Next: alerts and
-hosted mode.** The design is in
+your colonies' extractor timers and what they make), and alerts and hosted
+mode (in-game actions to Discord, the tool's health to ntfy, an always-on
+copy on your own server behind its sign-in). Next: running it on the
+server for real, as 1.0.** The design is in
 [docs/design.md](docs/design.md) and the plan from here in
 [docs/roadmap.md](docs/roadmap.md).
 
@@ -101,6 +103,9 @@ eve-assistant characters [--check]     list logged-in characters, optionally tes
 eve-assistant logout <character id>    forget a character's token on this PC
 eve-assistant alerts-setup             enter the Discord webhook and ntfy topic (hidden prompt)
 eve-assistant alerts-test              send a test alert to each channel set up
+eve-assistant serve --hosted           run as the hosted copy (on your server)
+eve-assistant send-logs [--watch 5]    send new mining lines to the hosted copy
+eve-assistant send-logs --setup        enter the hosted copy's log token (hidden)
 eve-assistant sde-update               download and load CCP's static data (~100 MB)
 eve-assistant snapshot                 record every character's current state
 eve-assistant accounts                 show characters grouped by account

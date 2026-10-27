@@ -621,6 +621,34 @@ Hosted mode needs three extra things:
 3. **Backups.** The database is one SQLite file; a backup is a scheduled
    copy.
 
+**As built (milestone 7, `eve-assistant serve --hosted`).** The owner's home
+lab puts a Discord sign-in in front of its services and passes the signed-in
+Discord ID to the app as `X-Auth-Id`, so the app builds no login of its own.
+The owner approved, for hosted mode only, listening on the server's own
+address instead of 127.0.0.1, behind this guard, which runs before anything
+else:
+
+- The dashboard answers only connections from the reverse proxy's address,
+  and only with an `X-Auth-Id` matching the owner's Discord ID (a second
+  lock behind the proxy's own rule, and one that takes effect at once).
+- `/ingest/` (the gaming PC's log sender) answers only connections straight
+  from the home network, never from the proxy's address, which is on the
+  home network too, so nothing from the internet can reach it. It needs a
+  token and takes at most 1 MB a request and 120 requests an hour.
+- A refusal is a quick 403, so the lab's monitor can tell the app is up.
+- Forms are checked against the public `https://` origin.
+
+The addresses, hostname and Discord ID are in the server's config file
+(`EVE_ASSISTANT_CONFIG`), never in this repository; the data folder is
+`EVE_ASSISTANT_DATA`. Characters log in through the dashboard: EVE sends
+the browser back to its `/callback`. Login tokens are kept in a file
+encrypted with a key from the server's env file (section 9, Secrets).
+`send-logs` on the gaming PC sends only the owner's characters' mining
+lines. The daily backup leaves `latest.json` beside it (when it finished,
+its SHA-256 and row counts), so the lab's nightly copy can refuse a stale
+or broken backup and a restore can be checked. Anything a restart won't
+fix (bad config, a missing key) exits with code 2.
+
 Moving between modes is copying the database file and logging characters
 in again. History, goals and learning come along.
 
