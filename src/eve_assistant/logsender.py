@@ -109,8 +109,20 @@ def send(
         sent[found["file"]] = found["read"]
         report.files += 1
         report.lines += len(lines)
+    _save_sent(sent_path, folder, sent)
+    return report
+
+
+def _save_sent(sent_path: Path, folder: Path, sent: dict) -> None:
+    """Remember how far each log has been sent: names taken from the folder
+    itself (so logs since deleted drop out) with plain numbers, never anything
+    read back from the file as it was."""
+    kept = {}
+    for path in sorted(Path(folder).glob("*.txt")):
+        count = sent.get(path.name)
+        if isinstance(count, int) and count > 0:
+            kept[path.name] = int(count)
     sent_path.parent.mkdir(parents=True, exist_ok=True)
     temp = sent_path.with_name(sent_path.name + ".tmp")
-    temp.write_text(json.dumps(sent, indent=1), encoding="utf-8")
+    temp.write_text(json.dumps(kept, indent=1), encoding="utf-8")
     temp.replace(sent_path)
-    return report

@@ -156,7 +156,7 @@ class EncryptedFileStore:
             )
         try:
             self._fernet = Fernet(key.encode("ascii"))
-        except (ValueError, UnicodeEncodeError):
+        except ValueError:  # includes UnicodeEncodeError
             raise SecretStoreError(
                 f"{KEY_ENV} isn't a valid key: it should be 44 characters of URL-safe base64."
             ) from None

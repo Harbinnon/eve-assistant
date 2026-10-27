@@ -21,7 +21,7 @@ from eve_assistant import (
     store,
     web,
 )
-from eve_assistant.web import create_app
+from eve_assistant.web import Hosting, create_app
 
 # Made-up addresses: the real ones live only in the server's config.
 PROXY, HOME, LISTEN, OWNER = "10.9.8.1", "10.9.8.0/24", "10.9.8.21", "123456789"
@@ -83,9 +83,9 @@ def hosted_app(tmp_path):
 
     app = create_app(
         db_path,
-        hosted=_hosted(tmp_path).hosted,
-        web_login=SimpleNamespace(start=start, finish=finish),
-        ingest_token="tok",
+        hosting=Hosting(
+            _hosted(tmp_path).hosted, SimpleNamespace(start=start, finish=finish), "tok"
+        ),
     )
     return SimpleNamespace(app=app, started=started, finished=finished, db_path=db_path)
 

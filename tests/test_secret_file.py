@@ -39,11 +39,13 @@ def test_only_its_owner_can_read_the_file(tmp_path, key):
 def test_a_wrong_or_missing_key_is_a_clear_error(tmp_path, key, monkeypatch):
     path = tmp_path / "secrets"
     EncryptedFileStore(path, key).save({"x": 1})
+    other_key = EncryptedFileStore(path, secrets_store.new_key())
     with pytest.raises(SecretStoreError, match="can't be read with this key"):
-        EncryptedFileStore(path, secrets_store.new_key()).load()
+        other_key.load()
     path.write_bytes(path.read_bytes()[:-3] + b"xyz")  # altered
+    right_key = EncryptedFileStore(path, key)
     with pytest.raises(SecretStoreError, match="can't be read with this key"):
-        EncryptedFileStore(path, key).load()
+        right_key.load()
     monkeypatch.delenv(secrets_store.KEY_ENV, raising=False)
     with pytest.raises(SecretStoreError, match="EVE_ASSISTANT_SECRET_KEY isn't set"):
         EncryptedFileStore(path)

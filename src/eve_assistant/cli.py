@@ -130,7 +130,7 @@ INGEST_VARIABLE = "EVE_ASSISTANT_INGEST_TOKEN"  # the log sender's token, on the
 
 def _app(config, secrets, **extra):
     """The dashboard, wired to this config and secret store."""
-    from eve_assistant.web import create_app
+    from eve_assistant.web import AccountStatus, create_app
 
     def do_refresh() -> list[str]:
         return refresh.refresh_all(config, secrets).problems
@@ -158,11 +158,14 @@ def _app(config, secrets, **extra):
         "backups_dir": config.backups_dir,
         "add_character": do_add_character,
         "fetch_image": lambda address: images.download(address, user_agent(config.contact)),
-        "missing_scopes": lambda: {
-            c.character_id: c.missing(scopes(config.planets)) for c in auth.list_characters(secrets)
-        },
-        "planets_on": config.planets,
-        "alert_channels": lambda: set(alerts.addresses(secrets)),
+        "account": AccountStatus(
+            missing_scopes=lambda: {
+                c.character_id: c.missing(scopes(config.planets))
+                for c in auth.list_characters(secrets)
+            },
+            planets_on=config.planets,
+            alert_channels=lambda: set(alerts.addresses(secrets)),
+        ),
         "scan_markets": lambda force=False: refresh.scan_markets(config, force=force),
     }
     return create_app(**{**settings, **extra})
@@ -222,8 +225,7 @@ def _serve_hosted() -> int:
         return CONFIG_PROBLEM
     hosted = config.hosted
     try:
-        with socket.create_server((hosted.listen, hosted.port)):
-            pass
+        socket.create_server((hosted.listen, hosted.port)).close()  # free to listen on?
     except OSError as exc:
         print(f"Configuration problem: can't listen on {hosted.listen}:{hosted.port} "
               f"({exc.strerror}).", file=sys.stderr)  # fmt: skip
@@ -236,13 +238,14 @@ def _serve_hosted() -> int:
         refresh.snapshot_character(config, secrets, character.character_id)
         return character.name
 
+    from eve_assistant.web import Hosting
+
+    login = types.SimpleNamespace(start=lambda: auth.start_login(config), finish=finish)
     app = _app(
         config,
         secrets,
         add_character=None,
-        hosted=hosted,
-        web_login=types.SimpleNamespace(start=lambda: auth.start_login(config), finish=finish),
-        ingest_token=os.environ.get(INGEST_VARIABLE) or None,
+        hosting=Hosting(hosted, login, os.environ.get(INGEST_VARIABLE) or None),
     )
     print(f"Hosted dashboard on {hosted.listen}:{hosted.port} for {hosted.public_origin}",
           flush=True)  # fmt: skip
@@ -251,29 +254,38 @@ def _serve_hosted() -> int:
     return 0
 
 
+def _send_logs_setup(secrets, ask) -> int:
+    import getpass
+
+    ask = ask or getpass.getpass
+    answer = ask("The hosted copy's log token (Enter keeps it, - removes it): ").strip()
+    if answer:
+        logsender.save_token(secrets, None if answer == "-" else answer)
+        print("Token removed." if answer == "-" else "Token saved.")
+    return 0
+
+
+def _send_logs_problem(config, secrets) -> str | None:
+    """What stops send-logs from running, if anything."""
+    if not config.send_logs_url:
+        return ("Set [send_logs] url in config/local.toml to the hosted copy's address on "
+                "your home network, e.g. http://192.168.1.21:8700.")  # fmt: skip
+    if config.gamelogs_dir is None:
+        return "Set [logs] gamelogs_dir in config/local.toml to EVE's Gamelogs folder."
+    if not logsender.token(secrets):
+        return "No token yet. Run: eve-assistant send-logs --setup"
+    return None
+
+
 def _cmd_send_logs(args, ask=None) -> int:
     """Send new mining lines from this PC's game logs to the hosted copy."""
     import time
 
     secrets = default_store()
     if args.setup:
-        import getpass
-
-        ask = ask or getpass.getpass
-        answer = ask("The hosted copy's log token (Enter keeps it, - removes it): ").strip()
-        if answer:
-            logsender.save_token(secrets, None if answer == "-" else answer)
-            print("Token removed." if answer == "-" else "Token saved.")
-        return 0
+        return _send_logs_setup(secrets, ask)
     config = load_config()
-    problem = None
-    if not config.send_logs_url:
-        problem = ("Set [send_logs] url in config/local.toml to the hosted copy's address on "
-                   "your home network, e.g. http://192.168.1.21:8700.")  # fmt: skip
-    elif config.gamelogs_dir is None:
-        problem = "Set [logs] gamelogs_dir in config/local.toml to EVE's Gamelogs folder."
-    elif not logsender.token(secrets):
-        problem = "No token yet. Run: eve-assistant send-logs --setup"
+    problem = _send_logs_problem(config, secrets)
     if problem:
         print(problem)
         return 1

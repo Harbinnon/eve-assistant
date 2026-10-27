@@ -20,9 +20,11 @@ import threading
 import time
 from collections import deque
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 from urllib.parse import urlencode, urlsplit
 
 from fastapi import FastAPI, Form, HTTPException, Request
@@ -376,6 +378,24 @@ def _security_class(value) -> str:
     return f"sec sec-{max(0, min(10, _security_tenths(value))):02d}"
 
 
+@dataclass(frozen=True)
+class AccountStatus:
+    """What the Characters and Settings pages say about logins and features."""
+
+    missing_scopes: Callable[[], dict[int, tuple[str, ...]]] | None = None
+    planets_on: bool = False
+    alert_channels: Callable[[], set[str]] | None = None
+
+
+@dataclass(frozen=True)
+class Hosting:
+    """What a hosted copy adds (roadmap 7.2)."""
+
+    rules: Any  # config.Hosted: its addresses, hostname and owner
+    login: Any  # .start() -> auth.PendingLogin, .finish(pending, code) -> name
+    ingest_token: str | None = None  # the log sender's token; None: no /ingest/
+
+
 def create_app(
     db_path: Path | str = store.DEFAULT_DB_PATH,
     refresh: Callable[[], list[str]] | None = None,
@@ -387,18 +407,20 @@ def create_app(
     backups_dir: Path | str | None = None,
     add_character: Callable[[], str] | None = None,
     fetch_image: images.Fetch | None = None,
-    missing_scopes: Callable[[], dict[int, tuple[str, ...]]] | None = None,
     scan_markets: Callable[..., list[str]] | None = None,
-    planets_on: bool = False,
-    alert_channels: Callable[[], set[str]] | None = None,
-    hosted=None,  # config.Hosted: the hosted copy's addresses and owner
-    web_login=None,  # .start() -> auth.PendingLogin, .finish(pending, code) -> name
-    ingest_token: str | None = None,  # the log sender's token; None: no /ingest/
+    account: "AccountStatus | None" = None,
+    hosting: "Hosting | None" = None,
 ) -> FastAPI:
     """refresh: called by the Refresh button; returns problem lines, empty when all went well.
     make_plan: builds and records a plan (needs ESI), returning its ID.
     snapshot: snapshots one character (needs ESI), returning problem lines.
     auto_refresh: one background refresh tick (needs ESI), run every auto_tick_seconds."""
+    account = account or AccountStatus()
+    missing_scopes, planets_on = account.missing_scopes, account.planets_on
+    alert_channels = account.alert_channels
+    hosted = hosting.rules if hosting else None
+    web_login = hosting.login if hosting else None
+    ingest_token = hosting.ingest_token if hosting else None
     auto_status: dict = {"enabled": auto_refresh is not None, "last_run": None, "problems": []}
     # Adding a character runs EVE's login in the background (it waits for the
     # browser); one at a time.

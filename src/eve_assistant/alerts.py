@@ -135,6 +135,17 @@ def _two_latest(db, character_id: int, kind: str) -> tuple[list, list]:
     return (payloads + [[], []])[0], (payloads + [[], []])[1]
 
 
+def _traded(order: dict, trade: dict) -> bool:
+    """Whether a wallet trade belongs to an order: same item, place and side,
+    on or after the day it was placed."""
+    return (
+        trade.get("type_id") == order.get("type_id")
+        and trade.get("location_id") == order.get("location_id")
+        and bool(trade.get("is_buy")) == bool(order.get("is_buy_order"))
+        and (trade.get("date") or "") >= (order.get("issued") or "")
+    )
+
+
 def _sold(db, character_id: int, name: str) -> list[Alert]:
     """Orders gone since the last check that the wallet shows trades for."""
     now_open, before = _two_latest(db, character_id, "orders")
@@ -146,13 +157,7 @@ def _sold(db, character_id: int, name: str) -> list[Alert]:
         if not isinstance(order, dict) or order.get("order_id") in still:
             continue
         is_buy = bool(order.get("is_buy_order"))
-        if any(
-            t.get("type_id") == order.get("type_id")
-            and t.get("location_id") == order.get("location_id")
-            and bool(t.get("is_buy")) == is_buy
-            and (t.get("date") or "") >= (order.get("issued") or "")
-            for t in trades
-        ):
+        if any(_traded(order, t) for t in trades):
             what = skills.type_name(db, order.get("type_id"))
             done = "filled" if is_buy else "sold"
             found.append(Alert(f"sold:{order['order_id']}", "discord",

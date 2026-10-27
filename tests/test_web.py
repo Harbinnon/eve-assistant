@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from eve_assistant import cli, snapshots, store, train_next
 from eve_assistant.config import Config
-from eve_assistant.web import create_app
+from eve_assistant.web import AccountStatus, create_app
 
 SHIP, SKILL = 100, 1
 LOCAL = "http://127.0.0.1"
@@ -458,7 +458,8 @@ def test_corporation_and_planets_show_on_characters_and_today(db_path):
         },
     )
     conn.close()  # fmt: skip
-    with TestClient(create_app(db_path, planets_on=True), base_url=LOCAL) as c:
+    app = create_app(db_path, account=AccountStatus(planets_on=True))
+    with TestClient(app, base_url=LOCAL) as c:
         characters = c.get("/characters").text
         today = c.get("/today").text
     assert "School of Applied Knowledge" in characters
