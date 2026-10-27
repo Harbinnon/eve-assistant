@@ -210,7 +210,7 @@ def test_serve_refuses_hosted_mode(capsys):
     hosted = Config(client_id="x", callback_url="http://localhost:1/c", contact=None, mode="hosted")
     with mock.patch.object(cli, "load_config", return_value=hosted):
         assert cli.main(["serve"]) == 2
-    assert "only runs locally" in capsys.readouterr().out
+    assert "run eve-assistant serve --hosted" in capsys.readouterr().out
 
 
 # --- Today page, responses and preferences ---------------------------------

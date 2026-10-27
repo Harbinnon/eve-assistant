@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from fastapi.testclient import TestClient
 
-from eve_assistant import backups, cli, refresh, sde, snapshots, store
+from eve_assistant import backups, cli, config, refresh, sde, snapshots, store
 from eve_assistant.config import Config, load_config
 from eve_assistant.web import create_app
 
@@ -166,5 +166,5 @@ def test_backup_folder_setting(tmp_path):
 
 
 def test_backups_are_ignored_by_git():
-    gitignore = (store.PROJECT_ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
+    gitignore = (config.PROJECT_ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
     assert "var/" in gitignore  # backups default to var/backups

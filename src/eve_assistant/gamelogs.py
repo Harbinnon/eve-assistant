@@ -146,7 +146,37 @@ def import_folder(db: sqlite3.Connection, folder: Path | str) -> ImportReport:
 
 
 def _store(db, character_id: int, file_name: str, lines: list[str], start: int) -> int:
-    cycles = [c for n, line in enumerate(lines[start:], start + 1) for c in parse_line(line, n)]
+    return _store_numbered(db, character_id, file_name, list(enumerate(lines[start:], start + 1)))
+
+
+SENT_FILE = re.compile(r"^[\w.-]{1,100}\.txt$")
+
+
+def store_sent(db: sqlite3.Connection, file_name: str, listener_name: str, lines: list) -> int:
+    """Mining lines the gaming PC's log sender sent to the hosted copy, as
+    [[line number, text], ...]. Kept only for a listener who is one of the
+    owner's characters, and only lines that parse as mining cycles; anything
+    else is dropped, as when reading the folder. Returns cycles added."""
+    if not isinstance(file_name, str) or not SENT_FILE.match(file_name):
+        raise ValueError("file must be a game log's file name")
+    character_id = _owner_ids(db).get(listener_name)
+    if character_id is None:
+        return 0
+    numbered = [(int(n), str(text)) for n, text in lines]
+    added = _store_numbered(db, character_id, file_name, numbered)
+    last = max((n for n, _text in numbered), default=0)
+    db.execute(
+        "INSERT INTO gamelog_files (file_name, listener, lines_read, read_at) "
+        "VALUES (?, ?, ?, ?) ON CONFLICT(file_name) DO UPDATE SET "
+        "lines_read = MAX(lines_read, excluded.lines_read), read_at = excluded.read_at",
+        (file_name, listener_name, last, utc_now()),
+    )
+    db.commit()
+    return added
+
+
+def _store_numbered(db, character_id: int, file_name: str, numbered: list) -> int:
+    cycles = [c for n, line in numbered for c in parse_line(line, n)]
     types = _type_ids(db, {c.ore for c in cycles if c.ore})
     added = 0
     for c in cycles:

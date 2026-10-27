@@ -11,11 +11,14 @@ background every minute while it is open (it fetches only what is due).
 
 import asyncio
 import contextlib
+import json
 import logging
 import math
 import secrets
 import sqlite3
 import threading
+import time
+from collections import deque
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -24,7 +27,14 @@ from urllib.parse import urlencode, urlsplit
 
 from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    PlainTextResponse,
+    RedirectResponse,
+    Response,
+)
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -38,6 +48,7 @@ from eve_assistant import (
     corrections,
     detection,
     explain,
+    gamelogs,
     goals,
     history,
     images,
@@ -64,6 +75,7 @@ from eve_assistant import (
     train_next,
     worth,
 )
+from eve_assistant import hosted as hosted_rules
 from eve_assistant.goals import GoalError
 from eve_assistant.skills import SkillsError
 from eve_assistant.web import charts
@@ -74,6 +86,8 @@ SnapshotTaker = Callable[[int], list[str]]
 # Returns an object with .problems (list[str]) and .retry_after (seconds or None).
 AutoRefresher = Callable[[], object]
 AUTO_TICK_SECONDS = 60.0
+INGEST_MAX_BYTES = 1_000_000
+INGEST_PER_HOUR = 120
 log = logging.getLogger(__name__)
 TODAY = "/today"
 GOALS = "/goals"
@@ -377,6 +391,9 @@ def create_app(
     scan_markets: Callable[..., list[str]] | None = None,
     planets_on: bool = False,
     alert_channels: Callable[[], set[str]] | None = None,
+    hosted=None,  # config.Hosted: the hosted copy's addresses and owner
+    web_login=None,  # .start() -> auth.PendingLogin, .finish(pending, code) -> name
+    ingest_token: str | None = None,  # the log sender's token; None: no /ingest/
 ) -> FastAPI:
     """refresh: called by the Refresh button; returns problem lines, empty when all went well.
     make_plan: builds and records a plan (needs ESI), returning its ID.
@@ -387,6 +404,8 @@ def create_app(
     # browser); one at a time.
     login: dict = {"state": None, "message": None, "at": None}
     login_running = threading.Lock()
+    pending_logins: dict = {}  # hosted: logins sent to EVE, by state
+    ingest_times: deque = deque()  # when each accepted /ingest/ request came
     # The trade hubs' markets are read in the background (about a minute), when the
     # Trade page or a plan wants them and they're old; one scan at a time.
     market_status: dict = {"running": False, "problems": []}
@@ -435,7 +454,8 @@ def create_app(
     )
     app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
     images_dir = Path(db_path).parent / "images"
-    app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(allowed_hosts))
+    hosts = [*allowed_hosts, *((hosted.hostname, hosted.listen) if hosted else ())]
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=hosts)
 
     @app.middleware("http")
     async def security_headers(request: Request, call_next):
@@ -443,6 +463,24 @@ def create_app(
         for name, value in SECURITY_HEADERS.items():
             response.headers.setdefault(name, value)
         return response
+
+    if hosted is not None:
+        # Added last, so it runs first: before the host check or anything costly.
+        @app.middleware("http")
+        async def hosted_guard(request: Request, call_next):
+            """Hosted mode (roadmap 7.2): the dashboard only through the proxy, with
+            the owner's sign-in identity; /ingest/ only straight from the home
+            network. A refusal is a quick 403, never a dropped connection, so a
+            monitor can tell the app is up and enforcing its rule."""
+            client = request.client.host if request.client else None
+            path = request.url.path
+            if not hosted_rules.allowed(path, client, hosted.proxy, hosted.home_network):
+                return PlainTextResponse("Forbidden", status_code=403)
+            if not hosted_rules.is_ingest(path):
+                identity = request.headers.get("x-auth-id") or hosted.dev_identity
+                if identity != hosted.owner_discord_id:
+                    return PlainTextResponse("Forbidden", status_code=403)
+            return await call_next(request)
 
     templates = Jinja2Templates(directory=HERE / "templates")
     templates.env.filters["isk"] = _isk
@@ -564,7 +602,10 @@ def create_app(
 
     def check_form(request: Request, token: str) -> None:
         origin = request.headers.get("origin")
-        if origin and origin.rstrip("/") != str(request.base_url).rstrip("/"):
+        # Behind the hosted copy's proxy the browser is on https://<hostname>
+        # while the app itself is spoken to over plain http.
+        expected = hosted.public_origin if hosted else str(request.base_url).rstrip("/")
+        if origin and origin.rstrip("/") != expected:
             raise HTTPException(
                 403,
                 "This form was sent from another website, so it was refused. If you pressed a "
@@ -1072,6 +1113,12 @@ def create_app(
     @app.post("/characters/add")
     def add_character_now(request: Request, token: str = Form(...)):
         check_form(request, token)
+        if web_login is not None:  # hosted: EVE sends the browser back to /callback
+            for state in [s for s, p in pending_logins.items() if time.time() - p.started > 600]:
+                pending_logins.pop(state, None)
+            pending = web_login.start()
+            pending_logins[pending.state] = pending
+            return RedirectResponse(pending.url, status_code=303)
         if add_character is None:
             raise HTTPException(
                 400, "Adding characters isn't available here; run eve-assistant login instead."
@@ -1093,6 +1140,66 @@ def create_app(
         login.update(state="waiting", message=None, at=store.utc_now())
         threading.Thread(target=run, daemon=True).start()
         return back(CHARACTERS)
+
+    @app.get("/callback")
+    def login_callback(code: str = "", state: str = ""):
+        """Where EVE's login page sends the browser back to, in hosted mode."""
+        pending = pending_logins.pop(state, None) if web_login is not None else None
+        if pending is None or not code:
+            raise HTTPException(
+                400,
+                "This login wasn't started here or has expired. Press Add a character again.",
+            )
+        try:
+            name = web_login.finish(pending, code)
+        except Exception as exc:  # noqa: BLE001  # shown on the page, never swallowed
+            login.update(state="failed", message=f"The login didn't finish: {exc}",
+                         at=store.utc_now())  # fmt: skip
+            return back(CHARACTERS)
+        login.update(state="done", message=f"Added {name}.", at=store.utc_now())
+        return back(CHARACTERS)
+
+    async def _limited_body(request: Request) -> bytes | None:
+        """The request body, or None once it passes INGEST_MAX_BYTES."""
+        if int(request.headers.get("content-length") or 0) > INGEST_MAX_BYTES:
+            return None
+        body = b""
+        async for chunk in request.stream():
+            body += chunk
+            if len(body) > INGEST_MAX_BYTES:
+                return None
+        return body
+
+    @app.post("/ingest/gamelogs")
+    async def ingest_gamelogs(request: Request):
+        """Mining lines from the gaming PC's log sender (hosted mode): a token,
+        at most INGEST_MAX_BYTES a request and INGEST_PER_HOUR requests an hour."""
+        if not ingest_token:
+            return PlainTextResponse("Not found", status_code=404)
+        given = request.headers.get("authorization", "")
+        if not secrets.compare_digest(given.encode(), f"Bearer {ingest_token}".encode()):
+            return JSONResponse({"error": "wrong or missing token"}, status_code=401)
+        now = time.monotonic()
+        while ingest_times and now - ingest_times[0] > 3600:
+            ingest_times.popleft()
+        if len(ingest_times) >= INGEST_PER_HOUR:
+            log.warning("Log sender: over %s requests an hour, refused", INGEST_PER_HOUR)
+            return JSONResponse({"error": "too many requests"}, status_code=429)
+        body = await _limited_body(request)
+        if body is None:
+            log.warning("Log sender: a request over %s bytes, refused", INGEST_MAX_BYTES)
+            return JSONResponse({"error": "too large"}, status_code=413)
+        ingest_times.append(now)
+        try:
+            sent = json.loads(body)
+            conn = db()
+            try:
+                stored = gamelogs.store_sent(conn, sent["file"], sent["listener"], sent["lines"])
+            finally:
+                conn.close()
+        except (ValueError, KeyError, TypeError) as exc:
+            return JSONResponse({"error": f"unreadable: {exc}"}, status_code=400)
+        return JSONResponse({"stored": stored})
 
     @app.post("/refresh", response_class=HTMLResponse)
     def refresh_now(request: Request, token: str = Form(...)):

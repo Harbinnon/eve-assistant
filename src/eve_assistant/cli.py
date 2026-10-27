@@ -18,6 +18,7 @@ from eve_assistant import (
     goals,
     images,
     launcher,
+    logsender,
     market,
     mining,
     ore,
@@ -123,24 +124,13 @@ def _cmd_snapshot(_args) -> int:
     return 1 if report.problems else 0
 
 
-def _cmd_serve(args) -> int:
-    import uvicorn
+CONFIG_PROBLEM = 2  # exit code: a restart won't fix it, so the server stops retrying
+INGEST_VARIABLE = "EVE_ASSISTANT_INGEST_TOKEN"  # the log sender's token, on the server
 
+
+def _app(config, secrets, **extra):
+    """The dashboard, wired to this config and secret store."""
     from eve_assistant.web import create_app
-
-    config = load_config()
-    if config.mode != "local":
-        print("Hosted mode is not built yet: the dashboard has no login, so it only runs locally.")
-        return 2
-    if args.open:
-        if launcher.dashboard_running(args.port):
-            print(f"The dashboard is already running: {launcher.url(args.port)}")
-            launcher.open_in_browser(args.port)
-            return 0
-        if launcher.listening(args.port):
-            print(f"Something else is using port {args.port}. Close it or pass --port.")
-            return 2
-    secrets = default_store()
 
     def do_refresh() -> list[str]:
         return refresh.refresh_all(config, secrets).problems
@@ -160,31 +150,146 @@ def _cmd_serve(args) -> int:
         refresh.snapshot_character(config, secrets, character.character_id)
         return character.name
 
+    settings = {
+        "refresh": do_refresh,
+        "make_plan": do_plan,
+        "snapshot": do_snapshot,
+        "auto_refresh": do_auto_refresh if config.auto_refresh else None,
+        "backups_dir": config.backups_dir,
+        "add_character": do_add_character,
+        "fetch_image": lambda address: images.download(address, user_agent(config.contact)),
+        "missing_scopes": lambda: {
+            c.character_id: c.missing(scopes(config.planets)) for c in auth.list_characters(secrets)
+        },
+        "planets_on": config.planets,
+        "alert_channels": lambda: set(alerts.addresses(secrets)),
+        "scan_markets": lambda force=False: refresh.scan_markets(config, force=force),
+    }
+    return create_app(**{**settings, **extra})
+
+
+def _cmd_serve(args) -> int:
+    import uvicorn
+
+    if args.hosted:
+        return _serve_hosted()
+    config = load_config()
+    if config.mode != "local":
+        print("This config is for hosted mode: run eve-assistant serve --hosted.")
+        return CONFIG_PROBLEM
+    if args.open:
+        if launcher.dashboard_running(args.port):
+            print(f"The dashboard is already running: {launcher.url(args.port)}")
+            launcher.open_in_browser(args.port)
+            return 0
+        if launcher.listening(args.port):
+            print(f"Something else is using port {args.port}. Close it or pass --port.")
+            return 2
+    app = _app(config, default_store())
     print(f"Dashboard: http://127.0.0.1:{args.port}  (Ctrl+C or close this window to stop)")
     if args.open:
         launcher.open_when_listening(args.port)
-    uvicorn.run(
-        create_app(
-            refresh=do_refresh,
-            make_plan=do_plan,
-            snapshot=do_snapshot,
-            auto_refresh=do_auto_refresh if config.auto_refresh else None,
-            backups_dir=config.backups_dir,
-            add_character=do_add_character,
-            fetch_image=lambda address: images.download(address, user_agent(config.contact)),
-            missing_scopes=lambda: {
-                c.character_id: c.missing(scopes(config.planets))
-                for c in auth.list_characters(secrets)
-            },
-            planets_on=config.planets,
-            alert_channels=lambda: set(alerts.addresses(secrets)),
-            scan_markets=lambda force=False: refresh.scan_markets(config, force=force),
-        ),
-        host="127.0.0.1",
-        port=args.port,
-        log_level="warning",
-    )
+    uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")
     return 0
+
+
+def _hosted_setup():
+    """The hosted copy's config and secret store, or exit CONFIG_PROBLEM with a reason."""
+    config = load_config()
+    if config.hosted is None:
+        raise ConfigError(
+            'serve --hosted needs mode = "hosted" under [app] and a [hosted] section.'
+        )
+    secrets = default_store()
+    secrets.load()  # a wrong key stops here, not on the first refresh
+    return config, secrets
+
+
+def _serve_hosted() -> int:
+    """The hosted copy (roadmap 7.2): behind the home lab's proxy and sign-in.
+    Exits CONFIG_PROBLEM, with one line saying why, for anything a restart
+    won't fix; a crash exits 1."""
+    import os
+    import socket
+    import types
+
+    import uvicorn
+
+    try:
+        config, secrets = _hosted_setup()
+    except (ConfigError, SecretStoreError) as exc:
+        print(f"Configuration problem: {exc}", file=sys.stderr)
+        return CONFIG_PROBLEM
+    hosted = config.hosted
+    try:
+        with socket.create_server((hosted.listen, hosted.port)):
+            pass
+    except OSError as exc:
+        print(f"Configuration problem: can't listen on {hosted.listen}:{hosted.port} "
+              f"({exc.strerror}).", file=sys.stderr)  # fmt: skip
+        return CONFIG_PROBLEM
+
+    def finish(pending, code: str) -> str:
+        with auth.http_client(config) as client:
+            character = auth.finish_login(config, secrets, client, pending, code,
+                                          store_lock=refresh.ESI_LOCK)  # fmt: skip
+        refresh.snapshot_character(config, secrets, character.character_id)
+        return character.name
+
+    app = _app(
+        config,
+        secrets,
+        add_character=None,
+        hosted=hosted,
+        web_login=types.SimpleNamespace(start=lambda: auth.start_login(config), finish=finish),
+        ingest_token=os.environ.get(INGEST_VARIABLE) or None,
+    )
+    print(f"Hosted dashboard on {hosted.listen}:{hosted.port} for {hosted.public_origin}",
+          flush=True)  # fmt: skip
+    uvicorn.run(app, host=hosted.listen, port=hosted.port, proxy_headers=False,
+                log_level="warning")  # fmt: skip
+    return 0
+
+
+def _cmd_send_logs(args, ask=None) -> int:
+    """Send new mining lines from this PC's game logs to the hosted copy."""
+    import time
+
+    secrets = default_store()
+    if args.setup:
+        import getpass
+
+        ask = ask or getpass.getpass
+        answer = ask("The hosted copy's log token (Enter keeps it, - removes it): ").strip()
+        if answer:
+            logsender.save_token(secrets, None if answer == "-" else answer)
+            print("Token removed." if answer == "-" else "Token saved.")
+        return 0
+    config = load_config()
+    problem = None
+    if not config.send_logs_url:
+        problem = ("Set [send_logs] url in config/local.toml to the hosted copy's address on "
+                   "your home network, e.g. http://192.168.1.21:8700.")  # fmt: skip
+    elif config.gamelogs_dir is None:
+        problem = "Set [logs] gamelogs_dir in config/local.toml to EVE's Gamelogs folder."
+    elif not logsender.token(secrets):
+        problem = "No token yet. Run: eve-assistant send-logs --setup"
+    if problem:
+        print(problem)
+        return 1
+    with store.connect() as db:
+        owners = {r[0] for r in db.execute("SELECT name FROM characters")}
+    while True:
+        with auth.http_client(config) as http:
+            report = logsender.send(http, config.send_logs_url, logsender.token(secrets),
+                                    config.gamelogs_dir, owners)  # fmt: skip
+        print(f"Sent {report.lines:,} mining lines from {report.files} logs "
+              f"({report.stored:,} new cycles).")  # fmt: skip
+        for line in report.problems:
+            print(f"  {line}")
+        if not args.watch:
+            return 1 if report.problems else 0
+        time.sleep(args.watch * 60)
 
 
 def _cmd_shortcut(args) -> int:
@@ -1006,7 +1111,19 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument(
         "--open", action="store_true", help="open it in the browser (only that, if it's running)"
     )
+    serve.add_argument(
+        "--hosted", action="store_true", help="run as the hosted copy, behind a proxy's sign-in"
+    )
     serve.set_defaults(func=_cmd_serve)
+
+    send_logs = commands.add_parser(
+        "send-logs", help="send this PC's new mining lines to the hosted copy"
+    )
+    send_logs.add_argument("--setup", action="store_true", help="enter the hosted copy's token")
+    send_logs.add_argument(
+        "--watch", type=float, metavar="MINUTES", help="keep sending every MINUTES until stopped"
+    )
+    send_logs.set_defaults(func=_cmd_send_logs)
     shortcut = commands.add_parser(
         "shortcut", help="put a shortcut that starts the dashboard on the desktop (Windows)"
     )
