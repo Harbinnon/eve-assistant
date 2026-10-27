@@ -21,7 +21,8 @@ from pathlib import Path
 from eve_assistant.store import utc_now
 
 LINE = re.compile(r"^\[ (\d{4})\.(\d\d)\.(\d\d) (\d\d):(\d\d):(\d\d) \] \(mining\) (.*)$")
-TAG = re.compile(r"<[^>]*>")
+TAG = re.compile(r"<[^<>]*>")  # a tag never holds "<", so each match stays short
+MAX_LINE = 2000  # characters; a real mining line is a few hundred at most
 MINED = re.compile(
     r"^You mined ([\d,.]+) units of (.+?)(?: with a lost residue of ([\d,.]+) units)?$"
 )
@@ -72,7 +73,10 @@ def listener(lines: list[str]) -> str | None:
 
 
 def parse_line(line: str, line_number: int) -> list[Cycle]:
-    """Mining facts in one log line; empty for any other line."""
+    """Mining facts in one log line; empty for any other line (and for an
+    over-long one: lines can arrive from the log sender)."""
+    if len(line) > MAX_LINE:
+        return []
     match = LINE.match(line.rstrip("\r\n"))
     if not match:
         return []

@@ -10,7 +10,17 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from eve_assistant import auth, cli, config, logsender, secrets_store, snapshots, store, web
+from eve_assistant import (
+    auth,
+    cli,
+    config,
+    gamelogs,
+    logsender,
+    secrets_store,
+    snapshots,
+    store,
+    web,
+)
 from eve_assistant.web import create_app
 
 # Made-up addresses: the real ones live only in the server's config.
@@ -140,6 +150,18 @@ def test_the_log_route_needs_its_token_and_keeps_mining_lines_only(hosted_app):
     rows = conn.execute("SELECT units, line_number FROM mining_cycles").fetchall()
     conn.close()
     assert [tuple(r) for r in rows] == [(1000, 12)]
+
+
+def test_crafted_lines_are_quick_and_errors_say_nothing_inside(hosted_app):
+    started = time.monotonic()
+    crafted = "[ 2026.10.19 03:00:00 ] (mining) " + "<" * 50_000
+    assert gamelogs.parse_line(crafted, 1) == []  # too long: refused at once
+    assert gamelogs.parse_line("[ 2026.10.19 03:00:00 ] (mining) " + "<" * 1900, 1) == []
+    assert time.monotonic() - started < 1
+    assert gamelogs.parse_line(MINED.replace("Veldspar", "<b>Veldspar</b>"), 1)[0].ore == "Veldspar"
+    with _client(hosted_app.app, "10.9.8.50") as pc:
+        bad = pc.post("/ingest/gamelogs", content=b"{not json", headers={"Authorization": TOKEN})
+    assert bad.json() == {"error": "unreadable request"}
 
 
 def test_the_log_route_is_rate_limited(hosted_app, monkeypatch):

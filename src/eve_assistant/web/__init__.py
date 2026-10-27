@@ -1198,7 +1198,8 @@ def create_app(
             finally:
                 conn.close()
         except (ValueError, KeyError, TypeError) as exc:
-            return JSONResponse({"error": f"unreadable: {exc}"}, status_code=400)
+            log.warning("Log sender: an unreadable request, refused (%s)", exc)
+            return JSONResponse({"error": "unreadable request"}, status_code=400)
         return JSONResponse({"stored": stored})
 
     @app.post("/refresh", response_class=HTMLResponse)
