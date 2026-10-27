@@ -13,7 +13,7 @@ requires-python = ">=3.13"
 # Approved in docs/decisions/0001-libraries.md. Pin exactly; transitive
 # dependencies are pinned in constraints.txt.
 dependencies = [
-    "fastapi==0.142.2",
+    "fastapi==0.143.0",
     "uvicorn==0.54.0",
     "jinja2==3.1.6",
     "python-multipart==0.0.32",
