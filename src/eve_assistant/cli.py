@@ -1,6 +1,7 @@
 """Command line: eve-assistant <command>."""
 
 import argparse
+import errno
 import sys
 from pathlib import Path
 
@@ -125,6 +126,8 @@ def _cmd_snapshot(_args) -> int:
 
 
 CONFIG_PROBLEM = 2  # exit code: a restart won't fix it, so the server stops retrying
+NOT_YET = 1  # exit code: worth retrying (a crash exits 1 too)
+LISTEN_WAIT = 60.0  # seconds to wait at boot for the server's own address to appear
 INGEST_VARIABLE = "EVE_ASSISTANT_INGEST_TOKEN"  # the log sender's token, on the server
 
 
@@ -208,12 +211,36 @@ def _hosted_setup():
     return config, secrets
 
 
+def _wait_to_listen(host: str, port: int, wait: float = LISTEN_WAIT, sleep=None) -> OSError | None:
+    """Whether host:port can be listened on: None if so, else the error. At boot
+    the server's own address can be missing for a few seconds while the network
+    starts (EADDRNOTAVAIL); that is waited out, up to `wait` seconds. Anything
+    else (the port in use, a bad address) is returned at once."""
+    import socket
+    import time
+
+    sleep = sleep or time.sleep
+    deadline = time.monotonic() + wait
+    said = False
+    while True:
+        try:
+            socket.create_server((host, port)).close()
+            return None
+        except OSError as exc:
+            if exc.errno != errno.EADDRNOTAVAIL or time.monotonic() >= deadline:
+                return exc
+            if not said:
+                print(f"Waiting for {host} to come up (the network is still starting).",
+                      file=sys.stderr, flush=True)  # fmt: skip
+                said = True
+            sleep(2)
+
+
 def _serve_hosted() -> int:
     """The hosted copy (roadmap 7.2): behind the home lab's proxy and sign-in.
     Exits CONFIG_PROBLEM, with one line saying why, for anything a restart
     won't fix; a crash exits 1."""
     import os
-    import socket
     import types
 
     import uvicorn
@@ -224,11 +251,15 @@ def _serve_hosted() -> int:
         print(f"Configuration problem: {exc}", file=sys.stderr)
         return CONFIG_PROBLEM
     hosted = config.hosted
-    try:
-        socket.create_server((hosted.listen, hosted.port)).close()  # free to listen on?
-    except OSError as exc:
+    problem = _wait_to_listen(hosted.listen, hosted.port)
+    if problem is not None:
+        if problem.errno == errno.EADDRNOTAVAIL:
+            waited = f"{LISTEN_WAIT:.0f} s"
+            print(f"{hosted.listen} still isn't one of this server's addresses after {waited}; "
+                  "exiting to be started again.", file=sys.stderr)  # fmt: skip
+            return NOT_YET
         print(f"Configuration problem: can't listen on {hosted.listen}:{hosted.port} "
-              f"({exc.strerror}).", file=sys.stderr)  # fmt: skip
+              f"({problem.strerror}).", file=sys.stderr)  # fmt: skip
         return CONFIG_PROBLEM
 
     def finish(pending, code: str) -> str:

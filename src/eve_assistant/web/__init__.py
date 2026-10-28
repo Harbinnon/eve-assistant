@@ -476,7 +476,7 @@ def create_app(
     )
     app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
     images_dir = Path(db_path).parent / "images"
-    hosts = [*allowed_hosts, *((hosted.hostname, hosted.listen) if hosted else ())]
+    hosts = [*allowed_hosts, *((hosted.hostname, hosted.ingest_host) if hosted else ())]
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=hosts)
 
     @app.middleware("http")

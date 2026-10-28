@@ -476,5 +476,7 @@ def send_alerts(config: Config, secrets: SecretStore, db, problems: list[str], n
     if not alerts.addresses(secrets):
         return []
     found = alerts.game_alerts(db, now) + alerts.health_alerts(problems, now)
-    with auth.http_client(config) as http:
-        return alerts.send(db, secrets, http, found)[1]
+    # Links point where the owner can open them: the hosted copy's public address.
+    dashboard = config.hosted.public_origin if config.hosted else alerts.DEFAULT_DASHBOARD
+    with auth.http_client(config) as http:  # carries the descriptive User-Agent
+        return alerts.send(db, secrets, http, found, dashboard)[1]

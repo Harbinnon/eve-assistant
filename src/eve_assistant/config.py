@@ -33,16 +33,22 @@ class Hosted:
     """Where a hosted copy listens and who may reach it (roadmap 7.2)."""
 
     hostname: str  # the public name, e.g. eve.example.com
-    listen: str  # the server's own address to listen on
+    listen: str  # the address to listen on: the server's own, or 0.0.0.0 for all of them
     proxy: str  # the reverse proxy's address: the only way in to the dashboard
     home_network: str  # e.g. 192.168.1.0/24: where the log sender may connect from
     owner_discord_id: str  # the sign-in's X-Auth-Id that this copy belongs to
     port: int = 8700
     dev_identity: str | None = None  # stands in for the sign-in; only on 127.0.0.1
+    lan_address: str | None = None  # the address the log sender uses (needed with 0.0.0.0)
 
     @property
     def public_origin(self) -> str:
         return f"https://{self.hostname}"
+
+    @property
+    def ingest_host(self) -> str:
+        """The host name the log sender's requests carry: the server's own address."""
+        return self.lan_address or self.listen
 
 
 @dataclass(frozen=True)
@@ -138,7 +144,13 @@ def _hosted(section: dict, path: Path) -> Hosted:
         owner_discord_id=str(section["owner_discord_id"]).strip(),
         port=int(section.get("port", 8700)),
         dev_identity=section.get("dev_identity"),
+        lan_address=_address(section, "lan_address", path) if "lan_address" in section else None,
     )
+    if ipaddress.ip_address(hosted.listen).is_unspecified and hosted.lan_address is None:
+        raise ConfigError(
+            f"[hosted] lan_address is missing in {path}: with listen = {hosted.listen}, the app "
+            "needs the server's own address to accept the log sender's requests."
+        )
     if hosted.dev_identity and not ipaddress.ip_address(hosted.listen).is_loopback:
         raise ConfigError(
             f"[hosted] dev_identity in {path} only works when listen is 127.0.0.1: it stands in "

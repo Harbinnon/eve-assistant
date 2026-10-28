@@ -29,7 +29,8 @@ mode = "local"
 # https://<hostname>/callback, then run: eve-assistant serve --hosted
 # [hosted]
 # hostname = "<eve.example.com>"
-# listen = "<the server's own address>"
+# listen = "0.0.0.0"            # all of the server's addresses (or just its own)
+# lan_address = "<the server's own address>"   # what the log sender connects to
 # proxy = "<the reverse proxy's address>"
 # home_network = "<e.g. 192.168.1.0/24>"
 # owner_discord_id = "<your Discord user ID>"
