@@ -636,6 +636,11 @@ else:
   home network too, so nothing from the internet can reach it. It needs a
   token and takes at most 1 MB a request and 120 requests an hour.
 - A refusal is a quick 403, so the lab's monitor can tell the app is up.
+- It may listen on all the server's addresses (`listen = "0.0.0.0"`, with
+  `lan_address` naming the one the log sender uses): who gets in is decided
+  by where a connection comes from, not where it arrives. At boot, if the
+  address it should listen on doesn't exist yet (the network still starting),
+  it waits up to a minute, then exits 1 to be restarted, never 2.
 - Forms are checked against the public `https://` origin.
 
 The addresses, hostname and Discord ID are in the server's config file

@@ -1,8 +1,10 @@
 """The hosted copy (roadmap 7.2): its config, the guard in front of the
 dashboard, login through /callback, the log route and sender, and serve --hosted."""
 
+import errno
 import json
 import re
+import socket
 import time
 from types import SimpleNamespace
 
@@ -11,11 +13,13 @@ import pytest
 from fastapi.testclient import TestClient
 
 from eve_assistant import (
+    alerts,
     auth,
     cli,
     config,
     gamelogs,
     logsender,
+    refresh,
     secrets_store,
     snapshots,
     store,
@@ -196,6 +200,77 @@ def test_the_sender_sends_only_new_mining_lines_of_your_characters(tmp_path):
     assert (first.files, first.lines, first.stored) == (1, 1, 1)
     assert posted == [{"file": "20261019_030000.txt", "listener": "Miner", "lines": [[6, MINED]]}]
     assert (second.files, second.lines) == (0, 0)  # nothing new
+
+
+def test_listening_on_every_address_needs_the_servers_own(tmp_path):
+    everywhere = HOSTED_TOML.replace(f'listen = "{LISTEN}"', 'listen = "0.0.0.0"')
+    with pytest.raises(config.ConfigError, match="lan_address"):
+        _hosted(tmp_path, everywhere)
+    hosted = _hosted(tmp_path, everywhere + f'lan_address = "{LISTEN}"\n').hosted
+    assert (hosted.listen, hosted.ingest_host) == ("0.0.0.0", LISTEN)  # noqa: S104  # the point
+    with pytest.raises(config.ConfigError, match="dev_identity"):
+        _hosted(tmp_path, everywhere + f'lan_address = "{LISTEN}"\ndev_identity = "1"\n')
+
+
+def _socket_errors(monkeypatch, errors):
+    """socket.create_server raising each of `errors` in turn, then working."""
+    calls = []
+
+    def create_server(address):
+        calls.append(address)
+        if errors:
+            raise errors.pop(0)
+        return SimpleNamespace(close=lambda: None)
+
+    monkeypatch.setattr(socket, "create_server", create_server)
+    return calls
+
+
+def test_a_missing_address_at_boot_is_waited_out(monkeypatch):
+    missing = OSError(errno.EADDRNOTAVAIL, "Cannot assign requested address")
+    calls = _socket_errors(monkeypatch, [missing, missing])
+    slept = []
+    assert cli._wait_to_listen(LISTEN, 8700, wait=60, sleep=slept.append) is None
+    assert len(calls) == 3
+    assert slept == [2, 2]
+
+
+def test_a_port_in_use_is_reported_at_once(monkeypatch):
+    in_use = OSError(errno.EADDRINUSE, "Address already in use")
+    _socket_errors(monkeypatch, [in_use])
+    slept = []
+    assert cli._wait_to_listen(LISTEN, 8700, wait=60, sleep=slept.append) is in_use
+    assert slept == []
+
+
+def test_serve_hosted_exits_1_if_the_address_never_comes_and_2_if_taken(
+    tmp_path, monkeypatch, capsys
+):
+    good = _hosted(tmp_path)
+    monkeypatch.setattr(cli, "load_config", lambda: good)
+    monkeypatch.setattr(cli, "default_store", lambda: secrets_store.MemoryStore())
+    never = OSError(errno.EADDRNOTAVAIL, "Cannot assign requested address")
+    monkeypatch.setattr(cli, "_wait_to_listen", lambda *_a: never)
+    assert cli.main(["serve", "--hosted"]) == cli.NOT_YET == 1
+    assert "exiting to be started again" in capsys.readouterr().err
+    taken = OSError(errno.EADDRINUSE, "Address already in use")
+    monkeypatch.setattr(cli, "_wait_to_listen", lambda *_a: taken)
+    assert cli.main(["serve", "--hosted"]) == cli.CONFIG_PROBLEM == 2
+    assert "Address already in use" in capsys.readouterr().err
+
+
+def test_hosted_alerts_link_to_the_public_address(tmp_path, monkeypatch):
+    sent = []
+    monkeypatch.setattr(alerts, "game_alerts", lambda *_a: [alerts.Alert("job:1", "discord", "x")])
+    monkeypatch.setattr(
+        alerts, "addresses", lambda _s: {"discord": "https://discord.com/api/webhooks/1/a"}
+    )
+    monkeypatch.setattr(alerts, "send", lambda db, s, http, found, dashboard: sent.append(
+        (http.headers["User-Agent"], dashboard)) or (1, []))  # fmt: skip
+    refresh.send_alerts(_hosted(tmp_path), None, None, [], None)
+    agent, dashboard = sent[0]
+    assert dashboard == "https://eve.example.com"
+    assert agent.startswith("eve-assistant/")  # Discord refuses default client User-Agents
 
 
 def test_serve_hosted_exits_2_for_a_config_problem(tmp_path, monkeypatch, capsys):
