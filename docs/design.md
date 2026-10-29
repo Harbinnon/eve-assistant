@@ -653,7 +653,14 @@ The addresses, hostname and Discord ID are in the server's config file
 the browser back to its `/callback`. Login tokens are kept in a file
 encrypted with a key from the server's env file (section 9, Secrets).
 `send-logs` on the gaming PC sends only the owner's characters' mining
-lines. The daily backup leaves `latest.json` beside it (when it finished,
+lines. It runs unattended (a scheduled task every 15 minutes): a log that
+hasn't changed isn't read, and with nothing new nothing touches the network.
+Before sending the token it asks the server to prove it knows it (an HMAC of
+a fresh random challenge, `/ingest/hello`), so on another network that uses
+the same address nothing is sent to whatever answers. Away from home it gives
+up after a 3-second connection timeout, and the first failure ends the run.
+Logs of a character this PC doesn't know are skipped and named. Each run
+that did something adds a line to `var/send-logs.log`. The daily backup leaves `latest.json` beside it (when it finished,
 its SHA-256 and row counts), so the lab's nightly copy can refuse a stale
 or broken backup and a restore can be checked. Anything a restart won't
 fix (bad config, a missing key) exits with code 2.

@@ -6,6 +6,7 @@ import json
 import re
 import socket
 import time
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from urllib.parse import urlsplit
 
@@ -19,6 +20,7 @@ from eve_assistant import (
     cli,
     config,
     gamelogs,
+    hosted,
     logsender,
     refresh,
     secrets_store,
@@ -254,27 +256,127 @@ def test_the_log_route_is_rate_limited(hosted_app, monkeypatch):
     assert codes == [200, 200, 429]
 
 
-def test_the_sender_sends_only_new_mining_lines_of_your_characters(tmp_path):
+HEADER = ["-" * 20, "  Gamelog", "  Listener: Miner", "  Session Started: x", "-" * 20]
+SENDER_URL = "http://10.9.8.21:8700"
+
+
+def _logs(tmp_path):
     logs = tmp_path / "Gamelogs"
     logs.mkdir()
-    header = ["-" * 20, "  Gamelog", "  Listener: Miner", "  Session Started: x", "-" * 20]
-    (logs / "20261019_030000.txt").write_text("\n".join([*header, MINED, COMBAT]), "utf-8")
-    other = [*header[:2], "  Listener: Someone Else", MINED]
-    (logs / "20261019_040000.txt").write_text("\n".join(other), "utf-8")
-    posted = []
+    (logs / "20261019_030000.txt").write_text("\n".join([*HEADER, MINED, COMBAT]) + "\n", "utf-8")
+    other = [*HEADER[:2], "  Listener: Someone Else", MINED]
+    (logs / "20261019_040000.txt").write_text("\n".join(other) + "\n", "utf-8")
+    (logs / "20261019_050000.txt").write_text("no header at all\n", "utf-8")
+    return logs
 
-    def handler(request):
-        posted.append(json.loads(request.content))
-        assert request.headers["Authorization"] == TOKEN
+
+class FakeServer:
+    """The hosted copy's /ingest/ routes: it knows `knows` as the token."""
+
+    def __init__(self, knows="tok"):
+        self.knows, self.requests, self.posted = knows, [], []
+
+    def __call__(self, request):
+        self.requests.append(request)
+        if request.url.path == "/ingest/hello":
+            challenge = request.url.params["nonce"]
+            return httpx.Response(200, json={"proof": hosted.proof(self.knows, challenge)})
+        self.posted.append(json.loads(request.content))
         return httpx.Response(200, json={"stored": 1})
 
-    sent = tmp_path / "sent.json"
-    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
-        first = logsender.send(http, "http://10.9.8.21:8700", "tok", logs, {"Miner"}, sent)
-        second = logsender.send(http, "http://10.9.8.21:8700", "tok", logs, {"Miner"}, sent)
-    assert (first.files, first.lines, first.stored) == (1, 1, 1)
-    assert posted == [{"file": "20261019_030000.txt", "listener": "Miner", "lines": [[6, MINED]]}]
-    assert (second.files, second.lines) == (0, 0)  # nothing new
+
+def _send(server, logs, sent):
+    with httpx.Client(transport=httpx.MockTransport(server)) as http:
+        return logsender.send(http, SENDER_URL, "tok", logs, {"Miner"}, sent)
+
+
+def test_the_sender_sends_only_new_mining_lines_of_your_characters(tmp_path):
+    logs, sent, server = _logs(tmp_path), tmp_path / "sent.json", FakeServer()
+    first = _send(server, logs, sent)
+    assert (first.files, first.lines, first.stored, first.problems) == (1, 1, 1, [])
+    assert server.posted == [{"file": "20261019_030000.txt", "listener": "Miner",
+                              "lines": [[6, MINED]]}]  # fmt: skip
+    assert "Authorization" not in server.requests[0].headers  # the challenge carries no token
+    assert first.warnings == [
+        "Skipped 1 log of Someone Else, who isn't a character on this PC: log them in here "
+        "too (eve-assistant login) to send their mining."
+    ]
+    server.requests.clear()
+    second = _send(server, logs, sent)
+    assert (second.files, second.lines) == (0, 0)
+    # Unchanged logs aren't sent again, and with nothing new nothing is asked.
+    assert server.requests == []
+    with (logs / "20261019_030000.txt").open("a", encoding="utf-8") as log:
+        log.write(MINED.replace("03:00:00", "03:01:00") + "\n")
+    third = _send(server, logs, sent)
+    assert (third.files, third.lines) == (1, 1)
+    assert server.posted[-1]["lines"] == [[8, MINED.replace("03:00:00", "03:01:00")]]
+
+
+def test_a_device_that_cannot_prove_the_token_gets_nothing(tmp_path):
+    logs, sent, impostor = _logs(tmp_path), tmp_path / "sent.json", FakeServer(knows="other")
+    report = _send(impostor, logs, sent)
+    assert report.lines == 0
+    assert "couldn't prove it's your hosted copy" in report.problems[0]
+    assert len(impostor.requests) == 1  # the challenge only
+    assert all("Authorization" not in r.headers for r in impostor.requests)
+    assert _send(FakeServer(), logs, sent).lines == 1  # nothing was marked as sent
+
+
+def test_an_older_server_or_a_stranger_gets_nothing(tmp_path):
+    logs, sent = _logs(tmp_path), tmp_path / "sent.json"
+
+    def older(request):  # v0.11.3: no /ingest/hello
+        return httpx.Response(404, text="Not found")
+
+    report = _send(older, logs, sent)
+    assert "needs v0.11.4 or later" in report.problems[0]
+    assert not report.unreachable
+
+    def stranger(request):  # a router's web page, say
+        return httpx.Response(200, text="<html>Welcome</html>")
+
+    assert "couldn't prove" in _send(stranger, logs, sent).problems[0]
+    assert _send(FakeServer(), logs, sent).lines == 1  # still nothing was marked as sent
+
+
+def test_away_from_home_it_gives_up_at_once(tmp_path):
+    logs, sent, tries = _logs(tmp_path), tmp_path / "sent.json", []
+
+    def unreachable(request):
+        tries.append(request)
+        raise httpx.ConnectTimeout("timed out", request=request)
+
+    report = _send(unreachable, logs, sent)
+    assert report.unreachable
+    assert "didn't answer" in report.problems[0]
+    assert len(tries) == 1  # one try, not one a log
+    assert logsender.TIMEOUT.connect == 3.0
+    assert _send(FakeServer(), logs, sent).lines == 1  # caught up at home
+
+
+def test_only_runs_that_did_something_leave_a_line_in_the_log(tmp_path):
+    log = tmp_path / "send-logs.log"
+    logsender.note(logsender.SendReport(), log)
+    assert not log.exists()  # a quiet run leaves no trace
+    busy = logsender.SendReport(files=1, lines=3, stored=3)
+    logsender.note(busy, log, now=datetime(2026, 10, 28, 20, 0, tzinfo=UTC))
+    assert log.read_text(encoding="utf-8") == (
+        "2026-10-28T20:00:00+00:00 Sent 3 mining lines from 1 logs (3 new cycles).\n"
+    )
+
+
+def test_the_server_answers_the_challenge_and_counts_it(hosted_app, monkeypatch):
+    monkeypatch.setattr(web, "INGEST_PER_HOUR", 2)
+    challenge = "ab" * 16
+    with _client(hosted_app.app, "10.9.8.50") as pc:
+        answer = pc.get(f"/ingest/hello?nonce={challenge}")
+        assert answer.json() == {"proof": hosted.proof("tok", challenge)}
+        assert pc.get("/ingest/hello?nonce=not-hex").status_code == 400
+        assert pc.get(f"/ingest/hello?nonce={challenge}").status_code == 200
+        assert pc.get(f"/ingest/hello?nonce={challenge}").status_code == 429  # same hourly limit
+    with _client(hosted_app.app, PROXY) as proxy:  # never through the proxy
+        assert proxy.get(f"/ingest/hello?nonce={challenge}").status_code == 403
 
 
 def test_listening_on_every_address_needs_the_servers_own(tmp_path):
