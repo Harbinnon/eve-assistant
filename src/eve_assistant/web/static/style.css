@@ -333,7 +333,7 @@ form.stack label {
   text-transform: uppercase;
   color: var(--muted);
 }
-input, select {
+input, select, textarea {
   font: 15px/1.4 var(--sans);
   letter-spacing: normal;
   text-transform: none;
@@ -343,7 +343,10 @@ input, select {
   border-radius: 2px;
   padding: 7px 10px;
 }
-input:hover, select:hover { border-color: var(--muted); }
+input:hover, select:hover, textarea:hover { border-color: var(--muted); }
+/* Pasted text (fits, jump bridges): the whole row, in a fixed-width face. */
+textarea { width: 100%; box-sizing: border-box; resize: vertical; font-family: var(--mono); font-size: 13px; }
+form.stack label:has(textarea) { flex: 1 1 100%; }
 input[type="checkbox"] { accent-color: var(--action); width: 16px; height: 16px; padding: 0; }
 button {
   font: 600 13px/1.2 var(--display);
