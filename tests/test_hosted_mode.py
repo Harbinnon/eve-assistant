@@ -364,6 +364,10 @@ def test_only_runs_that_did_something_leave_a_line_in_the_log(tmp_path):
     assert log.read_text(encoding="utf-8") == (
         "2026-10-28T20:00:00+00:00 Sent 3 mining lines from 1 logs (3 new cycles).\n"
     )
+    log.write_text("x" * (logsender.LOG_MAX_BYTES + 1), encoding="utf-8")  # grown large
+    logsender.note(busy, log)
+    assert log.with_name("send-logs.log.1").stat().st_size == logsender.LOG_MAX_BYTES + 1
+    assert log.read_text(encoding="utf-8").count("\n") == 1  # a fresh one, one line
 
 
 def test_the_server_answers_the_challenge_and_counts_it(hosted_app, monkeypatch):

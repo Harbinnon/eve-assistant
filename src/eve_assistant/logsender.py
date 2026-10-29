@@ -43,7 +43,7 @@ from eve_assistant.secrets_store import SecretStore
 STORE_ENTRY = "send_logs"
 SENT_FILE = DATA_DIR / "sent-gamelogs.json"
 LOG_FILE = DATA_DIR / "send-logs.log"
-LOG_KEEP = 500  # lines of send-logs.log kept
+LOG_MAX_BYTES = 100_000  # then send-logs.log becomes send-logs.log.1 and a new one starts
 BATCH = 2000  # lines a request, far under the hosted copy's 1 MB limit
 ROUTE = "/ingest/gamelogs"
 HELLO = "/ingest/hello"
@@ -245,11 +245,14 @@ def _save_sent(sent_path: Path, folder: Path, sent: dict) -> None:
 
 def note(report: SendReport, path: Path = LOG_FILE, now: datetime | None = None) -> None:
     """Add a line to send-logs.log for a run that sent, skipped or hit something;
-    quiet runs leave no trace. Keeps the last LOG_KEEP lines."""
+    quiet runs leave no trace. Only ever appended to (never read back); past
+    LOG_MAX_BYTES it's moved to send-logs.log.1, replacing the one before."""
     if not (report.lines or report.problems or report.skipped):
         return
     stamp = (now or datetime.now(UTC)).isoformat(timespec="seconds")
     entry = " ".join([report.summary, *report.problems, *report.warnings])
-    old = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join([*old, f"{stamp} {entry}"][-LOG_KEEP:]) + "\n", encoding="utf-8")
+    if path.exists() and path.stat().st_size > LOG_MAX_BYTES:
+        path.replace(path.with_name(path.name + ".1"))
+    with path.open("a", encoding="utf-8") as log:
+        log.write(f"{stamp} {entry}\n")
