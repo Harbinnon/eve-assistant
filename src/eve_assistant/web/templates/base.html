@@ -13,7 +13,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>{% block title %}EVE Assistant{% endblock %}</title>
   {% if reload %}<meta http-equiv="refresh" content="{{ reload }}; url={{ here }}">{% endif %}
-  <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
+  {# A path only: behind the hosted copy's TLS proxy the app sees plain http, so a
+     full URL would point the browser at http:// and be blocked. #}
+  <link rel="stylesheet" href="{{ url_for('static', path='style.css').path }}">
 </head>
 <body>
   <header class="bar">

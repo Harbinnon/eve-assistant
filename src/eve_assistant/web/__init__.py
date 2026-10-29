@@ -1101,7 +1101,7 @@ def create_app(
             timers=timers,
             planets_on=planets_on,
             login=login if login["state"] == "waiting" or recent else None,
-            can_add=add_character is not None,
+            can_add=add_character is not None or web_login is not None,  # local or hosted
             # While EVE's login page is open, check back every few seconds.
             **({"reload": LOGIN_RELOAD_SECONDS} if login["state"] == "waiting" else {}),
         )

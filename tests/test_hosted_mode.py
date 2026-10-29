@@ -98,6 +98,31 @@ def _client(app, address):
     return TestClient(app, base_url="http://eve.example.com", client=(address, 50000))
 
 
+PAGES = ("/today", "/characters", "/goals", "/skills", "/trade", "/history", "/settings")
+
+
+def test_no_page_points_the_browser_at_plain_http(hosted_app):
+    """Behind the TLS proxy the app is spoken to over plain http; any full URL it
+    builds would say http:// and be blocked on the https page (v0.11.1's
+    unstyled pages)."""
+    with _client(hosted_app.app, PROXY) as proxy:
+        for path in PAGES:
+            page = proxy.get(path, headers={"X-Auth-Id": OWNER})
+            assert page.status_code == 200, path
+            links = re.findall(r'(?:href|src|action)="([^"]*)"', page.text)
+            assert not [link for link in links if link.startswith("http://")], path
+            assert 'href="/static/style.css"' in page.text, path
+
+
+def test_hosted_characters_offers_add_a_character(hosted_app):
+    """The hosted copy has no local login (add_character is None) but logs in
+    through /callback, so the button must still be there (v0.11.1 hid it)."""
+    with _client(hosted_app.app, PROXY) as proxy:
+        page = proxy.get("/characters", headers={"X-Auth-Id": OWNER}).text
+    assert 'action="/characters/add"' in page
+    assert "Add a character</button>" in page
+
+
 def test_a_refused_address_gets_a_quick_403(hosted_app):
     with _client(hosted_app.app, "10.9.8.160") as monitor:  # on the home network
         assert monitor.get("/characters").status_code == 403
