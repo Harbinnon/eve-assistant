@@ -312,6 +312,10 @@ def describe(code: str, detail: dict | None = None) -> str:
         ),
         "lp_value": lambda: _lp_value(d),
         "corp_tax": lambda: _corp_tax(d),
+        "fit_unpriced": lambda: (
+            "No market price yet for " + ", ".join(d.get("items", [])) + ", so the target "
+            "leaves them out. Prices are read with the next refresh."
+        ),
         "buyback": lambda: (
             f"Your corporation's buyback in {d.get('system', '?')} pays {d.get('share', 0):.0%} "
             f"of Jita's best buy ({numbers.isk(d.get('jita_buy', 0))} ISK a unit), by contract; "

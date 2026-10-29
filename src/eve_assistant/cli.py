@@ -15,6 +15,7 @@ from eve_assistant import (
     couriers,
     detection,
     explain,
+    fittings,
     gamelogs,
     goals,
     images,
@@ -384,8 +385,12 @@ def _cmd_goal_add(args) -> int:
     with store.connect() as db:
         character_id = goals.resolve_character(db, args.character) if args.character else None
         if args.kind == "ship":
+            fit_text = args.fit or ""
+            if fit_text and Path(fit_text).is_file():
+                fit_text = Path(fit_text).read_text(encoding="utf-8")
+            chosen = goals.fit_from_text(db, fit_text, character_id)
             goal_id = goals.add_goal(
-                db, "fly_ship", character_id, type_id=skills.find_type(db, args.target)
+                db, "fly_ship", character_id, type_id=skills.find_type(db, args.target), fit=chosen
             )
         elif args.kind == "skill":
             goal_id = goals.add_goal(
@@ -414,7 +419,12 @@ def _cmd_goals(_args) -> int:
             print(f"[{goal.goal_id}] {goal.label}{who}")
             if status.requirement is not None:
                 _print_requirement(status.requirement, is_alpha=bool(status.is_alpha))
-            if status.price is not None:
+            if status.fit_cost is not None:
+                cost = status.fit_cost
+                yours = f"; already yours: {', '.join(cost.owned)}" if cost.owned else ""
+                print(f'  Fit "{cost.fit.name}" (your name for it): {cost.total:,.0f} ISK to buy '
+                      f"(CCP averages){yours}")  # fmt: skip
+            elif status.price is not None:
                 print(f"  Rough price: {status.price:,.0f} ISK (CCP average, not a hub quote)")
             if status.isk_needed is not None:
                 print(f"  ISK still needed: {status.isk_needed:,.0f} (wallet {status.wallet:,.0f})")
@@ -1186,6 +1196,9 @@ def build_parser() -> argparse.ArgumentParser:
     add.add_argument("target", help="ship or skill name, or an ISK amount")
     add.add_argument("level", nargs="?", type=int, help="skill level (skill goals)")
     add.add_argument("--character", help=CHARACTER_HELP)
+    add.add_argument(
+        "--fit", help="ship goals: a saved fit's name, or a file with a fit exported as EFT"
+    )
     add.set_defaults(func=_cmd_goal_add)
     for status in ("done", "dropped"):
         close = goal.add_parser(status, help=f"mark a goal {status}")
@@ -1207,6 +1220,7 @@ def main(argv: list[str] | None = None) -> int:
         AccountError,
         SkillsError,
         GoalError,
+        fittings.FitError,
         ore.OreError,
         mining.MiningError,
         couriers.CourierError,

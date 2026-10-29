@@ -47,9 +47,15 @@
       <span class="small-print">{{ (done * 100)|round|int }}% of the skill points trained</span></p>
     {% with req = s.requirement, is_alpha = s.is_alpha %}{% include "_requirement.html" %}{% endwith %}
   {% endif %}
-  {% if s.price is not none or s.isk_needed is not none %}
+  {% if s.price is not none or s.isk_needed is not none or s.fit_cost %}
   <dl class="facts spaced">
-    {% if s.price is not none %}<dt>Rough price</dt><dd>{{ s.price|isk }} ISK <span class="muted">(CCP average, not a hub quote)</span></dd>{% endif %}
+    {% if s.fit_cost %}{% set c = s.fit_cost %}
+    <dt>Fit</dt><dd><span class="player-text" title="Fit name chosen by you">“{{ c.fit.name }}”</span> <span class="muted">· {{ "saved in game" if c.fit.source == "saved" else "pasted" }}, {{ c.fit.items|length }} different items</span></dd>
+    <dt>Hull</dt><dd>{% if c.hull is not none %}{{ c.hull|isk }} ISK{% else %}<span class="muted">owned or not priced</span>{% endif %}</dd>
+    <dt>Items to buy</dt><dd>{{ c.items|isk }} ISK</dd>
+    {% if c.owned %}<dt>Already yours</dt><dd class="muted">{{ c.owned|join(", ") }}</dd>{% endif %}
+    <dt>Target</dt><dd>{{ c.total|isk }} ISK <span class="muted">(CCP averages, not a hub quote)</span></dd>
+    {% elif s.price is not none %}<dt>Rough price</dt><dd>{{ s.price|isk }} ISK <span class="muted">(CCP average, not a hub quote)</span></dd>{% endif %}
     {% if s.target_isk and s.goal.kind in ("isk", "omega") %}<dt>Target</dt><dd>{{ s.target_isk|isk }} ISK{% if s.goal.kind == "omega" %} <span class="muted">(at today's PLEX price)</span>{% endif %}</dd>{% endif %}
     {% if s.wallet is not none %}<dt>Wallet</dt><dd>{{ s.wallet|isk }} ISK{% if not s.character_name %} <span class="muted">(all characters)</span>{% endif %}</dd>{% endif %}
     {% if s.target_isk and s.goal.kind in ("isk", "omega") and s.wallet is not none %}
@@ -94,12 +100,18 @@
     </select>
   </label>
   <label for="target">Ship, skill or ISK amount
-    <input id="target" name="target" required placeholder="Retriever" list="goal-names" autocomplete="off">
+    <input id="target" name="target" placeholder="Retriever" list="goal-names" autocomplete="off">
     <datalist id="goal-names">{% for n in suggestions %}<option value="{{ n }}">{% endfor %}</datalist>
   </label>
   <label for="level">Level (skills)
     <input id="level" name="level" type="number" min="1" max="5" class="narrow">
   </label>
+  <label for="fit">Fit (ships, optional)
+    <textarea id="fit" name="fit" rows="5" spellcheck="false"
+      placeholder="Paste a fit from Pyfa or EVEShip.fit (Export, EFT) or the game, or type a saved fit's name"></textarea>
+  </label>
+  {% if saved_fits %}<p class="muted small-print">Saved fits for {{ active.name }} (names you chose):
+    {% for n in saved_fits %}<span class="player-text">“{{ n }}”</span>{{ ", " if not loop.last }}{% endfor %}</p>{% endif %}
   <label for="character">Character
     <select id="character" name="character">
       <option value="">All characters (ISK only)</option>
