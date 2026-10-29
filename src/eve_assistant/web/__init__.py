@@ -78,6 +78,7 @@ from eve_assistant import (
     worth,
 )
 from eve_assistant import hosted as hosted_rules
+from eve_assistant.esi import sso
 from eve_assistant.goals import GoalError
 from eve_assistant.skills import SkillsError
 from eve_assistant.web import charts
@@ -129,6 +130,23 @@ SECURITY_HEADERS = {
     "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
     "Cache-Control": "no-store",
 }
+# EVE's login page, where the hosted copy's Add a character form is sent on to.
+SSO_ORIGIN = "{0.scheme}://{0.netloc}".format(urlsplit(sso.AUTHORIZE_URL))
+
+
+def security_headers_for(hosted) -> dict[str, str]:
+    """The headers every response gets. In hosted mode the CSP's form-action
+    also allows EVE's login host, and nothing else: "Add a character" is a
+    form that redirects there, and browsers apply form-action to the whole
+    redirect chain. Local mode opens EVE's login in the browser itself, so it
+    keeps 'self' only."""
+    if hosted is None:
+        return SECURITY_HEADERS
+    policy = SECURITY_HEADERS["Content-Security-Policy"].replace(
+        "form-action 'self'", f"form-action 'self' {SSO_ORIGIN}"
+    )
+    return {**SECURITY_HEADERS, "Content-Security-Policy": policy}
+
 
 # While a session runs these pages reload themselves (a meta refresh: no
 # JavaScript), so the session view's timer and wallet stay current.
@@ -194,6 +212,7 @@ MESSAGES = {
     "goal_done": "Goal marked done.",
     "goal_dropped": "Goal dropped.",
     "refreshed": "Character data refreshed from EVE.",
+    "refresh_problems": "The refresh finished, but not everything could be read (below).",
     "do": "Project started: it's under Open projects.",
     "not_now": "Recorded: not now.",
     "mute": "Muted. You can undo that in Settings.",
@@ -426,6 +445,7 @@ def create_app(
     # browser); one at a time.
     login: dict = {"state": None, "message": None, "at": None}
     login_running = threading.Lock()
+    last_refresh: dict = {"problems": []}  # the Refresh button's last problems, for Characters
     pending_logins: dict = {}  # hosted: logins sent to EVE, by state
     ingest_times: deque = deque()  # when each accepted /ingest/ request came
     # The trade hubs' markets are read in the background (about a minute), when the
@@ -479,10 +499,12 @@ def create_app(
     hosts = [*allowed_hosts, *((hosted.hostname, hosted.ingest_host) if hosted else ())]
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=hosts)
 
+    headers_here = security_headers_for(hosted)
+
     @app.middleware("http")
     async def security_headers(request: Request, call_next):
         response = await call_next(request)
-        for name, value in SECURITY_HEADERS.items():
+        for name, value in headers_here.items():
             response.headers.setdefault(name, value)
         return response
 
@@ -1076,7 +1098,10 @@ def create_app(
         )
 
     @app.get(CHARACTERS, response_class=HTMLResponse)
-    def characters_page(request: Request):
+    def characters_page(request: Request, msg: str = ""):
+        # After a refresh with problems: shown here (post/redirect/get), so a
+        # reload doesn't send the refresh again and the page is always whole.
+        problems = list(last_refresh["problems"]) if msg == "refresh_problems" else []
         conn = db()
         try:
             summaries = overview.all_characters(conn)
@@ -1095,7 +1120,7 @@ def create_app(
             "characters.html",
             characters=summaries,
             worth_lines=worth_lines,
-            problems=[],
+            problems=problems,
             missing=missing,
             corps=corps,
             timers=timers,
@@ -1230,22 +1255,8 @@ def create_app(
         problems = refresh() if refresh else ["Refreshing is not available here."]
         if not problems:
             return back(CHARACTERS, msg="refreshed")
-        conn = db()
-        try:
-            summaries = overview.all_characters(conn)
-            worth_lines = {c.character_id: _worth(conn, [c.character_id]) for c in summaries}
-            corps, timers = _corps_and_planets(conn, [c.character_id for c in summaries])
-        finally:
-            conn.close()
-        return render(
-            request,
-            "characters.html",
-            characters=summaries,
-            worth_lines=worth_lines,
-            corps=corps,
-            timers=timers,
-            problems=problems,
-        )
+        last_refresh["problems"] = list(problems)
+        return back(CHARACTERS, msg="refresh_problems")
 
     @app.get(GOALS, response_class=HTMLResponse)
     def goals_page(request: Request, error: str | None = None):

@@ -642,6 +642,10 @@ else:
   address it should listen on doesn't exist yet (the network still starting),
   it waits up to a minute, then exits 1 to be restarted, never 2.
 - Forms are checked against the public `https://` origin.
+- The Content-Security-Policy's `form-action` also allows EVE's login host
+  (`https://login.eveonline.com`), in hosted mode only: "Add a character"
+  is a form that redirects there, and browsers apply `form-action` to the
+  whole redirect chain. Local mode keeps `'self'` only.
 
 The addresses, hostname and Discord ID are in the server's config file
 (`EVE_ASSISTANT_CONFIG`), never in this repository; the data folder is
