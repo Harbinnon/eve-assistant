@@ -7,6 +7,7 @@ import re
 import socket
 import time
 from types import SimpleNamespace
+from urllib.parse import urlsplit
 
 import httpx
 import pytest
@@ -121,6 +122,55 @@ def test_hosted_characters_offers_add_a_character(hosted_app):
         page = proxy.get("/characters", headers={"X-Auth-Id": OWNER}).text
     assert 'action="/characters/add"' in page
     assert "Add a character</button>" in page
+
+
+def _directive(policy: str, name: str) -> list[str]:
+    for part in policy.split(";"):
+        words = part.split()
+        if words and words[0] == name:
+            return words[1:]
+    return []
+
+
+def test_the_csp_lets_add_a_character_go_on_to_eves_login(tmp_path):
+    """Browsers apply form-action to a form's whole redirect chain, and test
+    clients don't enforce CSP: so check the policy against the real redirect
+    (v0.11.2's button did nothing)."""
+    db_path = tmp_path / "eve.sqlite3"
+    store.connect(db_path).close()
+    hosted_config = _hosted(tmp_path)
+    login = SimpleNamespace(start=lambda: auth.start_login(hosted_config), finish=None)
+    app = create_app(db_path, hosting=Hosting(hosted_config.hosted, login, None))
+    signed_in = {"X-Auth-Id": OWNER, "Origin": "https://eve.example.com"}
+    with _client(app, PROXY) as proxy:
+        page = proxy.get("/characters", headers=signed_in)
+        token = re.search(r'name="token" value="([^"]+)"', page.text).group(1)
+        sent = proxy.post(
+            "/characters/add", data={"token": token}, headers=signed_in, follow_redirects=False
+        )
+    target = urlsplit(sent.headers["location"])
+    allowed = _directive(page.headers["content-security-policy"], "form-action")
+    assert f"{target.scheme}://{target.netloc}" in allowed
+    assert allowed == ["'self'", "https://login.eveonline.com"]  # that one host, nothing else
+
+
+def test_local_mode_keeps_form_action_to_itself(tmp_path):
+    db_path = tmp_path / "eve.sqlite3"
+    store.connect(db_path).close()
+    with TestClient(create_app(db_path), base_url="http://127.0.0.1") as local:
+        policy = local.get("/characters").headers["content-security-policy"]
+    assert _directive(policy, "form-action") == ["'self'"]
+
+
+def test_a_refresh_with_problems_comes_back_to_a_whole_characters_page(hosted_app):
+    with _client(hosted_app.app, PROXY) as proxy:
+        signed_in = {"X-Auth-Id": OWNER, "Origin": "https://eve.example.com"}
+        page = proxy.get("/characters", headers=signed_in)
+        token = re.search(r'name="token" value="([^"]+)"', page.text).group(1)
+        after = proxy.post("/refresh", data={"token": token}, headers=signed_in)
+    assert after.url.path == "/characters"  # a reload won't send the refresh again
+    assert "Refreshing is not available here." in after.text
+    assert "Add a character</button>" in after.text
 
 
 def test_a_refused_address_gets_a_quick_403(hosted_app):
