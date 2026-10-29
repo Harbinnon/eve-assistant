@@ -14,6 +14,8 @@ allowed, and they never overlap:
 The addresses come from the server's config, never from this repository.
 """
 
+import hashlib
+import hmac
 import ipaddress
 
 INGEST = "/ingest"
@@ -21,6 +23,13 @@ INGEST = "/ingest"
 
 def is_ingest(path: str) -> bool:
     return path == INGEST or path.startswith(INGEST + "/")
+
+
+def proof(secret: str, challenge: str) -> str:
+    """HMAC-SHA256 of a challenge, keyed with the log sender's token: the server
+    answers the sender's challenge with it, proving it knows the token without
+    anyone sending it (logsender.py)."""
+    return hmac.new(secret.encode(), challenge.encode(), hashlib.sha256).hexdigest()
 
 
 def allowed(path: str, client: str | None, proxy: str, home_network: str) -> bool:

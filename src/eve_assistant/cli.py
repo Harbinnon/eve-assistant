@@ -323,15 +323,16 @@ def _cmd_send_logs(args, ask=None) -> int:
     with store.connect() as db:
         owners = {r[0] for r in db.execute("SELECT name FROM characters")}
     while True:
-        with auth.http_client(config) as http:
+        with auth.http_client(config) as http:  # carries the descriptive User-Agent
             report = logsender.send(http, config.send_logs_url, logsender.token(secrets),
                                     config.gamelogs_dir, owners)  # fmt: skip
-        print(f"Sent {report.lines:,} mining lines from {report.files} logs "
-              f"({report.stored:,} new cycles).")  # fmt: skip
-        for line in report.problems:
+        logsender.note(report)  # the only trace of a run from the scheduled task
+        print(report.summary)
+        for line in [*report.problems, *report.warnings]:
             print(f"  {line}")
         if not args.watch:
-            return 1 if report.problems else 0
+            # Away from home isn't a failure: the next run catches up.
+            return 1 if report.problems and not report.unreachable else 0
         time.sleep(args.watch * 60)
 
 

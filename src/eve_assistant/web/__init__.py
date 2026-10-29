@@ -1217,6 +1217,31 @@ def create_app(
                 return None
         return body
 
+    def _over_limit() -> bool:
+        """Whether /ingest/ has taken INGEST_PER_HOUR requests in the last hour;
+        if not, this one is counted."""
+        now = time.monotonic()
+        while ingest_times and now - ingest_times[0] > 3600:
+            ingest_times.popleft()
+        if len(ingest_times) >= INGEST_PER_HOUR:
+            log.warning("Log sender: over %s requests an hour, refused", INGEST_PER_HOUR)
+            return True
+        ingest_times.append(now)
+        return False
+
+    @app.get("/ingest/hello")
+    def ingest_hello(nonce: str = ""):
+        """The log sender asks this first: the answer proves the server knows the
+        token (an HMAC of the sender's fresh challenge), so the sender never
+        sends the token to a device that doesn't."""
+        if not ingest_token:
+            return PlainTextResponse("Not found", status_code=404)
+        if not 16 <= len(nonce) <= 128 or any(c not in "0123456789abcdef" for c in nonce):
+            return JSONResponse({"error": "a hex challenge is needed"}, status_code=400)
+        if _over_limit():
+            return JSONResponse({"error": "too many requests"}, status_code=429)
+        return JSONResponse({"proof": hosted_rules.proof(ingest_token, nonce)})
+
     @app.post("/ingest/gamelogs")
     async def ingest_gamelogs(request: Request):
         """Mining lines from the gaming PC's log sender (hosted mode): a token,
@@ -1226,17 +1251,12 @@ def create_app(
         given = request.headers.get("authorization", "")
         if not secrets.compare_digest(given.encode(), f"Bearer {ingest_token}".encode()):
             return JSONResponse({"error": "wrong or missing token"}, status_code=401)
-        now = time.monotonic()
-        while ingest_times and now - ingest_times[0] > 3600:
-            ingest_times.popleft()
-        if len(ingest_times) >= INGEST_PER_HOUR:
-            log.warning("Log sender: over %s requests an hour, refused", INGEST_PER_HOUR)
-            return JSONResponse({"error": "too many requests"}, status_code=429)
         body = await _limited_body(request)
         if body is None:
             log.warning("Log sender: a request over %s bytes, refused", INGEST_MAX_BYTES)
             return JSONResponse({"error": "too large"}, status_code=413)
-        ingest_times.append(now)
+        if _over_limit():
+            return JSONResponse({"error": "too many requests"}, status_code=429)
         try:
             sent = json.loads(body)
             conn = db()
