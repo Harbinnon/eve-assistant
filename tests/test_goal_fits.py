@@ -2,6 +2,7 @@
 (the hull's and every item's) and its cost (less what the character owns)."""
 
 import re
+import time
 
 import pytest
 from fastapi.testclient import TestClient
@@ -97,6 +98,17 @@ def test_a_pasted_fit_is_read_line_by_line(db):
 def test_a_pasted_fit_that_cannot_be_read_says_why(db, text, message):
     with pytest.raises(fittings.FitError, match=message):
         fittings.parse_eft(db, text)
+
+
+def test_crafted_pastes_are_refused_quickly(db):
+    """Pasted text is untrusted: lines made to slow a pattern down are plain
+    splitting here, and refused at once."""
+    started = time.monotonic()
+    for crafted in ("[" + " " * 50_000, "[" + "," * 300 + " " * 50_000 + "]",
+                    "[Big Barge, x]\n" + "Strip Laser" + " " * 5_000 + "x"):  # fmt: skip
+        with pytest.raises(fittings.FitError):
+            fittings.parse_eft(db, crafted)
+    assert time.monotonic() - started < 1
 
 
 def test_a_saved_fit_is_found_by_name(db):

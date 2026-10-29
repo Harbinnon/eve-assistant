@@ -25,7 +25,6 @@ The first line names the hull and the fit; each other line is an item, with
 an optional loaded charge after a comma and a count after " x".
 """
 
-import re
 import sqlite3
 from dataclasses import dataclass
 
@@ -67,8 +66,26 @@ class Fit:
                    str(data.get("source", "pasted")))  # fmt: skip
 
 
-HEADER = re.compile(r"^\[(?P<hull>[^,\]]+?)\s*(?:,\s*(?P<name>[^\]]*))?\]$")
-COUNT = re.compile(r"^(?P<name>.+?)\s+x(?P<count>\d{1,6})$")
+MAX_HEADER = 200  # characters in a fit's first line
+
+
+def _header(line: str) -> tuple[str, str] | None:
+    """(hull, fit name) from a fit's first line, "[Hull, Name]", or None. Plain
+    splitting, not a pattern: pasted text is untrusted, and this can't backtrack."""
+    if len(line) > MAX_HEADER or not (line.startswith("[") and line.endswith("]")):
+        return None
+    hull, _, name = line[1:-1].partition(",")
+    return (hull.strip(), name.strip()) if hull.strip() else None
+
+
+def _counted(line: str) -> tuple[str, int]:
+    """ "Hobgoblin II x5" -> ("Hobgoblin II", 5); any other line counts once."""
+    name, sep, count = line.rpartition(" x")
+    if sep and name.strip() and count.isdigit() and len(count) <= 6:
+        return name.strip(), int(count)
+    return line, 1
+
+
 MAX_PASTE = 20_000  # characters
 MAX_ITEMS = 300
 
@@ -86,7 +103,7 @@ def _lines(text: str) -> list[str]:
         raise FitError("That fit is too long to be a fit.")
     lines = [line.strip() for line in text.strip().splitlines()]
     lines = [line for line in lines if line]
-    if not lines or not HEADER.match(lines[0]):
+    if not lines or _header(lines[0]) is None:
         raise FitError(
             "A pasted fit starts with a line like [Retriever, My fit]: copy it from Pyfa "
             "or EVEShip.fit with Export as EFT, or the game's Copy to clipboard."
@@ -104,9 +121,7 @@ def _item_names(lines: list[str]) -> list[tuple[str, int]]:
         if line.startswith("["):  # [Empty High slot] and the like
             continue
         line = line.removesuffix("/OFFLINE").strip()
-        counted = COUNT.match(line)
-        count = int(counted["count"]) if counted else 1
-        name = counted["name"] if counted else line
+        name, count = _counted(line)
         module, _, charge = name.partition(",")
         found.append((module.strip(), count))
         if charge.strip():
@@ -117,10 +132,10 @@ def _item_names(lines: list[str]) -> list[tuple[str, int]]:
 def parse_eft(db: sqlite3.Connection, text: str) -> Fit:
     """A fit from text in the EFT format. Raises FitError naming anything unknown."""
     lines = _lines(text)
-    header = HEADER.match(lines[0])
-    hull = _type_id(db, header["hull"])
+    hull_name, fit_name = _header(lines[0])
+    hull = _type_id(db, hull_name)
     if hull is None:
-        raise FitError(f"No ship is called '{header['hull'].strip()}'.")
+        raise FitError(f"No ship is called '{hull_name}'.")
     counts: dict[int, int] = {}
     unknown = []
     for name, count in _item_names(lines[1:]):
@@ -131,7 +146,7 @@ def parse_eft(db: sqlite3.Connection, text: str) -> Fit:
             counts[type_id] = counts.get(type_id, 0) + count
     if unknown:
         raise FitError(f"Not found in CCP's data: {', '.join(sorted(set(unknown)))}.")
-    name = (header["name"] or "").strip()[:100] or "pasted fit"
+    name = fit_name[:100] or "pasted fit"
     return Fit(name, hull, tuple(sorted(counts.items())), "pasted")
 
 
