@@ -99,9 +99,45 @@ data, not assumed.
 | # | What | Done when |
 |---|---|---|
 | 7.1 | **Alerts.** In-game actions to Discord (job finished, courier deadline near, order sold, extractor done); tool health to ntfy; nothing else. **◆** A minimal Discord alert could come earlier if wanted. | A finished job reaches Discord with a link to the dashboard. Built: jobs, orders sold or undercut, empty skill queues, couriers due, stopped extractors and goals reached to Discord, refresh problems to ntfy, each once; addresses at a hidden prompt (`alerts-setup`, `alerts-test`). |
-| 7.2 | **Hosted mode:** a secret store that works on Linux, a login, and a log sender for game logs. Home-lab changes go to the lab session as a build request, never made from here. | Runs on the owner's server behind a login. Tag `v1.0.0`. Built (tag `v0.11.0` for the first deployment): `serve --hosted` behind the home lab's Discord sign-in, a key-encrypted secret file, EVE login through the dashboard's `/callback`, `send-logs` from the gaming PC, streaming market reads. `v1.0.0` once it runs on the server. |
+| 7.2 | **Hosted mode:** a secret store that works on Linux, a login, and a log sender for game logs. Home-lab changes go to the lab session as a build request, never made from here. | Runs on the owner's server behind a login. Tag `v1.0.0`. Built (`v0.11.0`): `serve --hosted` behind the home lab's Discord sign-in, a key-encrypted secret file, EVE login through the dashboard's `/callback`, `send-logs` from the gaming PC, streaming market reads. Fixed on the first deployment: surviving a boot race and listening on 0.0.0.0 (`v0.11.1`), the stylesheet over https and the Add button (`v0.11.2`), the login redirect under the CSP (`v0.11.3`), and `send-logs` hardened to run unattended every 15 minutes (`v0.11.4`). Running on the owner's server since 28 Oct 2026, characters added through it; the owner chose to hold `v1.0.0` for now. |
 
-**Later:** the MCP server; officer-level corp data.
+## What's next
+
+Things the design promised that aren't built yet (checked against
+[design.md](design.md) on 28 Oct 2026), leaving out what was decided
+against. The owner's priorities, in order:
+
+### First: finish the half-built goals (design 4.1, 4.5)
+
+| # | What | Done when |
+|---|---|---|
+| 8.1 | **Ship goals with a fit:** the ISK to buy *and fit* a ship, from a saved in-game fit (the fittings scope is already held) or one pasted from Pyfa or EVEShip.fit, not the hull alone. | A ship goal's target counts the hull and its modules, with the fit named. |
+| 8.2 | **Goals in sequence:** "a Retriever, then a month of Omega", with each goal's date following on from the one before. | Stacked goals show in order with dates that add up. |
+| 8.3 | **Refining skills in "what to train next":** weighed against how much ore the character actually mines. | Reprocessing skills are suggested with the ISK they'd add at the character's real volume. |
+
+### Second: plan several characters at once (design 6.3)
+
+| # | What | Done when |
+|---|---|---|
+| 8.4 | **One plan for characters played together.** Omega accounts can be logged in at once (the owner plays two), so a plan can split the session between them: one mines while the other hauls or sells, and the ore one mines is what the other carries. Alpha accounts still can't multibox, and the planner never suggests it. | A 60-minute plan for two characters that the owner agrees is sensible, recorded and learned from like any other. |
+
+### Then, in no set order
+
+| What | From |
+|---|---|
+| **An AI assistant connection (MCP server):** ask Claude or ChatGPT about plans and goals, read-only, respecting the player-written labels. | design 6.6 |
+| **"What changed for you":** after a game update, changes to the items and ships the player owns or plans to buy. | design 4.7 |
+| **Reactions** as an activity. | design 4.2 |
+| **zKillboard data** for hauler and miner kills over longer periods, beyond the last hour. | design 9 |
+| **Corp contracts and corporation projects:** when a character joins a player corporation (two more scopes). | design 6.4, roadmap 6.1 |
+| **Corp data for officers** (hangars, jobs, moon extractions): optional, needs in-game roles. | design 6.4 |
+| **A changelog** with each version, and **GitHub issues** for these items so the coworker can pick some up. | below |
+
+Still to verify (design 10): the Alpha training-speed penalty; whether ESI
+reports Alpha or Omega directly; how the mining ledger records compressed
+and moon ore; whether Exordium's lower payouts apply to mining; the
+September 2026 jump bridge numbers; account rules against CCP's current
+EULA. (Ore anomalies were checked: no API shows them.)
 
 ---
 
