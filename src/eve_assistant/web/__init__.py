@@ -50,6 +50,7 @@ from eve_assistant import (
     corrections,
     detection,
     explain,
+    fittings,
     gamelogs,
     goals,
     history,
@@ -1295,6 +1296,7 @@ def create_app(
             suggestions = skills.names_in(conn, skills.SHIP_CATEGORY, skills.SKILL_CATEGORY)
             active = active_character(request, conn)
             omega_view = omega.compare(conn, active[0]) if active else None
+            saved_fits = [f.name for f in fittings.saved(conn, active[0])] if active else []
             hours_a_week = pace.weekly_play(conn).minutes / 60
         finally:
             conn.close()
@@ -1306,6 +1308,7 @@ def create_app(
             character_names=names,
             suggestions=suggestions,
             omega_view=omega_view,
+            saved_fits=saved_fits,
             hours_a_week=hours_a_week,
             worth_lines=worth_lines,
             error=error,
@@ -1363,15 +1366,18 @@ def create_app(
         target: str = Form(""),
         level: int | None = Form(None),
         character: str = Form(""),
+        fit: str = Form(""),
     ):
         check_form(request, token)
         conn = db()
         try:
             character_id = goals.resolve_character(conn, character) if character else None
             if kind == "ship":
-                goals.add_goal(
-                    conn, "fly_ship", character_id, type_id=skills.find_type(conn, target)
-                )
+                chosen = goals.fit_from_text(conn, fit, character_id)
+                if not target.strip() and chosen is None:
+                    raise GoalError("Name the ship, or paste its fit.")
+                hull = skills.find_type(conn, target) if target.strip() else None
+                goals.add_goal(conn, "fly_ship", character_id, type_id=hull, fit=chosen)
             elif kind == "skill":
                 goals.add_goal(
                     conn,
@@ -1388,7 +1394,7 @@ def create_app(
                 goals.add_goal(conn, "omega", character_id, level=months)
             else:
                 raise GoalError("Choose a goal type.")
-        except (GoalError, SkillsError, ValueError) as exc:
+        except (GoalError, SkillsError, fittings.FitError, ValueError) as exc:
             message = str(exc) if not isinstance(exc, ValueError) else "Enter a number of ISK."
             return goals_page(request, error=message)
         finally:

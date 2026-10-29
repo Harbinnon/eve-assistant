@@ -244,6 +244,27 @@ def plan(db: sqlite3.Connection, character: CharacterSkills, type_id: int) -> Re
     return _plan(db, character, type_id, full_requirements(db, type_id))
 
 
+def requirements_of(db: sqlite3.Connection, type_ids) -> list[tuple[int, int]]:
+    """Every skill and level needed to use all of these items, prerequisites
+    before the skills that need them, each at the highest level any needs."""
+    levels: dict[int, int] = {}
+    order: list[int] = []
+    for type_id in dict.fromkeys(type_ids):
+        for skill_id, level in full_requirements(db, type_id):
+            if skill_id not in levels:
+                order.append(skill_id)
+            levels[skill_id] = max(levels.get(skill_id, 0), level)
+    return [(skill_id, levels[skill_id]) for skill_id in order]
+
+
+def plan_fit(
+    db: sqlite3.Connection, character: CharacterSkills, hull_type_id: int, item_type_ids
+) -> Requirement:
+    """What this character needs to fly a ship with these modules (and charges,
+    drones): every skill the hull or any item needs."""
+    return _plan(db, character, hull_type_id, requirements_of(db, [hull_type_id, *item_type_ids]))
+
+
 def plan_skill(
     db: sqlite3.Connection, character: CharacterSkills, skill_id: int, level: int
 ) -> Requirement:

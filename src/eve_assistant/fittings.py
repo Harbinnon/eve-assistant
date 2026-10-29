@@ -8,8 +8,24 @@ text, never as the tool's.
 The planner keeps predicting with what is actually fitted; a saved fit
 that would do noticeably better is mentioned beside it, with whether its
 modules are where the ship is.
+
+A ship goal can be for a fit (roadmap 8.1): one of the character's saved fits,
+or one pasted in the text format Pyfa and EVEShip.fit export (EFT):
+
+    [Retriever, Ice run]
+    Mining Laser Upgrade II
+    [Empty Low slot]
+
+    Survey Scanner II
+
+    Strip Miner I, Veldspar Mining Crystal I
+    Hobgoblin II x2
+
+The first line names the hull and the fit; each other line is an item, with
+an optional loaded charge after a comma and a count after " x".
 """
 
+import re
 import sqlite3
 from dataclasses import dataclass
 
@@ -25,6 +41,113 @@ class SavedFit:
     name: str  # player-written
     ship_type_id: int
     modules: tuple[int, ...]  # one type ID per fitted module
+
+
+class FitError(Exception):
+    pass
+
+
+@dataclass(frozen=True)
+class Fit:
+    """A fit a ship goal is for."""
+
+    name: str  # player-written
+    ship_type_id: int
+    items: tuple[tuple[int, int], ...]  # (type ID, quantity), hull not included
+    source: str  # saved or pasted
+
+    def as_json(self) -> dict:
+        return {"name": self.name, "ship_type_id": self.ship_type_id, "source": self.source,
+                "items": [list(i) for i in self.items]}  # fmt: skip
+
+    @classmethod
+    def from_json(cls, data: dict) -> "Fit":
+        items = tuple((int(t), int(q)) for t, q in data.get("items", []))
+        return cls(str(data.get("name", ""))[:100], int(data["ship_type_id"]), items,
+                   str(data.get("source", "pasted")))  # fmt: skip
+
+
+HEADER = re.compile(r"^\[(?P<hull>[^,\]]+?)\s*(?:,\s*(?P<name>[^\]]*))?\]$")
+COUNT = re.compile(r"^(?P<name>.+?)\s+x(?P<count>\d{1,6})$")
+MAX_PASTE = 20_000  # characters
+MAX_ITEMS = 300
+
+
+def _type_id(db: sqlite3.Connection, name: str) -> int | None:
+    row = db.execute(
+        "SELECT type_id FROM sde_types WHERE name = ? COLLATE NOCASE ORDER BY published DESC",
+        (name.strip(),),
+    ).fetchone()
+    return row[0] if row else None
+
+
+def _lines(text: str) -> list[str]:
+    if len(text) > MAX_PASTE:
+        raise FitError("That fit is too long to be a fit.")
+    lines = [line.strip() for line in text.strip().splitlines()]
+    lines = [line for line in lines if line]
+    if not lines or not HEADER.match(lines[0]):
+        raise FitError(
+            "A pasted fit starts with a line like [Retriever, My fit]: copy it from Pyfa "
+            "or EVEShip.fit with Export as EFT, or the game's Copy to clipboard."
+        )
+    if len(lines) > MAX_ITEMS:
+        raise FitError("That fit has more lines than any ship can carry.")
+    return lines
+
+
+def _item_names(lines: list[str]) -> list[tuple[str, int]]:
+    """(item name, count) for each item line: empty slots skipped, a loaded charge
+    counted as an item, "/OFFLINE" dropped."""
+    found = []
+    for line in lines:
+        if line.startswith("["):  # [Empty High slot] and the like
+            continue
+        line = line.removesuffix("/OFFLINE").strip()
+        counted = COUNT.match(line)
+        count = int(counted["count"]) if counted else 1
+        name = counted["name"] if counted else line
+        module, _, charge = name.partition(",")
+        found.append((module.strip(), count))
+        if charge.strip():
+            found.append((charge.strip(), 1))
+    return found
+
+
+def parse_eft(db: sqlite3.Connection, text: str) -> Fit:
+    """A fit from text in the EFT format. Raises FitError naming anything unknown."""
+    lines = _lines(text)
+    header = HEADER.match(lines[0])
+    hull = _type_id(db, header["hull"])
+    if hull is None:
+        raise FitError(f"No ship is called '{header['hull'].strip()}'.")
+    counts: dict[int, int] = {}
+    unknown = []
+    for name, count in _item_names(lines[1:]):
+        type_id = _type_id(db, name)
+        if type_id is None:
+            unknown.append(name)
+        else:
+            counts[type_id] = counts.get(type_id, 0) + count
+    if unknown:
+        raise FitError(f"Not found in CCP's data: {', '.join(sorted(set(unknown)))}.")
+    name = (header["name"] or "").strip()[:100] or "pasted fit"
+    return Fit(name, hull, tuple(sorted(counts.items())), "pasted")
+
+
+def saved_by_name(db: sqlite3.Connection, character_id: int, name: str) -> Fit:
+    """One of the character's saved fits, by its name. Raises FitError."""
+    wanted = name.strip().casefold()
+    for fit in saved(db, character_id):
+        if fit.name.strip().casefold() == wanted:
+            counts: dict[int, int] = {}
+            for type_id in fit.modules:
+                counts[type_id] = counts.get(type_id, 0) + 1
+            return Fit(fit.name, fit.ship_type_id, tuple(sorted(counts.items())), "saved")
+    raise FitError(
+        f"No saved fit called '{name.strip()}' for this character. Paste the fit instead, "
+        "or save it in game and refresh."
+    )
 
 
 def saved(db: sqlite3.Connection, character_id: int) -> list[SavedFit]:

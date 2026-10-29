@@ -1011,10 +1011,7 @@ def test_a_ship_becomes_a_goal_with_progress_in_two_clicks(client):
 
 def test_goal_names_are_suggested_while_typing(client):
     page = client.get("/goals").text
-    assert (
-        '<input id="target" name="target" required placeholder="Retriever" list="goal-names"'
-        in page
-    )
+    assert '<input id="target" name="target" placeholder="Retriever" list="goal-names"' in page
     assert '<option value="Mining">' in page  # skills
     assert '<option value="Venture">' in page  # and ships
 

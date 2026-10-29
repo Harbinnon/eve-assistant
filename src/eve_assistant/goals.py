@@ -4,12 +4,17 @@ Answers "what would it take": skills (with training time and Alpha limits)
 and ISK (price against wallet). Once a character has a few settled
 sessions, ISK goals also get a rough date: ISK banked per hour played times
 the learned play time per week (see pace.py).
+
+A ship goal can be for a fit (roadmap 8.1): then its skills are the hull's
+and every item's, and its ISK is the hull and items still to buy, at CCP's
+average prices, less anything the character already owns.
 """
 
+import json
 import sqlite3
 from dataclasses import dataclass, field
 
-from eve_assistant import numbers, pace, skills, snapshots
+from eve_assistant import fittings, numbers, pace, skills, snapshots
 from eve_assistant.esi.client import EsiClient
 from eve_assistant.skills import Reason, Requirement
 from eve_assistant.store import utc_now
@@ -29,6 +34,22 @@ class Goal:
     isk: float | None
     label: str
     status: str
+    fit: "fittings.Fit | None" = None  # a ship goal's fit, if it names one
+
+
+@dataclass(frozen=True)
+class FitCost:
+    """What a fitted ship comes to: the parts still to buy, at CCP's average prices."""
+
+    fit: "fittings.Fit"
+    hull: float | None  # None when it's owned already or has no price
+    items: float  # items still to buy
+    owned: tuple[str, ...]  # what the character already has, not counted
+    unpriced: tuple[str, ...]  # items with no market price, not counted
+
+    @property
+    def total(self) -> float:
+        return (self.hull or 0.0) + self.items
 
 
 @dataclass(frozen=True)
@@ -44,6 +65,7 @@ class GoalStatus:
     weeks_to_isk: float | None = None  # at the character's real pace, if known
     earning: "pace.EarningRate | None" = None
     target_isk: float | None = None  # the ISK the goal comes to (ISK and Omega goals)
+    fit_cost: FitCost | None = None  # for a ship goal with a fit
 
 
 def update_prices(db: sqlite3.Connection, esi: EsiClient) -> int:
@@ -95,12 +117,19 @@ def add_goal(
     type_id: int | None = None,
     level: int | None = None,
     isk: float | None = None,
+    fit: "fittings.Fit | None" = None,
 ) -> int:
     if kind in ("fly_ship", "skill") and character_id is None:
         raise GoalError("Ship and skill goals are for a particular character.")
+    if fit is not None and kind != "fly_ship":
+        raise GoalError("Only a ship goal can have a fit.")
     if kind == "fly_ship":
+        type_id = type_id or (fit.ship_type_id if fit else None)
+        if fit is not None and fit.ship_type_id != type_id:
+            hull = skills.type_name(db, fit.ship_type_id)
+            raise GoalError(f"That fit is for a {hull}, not a {skills.type_name(db, type_id)}.")
         verb = "Fly" if skills.is_ship(db, type_id) else "Use"
-        label = f"{verb} a {skills.type_name(db, type_id)}"
+        label = f"{verb} a {skills.type_name(db, type_id)}" + (", fitted" if fit else "")
     elif kind == "skill":
         label = f"Train {skills.type_name(db, type_id)} {level}"
     elif kind == "isk":
@@ -116,12 +145,26 @@ def add_goal(
     else:
         raise GoalError(f"Unknown goal kind '{kind}'.")
     cursor = db.execute(
-        "INSERT INTO goals (kind, character_id, type_id, level, isk, label, created_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (kind, character_id, type_id, level, isk, label, utc_now()),
-    )
+        "INSERT INTO goals (kind, character_id, type_id, level, isk, label, created_at, fit) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (kind, character_id, type_id, level, isk, label, utc_now(),
+         json.dumps(fit.as_json()) if fit else None),
+    )  # fmt: skip
     db.commit()
     return cursor.lastrowid
+
+
+def fit_from_text(db: sqlite3.Connection, text: str, character_id: int | None):
+    """A fit from what was typed: a pasted EFT fit, or the name of one of the
+    character's saved fits. None for nothing. Raises fittings.FitError."""
+    text = (text or "").strip()
+    if not text:
+        return None
+    if text.startswith("[") or "\n" in text:
+        return fittings.parse_eft(db, text)
+    if character_id is None:
+        raise GoalError("Choose the character whose saved fit it is.")
+    return fittings.saved_by_name(db, character_id, text)
 
 
 def set_status(db: sqlite3.Connection, goal_id: int, status: str) -> None:
@@ -145,6 +188,7 @@ def active_goals(db: sqlite3.Connection) -> list[Goal]:
             r["isk"],
             r["label"],
             r["status"],
+            fittings.Fit.from_json(json.loads(r["fit"])) if r["fit"] else None,
         )  # fmt: skip
         for r in db.execute("SELECT * FROM goals WHERE status = 'active' ORDER BY goal_id")
     ]
@@ -162,18 +206,58 @@ def _wallet(db: sqlite3.Connection, character_id: int | None) -> float | None:
     return total if seen else None
 
 
+def _owned(db: sqlite3.Connection, character_id: int) -> dict[int, int]:
+    """How many of each item the character has, anywhere."""
+    counts: dict[int, int] = {}
+    for item in snapshots.latest(db, character_id, "assets") or []:
+        if isinstance(item, dict) and "type_id" in item:
+            counts[item["type_id"]] = counts.get(item["type_id"], 0) + int(item.get("quantity", 1))
+    return counts
+
+
+def fit_cost(db: sqlite3.Connection, character_id: int, fit: "fittings.Fit") -> FitCost:
+    """The hull and items still to buy for a fit, less what the character owns."""
+    have = _owned(db, character_id)
+    owned, unpriced = [], []
+    hull = None
+    if have.get(fit.ship_type_id, 0) > 0:
+        owned.append(skills.type_name(db, fit.ship_type_id))
+    else:
+        hull = price_of(db, fit.ship_type_id)
+        if hull is None:
+            unpriced.append(skills.type_name(db, fit.ship_type_id))
+    items = 0.0
+    for type_id, count in fit.items:
+        already = min(have.get(type_id, 0), count)
+        if already:
+            owned.append(f"{already} × {skills.type_name(db, type_id)}")
+        to_buy = count - already
+        price = price_of(db, type_id)
+        if to_buy and price is None:
+            unpriced.append(skills.type_name(db, type_id))
+        items += to_buy * (price or 0.0)
+    return FitCost(fit, hull, items, tuple(owned), tuple(unpriced))
+
+
 def _skills_part(db: sqlite3.Connection, goal: Goal, reasons: list[Reason]):
-    """For ship and skill goals: (requirement, price, is_alpha, target ISK)."""
+    """For ship and skill goals: (requirement, price, is_alpha, target ISK, fit cost)."""
     character = skills.load_character_skills(db, goal.character_id)
     if character.is_alpha and character.clone_state == "unknown":
         reasons.append(Reason("clone_state_unknown"))
     if goal.kind == "skill":
         requirement = skills.plan_skill(db, character, goal.type_id, goal.level)
-        return requirement, None, character.is_alpha, None
+        return requirement, None, character.is_alpha, None, None
+    if goal.fit is not None:
+        cost = fit_cost(db, goal.character_id, goal.fit)
+        if cost.unpriced:
+            reasons.append(Reason("fit_unpriced", {"items": list(cost.unpriced)}))
+        item_ids = [type_id for type_id, _count in goal.fit.items]
+        requirement = skills.plan_fit(db, character, goal.type_id, item_ids)
+        return requirement, cost.hull, character.is_alpha, cost.total, cost
     price = price_of(db, goal.type_id)
     if price is None:
         reasons.append(Reason("no_price"))
-    return skills.plan(db, character, goal.type_id), price, character.is_alpha, price
+    return skills.plan(db, character, goal.type_id), price, character.is_alpha, price, None
 
 
 def _goal_date(db: sqlite3.Connection, goal: Goal, isk_needed, reasons: list[Reason]):
@@ -196,9 +280,9 @@ def evaluate(db: sqlite3.Connection, goal: Goal) -> GoalStatus:
     wallet = _wallet(db, goal.character_id)
 
     reasons: list[Reason] = []
-    requirement, price, is_alpha, target_isk = None, None, None, goal.isk
+    requirement, price, is_alpha, target_isk, cost = None, None, None, goal.isk, None
     if goal.kind in ("fly_ship", "skill"):
-        requirement, price, is_alpha, target_isk = _skills_part(db, goal, reasons)
+        requirement, price, is_alpha, target_isk, cost = _skills_part(db, goal, reasons)
     elif goal.kind == "omega":
         # Follows the PLEX price: the ISK a month of Omega costs today.
         plex_price = price_of(db, PLEX_TYPE_ID)
@@ -223,4 +307,5 @@ def evaluate(db: sqlite3.Connection, goal: Goal) -> GoalStatus:
         weeks,
         earning,
         target_isk,
+        cost,
     )
