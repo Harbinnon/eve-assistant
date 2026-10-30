@@ -167,13 +167,11 @@ def _sold(db, character_id: int, name: str) -> list[Alert]:
 
 
 def _goals(db) -> list[Alert]:
-    """Goals whose skills are trained and whose ISK is in the wallet."""
+    """Goals whose skills are trained and whose ISK is in the wallet (with the
+    goals before them, for a goal that follows others)."""
     found = []
-    for goal in goals.active_goals(db):
-        try:
-            status = goals.evaluate(db, goal)
-        except skills.SkillsError:
-            continue
+    for status in goals.evaluate_all(db)[0]:
+        goal = status.goal
         trained = status.requirement is None or status.requirement.usable_now
         paid = status.isk_needed is None or status.isk_needed <= 0
         known = status.requirement is not None or status.isk_needed is not None

@@ -9,12 +9,20 @@ A ship goal can be for a fit (roadmap 8.1): then its skills are the hull's
 and every item's, and its ISK is the hull and items still to buy, at CCP's
 average prices, less anything the character already owns.
 
+Goals can come in sequence (roadmap 8.2): "a Retriever, then a month of
+Omega". A goal that follows others (of the same character) needs their ISK
+as well as its own, so its ISK still needed and its date count everything up
+to it, the wallet going to the first goal first; and its training is added to
+theirs, since a character has one skill queue. A goal closed (done or
+dropped) ends a sequence: what follows it stands on its own again.
+
 "Use an item" goals (an implant, a module, a drone) are stored as kind
 fly_ship, which has always meant "able to use this item": the label says
 "Use a ..." for anything that isn't a ship. An item the character already
 has (in a hangar, plugged in, or in a jump clone) isn't counted in the ISK.
 """
 
+import dataclasses
 import json
 import sqlite3
 from dataclasses import dataclass, field
@@ -40,6 +48,7 @@ class Goal:
     label: str
     status: str
     fit: "fittings.Fit | None" = None  # a ship goal's fit, if it names one
+    after_goal_id: int | None = None  # the goal this one follows, if any
 
 
 @dataclass(frozen=True)
@@ -71,6 +80,9 @@ class GoalStatus:
     earning: "pace.EarningRate | None" = None
     target_isk: float | None = None  # the ISK the goal comes to (ISK and Omega goals)
     fit_cost: FitCost | None = None  # for a ship goal with a fit
+    after: Goal | None = None  # the active goal this one follows
+    chain_isk: float | None = None  # the ISK for this goal and every one before it
+    chain_training: float | None = None  # minutes of training for this and those before
 
 
 def update_prices(db: sqlite3.Connection, esi: EsiClient) -> int:
@@ -123,11 +135,13 @@ def add_goal(
     level: int | None = None,
     isk: float | None = None,
     fit: "fittings.Fit | None" = None,
+    after_goal_id: int | None = None,
 ) -> int:
     if kind in ("fly_ship", "skill") and character_id is None:
         raise GoalError("Ship and skill goals are for a particular character.")
     if fit is not None and kind != "fly_ship":
         raise GoalError("Only a ship goal can have a fit.")
+    check_after(db, after_goal_id, character_id)
     if kind == "fly_ship":
         type_id = type_id or (fit.ship_type_id if fit else None)
         if fit is not None and fit.ship_type_id != type_id:
@@ -150,13 +164,26 @@ def add_goal(
     else:
         raise GoalError(f"Unknown goal kind '{kind}'.")
     cursor = db.execute(
-        "INSERT INTO goals (kind, character_id, type_id, level, isk, label, created_at, fit) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO goals (kind, character_id, type_id, level, isk, label, created_at, fit, "
+        "after_goal_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (kind, character_id, type_id, level, isk, label, utc_now(),
-         json.dumps(fit.as_json()) if fit else None),
+         json.dumps(fit.as_json()) if fit else None, after_goal_id),
     )  # fmt: skip
     db.commit()
     return cursor.lastrowid
+
+
+def check_after(db: sqlite3.Connection, after_goal_id: int | None, character_id) -> None:
+    """A goal can follow an active goal of the same character (or both for all)."""
+    if after_goal_id is None:
+        return
+    row = db.execute(
+        "SELECT character_id, status FROM goals WHERE goal_id = ?", (after_goal_id,)
+    ).fetchone()
+    if row is None or row["status"] != "active":
+        raise GoalError(f"There's no active goal {after_goal_id} to follow.")
+    if row["character_id"] != character_id:
+        raise GoalError("A goal can only follow another goal of the same character.")
 
 
 def fit_from_text(db: sqlite3.Connection, text: str, character_id: int | None):
@@ -194,6 +221,7 @@ def active_goals(db: sqlite3.Connection) -> list[Goal]:
             r["label"],
             r["status"],
             fittings.Fit.from_json(json.loads(r["fit"])) if r["fit"] else None,
+            r["after_goal_id"],
         )  # fmt: skip
         for r in db.execute("SELECT * FROM goals WHERE status = 'active' ORDER BY goal_id")
     ]
@@ -327,3 +355,93 @@ def evaluate(db: sqlite3.Connection, goal: Goal) -> GoalStatus:
         target_isk,
         cost,
     )
+
+
+def _chain(by_id: dict[int, Goal], goal: Goal) -> list[Goal]:
+    """The active goals this one follows, first first, then the goal itself."""
+    chain, seen = [goal], {goal.goal_id}
+    while (after := chain[0].after_goal_id) in by_id and after not in seen:
+        seen.add(after)
+        chain.insert(0, by_id[after])
+    return chain
+
+
+def ordered(active: list[Goal]) -> list[Goal]:
+    """Each goal straight after the one it follows; sequences in the order their
+    first goal was set."""
+    by_id = {g.goal_id: g for g in active}
+    followers: dict[int, list[Goal]] = {}
+    for goal in active:
+        if goal.after_goal_id in by_id:
+            followers.setdefault(goal.after_goal_id, []).append(goal)
+    found: list[Goal] = []
+    seen: set[int] = set()
+
+    def visit(goal: Goal) -> None:
+        if goal.goal_id in seen:
+            return
+        seen.add(goal.goal_id)
+        found.append(goal)
+        for follower in followers.get(goal.goal_id, []):
+            visit(follower)
+
+    for goal in active:
+        if goal.after_goal_id not in by_id:
+            visit(goal)
+    for goal in active:  # none should be left; a loop can't be made, but just in case
+        visit(goal)
+    return found
+
+
+def _training_minutes(chain: list[GoalStatus]) -> float:
+    """Training still to do for a sequence: each skill level once, however many
+    of its goals need it (one skill queue), at the character's clone state."""
+    steps = {}
+    for status in chain:
+        for step in status.requirement.steps if status.requirement else ():
+            steps[(step.skill_id, step.level)] = step
+    minutes = sum(step.minutes_omega for step in steps.values())
+    alpha = any(s.is_alpha for s in chain)
+    if alpha and all(step.allowed_for_alpha for step in steps.values()):
+        return minutes / skills.ALPHA_TRAINING_MULTIPLIER
+    return minutes
+
+
+def _in_sequence(db: sqlite3.Connection, status: GoalStatus, chain: list[GoalStatus]):
+    """A goal that follows others: its ISK and training add to theirs."""
+    chain_isk = sum(s.target_isk or 0.0 for s in chain)
+    needed = max(0.0, chain_isk - status.wallet) if status.wallet is not None else None
+    reasons = [r for r in status.reasons if r.code != "goal_date_needs_sessions"]
+    weeks, earning = _goal_date(db, status.goal, needed, reasons)
+    return dataclasses.replace(
+        status,
+        isk_needed=needed,
+        weeks_to_isk=weeks,
+        earning=earning,
+        reasons=tuple(reasons),
+        after=chain[-2].goal,
+        chain_isk=chain_isk,
+        chain_training=_training_minutes(chain),
+    )
+
+
+def evaluate_all(db: sqlite3.Connection) -> tuple[list[GoalStatus], list[str]]:
+    """Every active goal, each after the one it follows, with sequences added
+    up. Returns (statuses, problem lines for goals that couldn't be worked out)."""
+    active = active_goals(db)
+    by_id = {g.goal_id: g for g in active}
+    base: dict[int, GoalStatus] = {}
+    problems = []
+    for goal in active:
+        try:
+            base[goal.goal_id] = evaluate(db, goal)
+        except skills.SkillsError as exc:
+            problems.append(f"{goal.label}: {exc}")
+    statuses = []
+    for goal in ordered(active):
+        status = base.get(goal.goal_id)
+        if status is None:
+            continue
+        chain = [base[g.goal_id] for g in _chain(by_id, goal) if g.goal_id in base]
+        statuses.append(_in_sequence(db, status, chain) if len(chain) > 1 else status)
+    return statuses, problems

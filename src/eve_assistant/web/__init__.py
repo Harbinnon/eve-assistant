@@ -1283,12 +1283,9 @@ def create_app(
     def goals_page(request: Request, error: str | None = None):
         conn = db()
         try:
-            statuses, problems, worth_lines = [], [], {}
-            for goal in goals.active_goals(conn):
-                try:
-                    statuses.append(goals.evaluate(conn, goal))
-                except SkillsError as exc:
-                    problems.append(f"{goal.label}: {exc}")
+            statuses, problems = goals.evaluate_all(conn)
+            worth_lines = {}
+            for goal in (s.goal for s in statuses):
                 if goal.kind in ("isk", "omega"):
                     whose = [goal.character_id] if goal.character_id else worth.all_characters(conn)
                     worth_lines[goal.goal_id] = _worth(conn, whose)
@@ -1374,23 +1371,28 @@ def create_app(
         level: int | None = Form(None),
         character: str = Form(""),
         fit: str = Form(""),
+        after: str = Form(""),
     ):
         check_form(request, token)
         conn = db()
         try:
             character_id = goals.resolve_character(conn, character) if character else None
+            after_id = int(after) if after.strip().isdigit() else None
+            goals.check_after(conn, after_id, character_id)
             if kind == "item":
                 if fit.strip():
                     raise GoalError("A fit only goes with a ship goal.")
                 goals.add_goal(
-                    conn, "fly_ship", character_id, type_id=skills.find_type(conn, target)
-                )
+                    conn, "fly_ship", character_id, type_id=skills.find_type(conn, target),
+                    after_goal_id=after_id,
+                )  # fmt: skip
             elif kind == "ship":
                 chosen = goals.fit_from_text(conn, fit, character_id)
                 if not target.strip() and chosen is None:
                     raise GoalError("Name the ship, or paste its fit.")
                 hull = skills.find_type(conn, target) if target.strip() else None
-                goals.add_goal(conn, "fly_ship", character_id, type_id=hull, fit=chosen)
+                goals.add_goal(conn, "fly_ship", character_id, type_id=hull, fit=chosen,
+                               after_goal_id=after_id)  # fmt: skip
             elif kind == "skill":
                 goals.add_goal(
                     conn,
@@ -1398,13 +1400,14 @@ def create_app(
                     character_id,
                     type_id=skills.find_type(conn, target),
                     level=level,
+                    after_goal_id=after_id,
                 )
             elif kind == "isk":
                 amount = float(target.replace(",", "").replace("_", "").strip() or 0)
-                goals.add_goal(conn, "isk", character_id, isk=amount)
+                goals.add_goal(conn, "isk", character_id, isk=amount, after_goal_id=after_id)
             elif kind == "omega":
                 months = int(target.strip() or 1) if target.strip().isdigit() else level or 1
-                goals.add_goal(conn, "omega", character_id, level=months)
+                goals.add_goal(conn, "omega", character_id, level=months, after_goal_id=after_id)
             else:
                 raise GoalError("Choose a goal type.")
         except (GoalError, SkillsError, fittings.FitError, ValueError) as exc:
