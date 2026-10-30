@@ -384,9 +384,11 @@ def _cmd_skills(args) -> int:
 def _cmd_goal_add(args) -> int:
     with store.connect() as db:
         character_id = goals.resolve_character(db, args.character) if args.character else None
+        goals.check_after(db, args.after, character_id)
+        after = {"after_goal_id": args.after}
         if args.kind == "item":
             goal_id = goals.add_goal(
-                db, "fly_ship", character_id, type_id=skills.find_type(db, args.target)
+                db, "fly_ship", character_id, type_id=skills.find_type(db, args.target), **after
             )
         elif args.kind == "ship":
             fit_text = args.fit or ""
@@ -394,8 +396,9 @@ def _cmd_goal_add(args) -> int:
                 fit_text = Path(fit_text).read_text(encoding="utf-8")
             chosen = goals.fit_from_text(db, fit_text, character_id)
             goal_id = goals.add_goal(
-                db, "fly_ship", character_id, type_id=skills.find_type(db, args.target), fit=chosen
-            )
+                db, "fly_ship", character_id, type_id=skills.find_type(db, args.target),
+                fit=chosen, **after,
+            )  # fmt: skip
         elif args.kind == "skill":
             goal_id = goals.add_goal(
                 db,
@@ -403,24 +406,30 @@ def _cmd_goal_add(args) -> int:
                 character_id,
                 type_id=skills.find_type(db, args.target),
                 level=args.level,
+                **after,
             )
         else:
             amount = float(args.target.replace(",", "").replace("_", ""))
-            goal_id = goals.add_goal(db, "isk", character_id, isk=amount)
+            goal_id = goals.add_goal(db, "isk", character_id, isk=amount, **after)
     print(f"Added goal {goal_id}. See it with: eve-assistant goals")
     return 0
 
 
 def _cmd_goals(_args) -> int:
     with store.connect() as db:
-        active = goals.active_goals(db)
-        if not active:
+        statuses, problems = goals.evaluate_all(db)
+        if not statuses and not problems:
             print("No goals yet. Example: eve-assistant goal add ship Retriever --character <name>")
             return 0
-        for goal in active:
-            status = goals.evaluate(db, goal)
+        for line in problems:
+            print(line)
+        for status in statuses:
+            goal = status.goal
             who = f" ({status.character_name})" if status.character_name else ""
             print(f"[{goal.goal_id}] {goal.label}{who}")
+            if status.after is not None:
+                print(f"  After [{status.after.goal_id}] {status.after.label}: "
+                      f"{status.chain_isk:,.0f} ISK with the goals before")  # fmt: skip
             if status.requirement is not None:
                 _print_requirement(status.requirement, is_alpha=bool(status.is_alpha))
             if status.fit_cost is not None:
@@ -1200,6 +1209,7 @@ def build_parser() -> argparse.ArgumentParser:
     add.add_argument("target", help="ship, item or skill name, or an ISK amount")
     add.add_argument("level", nargs="?", type=int, help="skill level (skill goals)")
     add.add_argument("--character", help=CHARACTER_HELP)
+    add.add_argument("--after", type=int, metavar="GOAL", help="follow this goal (its ID)")
     add.add_argument(
         "--fit", help="ship goals: a saved fit's name, or a file with a fit exported as EFT"
     )

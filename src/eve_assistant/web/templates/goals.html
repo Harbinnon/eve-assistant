@@ -41,6 +41,7 @@
 {% for s in statuses %}
 <article class="card goal">
   <h3>{% if s.goal.kind == "isk" %}Have {{ s.goal.isk|isk }} ISK{% else %}{{ s.goal.label }}{% endif %}{% if s.character_name %} <span class="muted">· {{ s.character_name }}</span>{% endif %}</h3>
+  {% if s.after %}<p class="muted small-print">Then, after “{{ s.after.label }}”: what follows counts the goals before it too.</p>{% endif %}
   {% if s.requirement %}
     {% set done = s.requirement.progress %}
     <p class="progress spaced"><progress value="{{ done }}" max="1" aria-label="{{ (done * 100)|round|int }}% of the skill points trained"></progress>
@@ -66,7 +67,8 @@
       <span class="small-print">{{ (share * 100)|round|int }}%</span></span></dd>
     {% endif %}
     {% with w = worth_lines.get(s.goal.goal_id) %}{% if w %}<dt>Net worth</dt><dd>{% include "_worth.html" %}</dd>{% endif %}{% endwith %}
-    {% if s.isk_needed is not none %}<dt>Still needed</dt><dd>{% if s.isk_needed == 0 %}<span class="pill good">covered</span>{% else %}{{ s.isk_needed|isk }} ISK{% endif %}</dd>{% endif %}
+    {% if s.chain_isk is not none %}<dt>With the goals before</dt><dd>{{ s.chain_isk|isk }} ISK in all{% if s.chain_training %} · {{ s.chain_training|duration }} of training{% endif %}</dd>{% endif %}
+    {% if s.isk_needed is not none %}<dt>Still needed{% if s.after %} (in all){% endif %}</dt><dd>{% if s.isk_needed == 0 %}<span class="pill good">covered</span>{% else %}{{ s.isk_needed|isk }} ISK{% endif %}</dd>{% endif %}
     {% if s.earning %}<dt>At your pace</dt><dd>{% if s.weeks_to_isk is not none %}about {{ s.weeks_to_isk|round(1) }} weeks{% else %}not yet: your sessions haven't banked ISK{% endif %}
       <span class="muted">({{ s.earning.isk_per_hour|isk }} ISK an hour banked over {{ s.earning.sessions }} sessions; ore still in the hangar isn't counted)</span></dd>{% endif %}
   </dl>
@@ -114,6 +116,14 @@
   </label>
   {% if saved_fits %}<p class="muted small-print">Saved fits for {{ active.name }} (names you chose):
     {% for n in saved_fits %}<span class="player-text">“{{ n }}”</span>{{ ", " if not loop.last }}{% endfor %}</p>{% endif %}
+  {% if statuses %}
+  <label for="after">After (optional)
+    <select id="after" name="after">
+      <option value="">Stands on its own</option>
+      {% for s in statuses %}<option value="{{ s.goal.goal_id }}">{{ s.goal.label }}{% if s.character_name %} · {{ s.character_name }}{% endif %}</option>{% endfor %}
+    </select>
+  </label>
+  {% endif %}
   <label for="character">Character
     <select id="character" name="character">
       <option value="">All characters (ISK only)</option>

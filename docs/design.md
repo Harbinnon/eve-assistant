@@ -93,9 +93,14 @@ month of Omega costs in PLEX; and the hours of mining a month at which
 Omega's extra pays for itself. Training speed as Alpha is assumed to be
 half of Omega's, not confirmed.
 
-Goals can stack ("Retriever, then a month of Omega"). Progress is reported
-every session, and arrival dates are re-estimated as the tool learns how
-the player actually earns.
+Goals can stack ("Retriever, then a month of Omega"; built 29 Oct 2026,
+roadmap 8.2): a goal can follow another of the same character's goals. Its
+ISK still needed and its date then count everything up to it, the wallet
+going to the first goal first, and its training is added to theirs with each
+skill level counted once (one skill queue). Closing a goal ends its sequence.
+"Goal reached" alerts use the same totals. Progress is reported every
+session, and arrival dates are re-estimated as the tool learns how the player
+actually earns.
 
 ### 4.2 Activities it compares
 

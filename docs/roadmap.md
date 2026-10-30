@@ -112,7 +112,7 @@ against. The owner's priorities, in order:
 | # | What | Done when |
 |---|---|---|
 | 8.1 | **Ship goals with a fit:** the ISK to buy *and fit* a ship, from a saved in-game fit (the fittings scope is already held) or one pasted from Pyfa or EVEShip.fit, not the hull alone. | A ship goal's target counts the hull and its modules, with the fit named. Built (`v0.12.0`): a saved fit by name or a pasted EFT fit, on the Goals page and `goal add ship --fit`; the target is the hull and items still to buy (CCP averages), less what's owned; the skills cover every item. |
-| 8.2 | **Goals in sequence:** "a Retriever, then a month of Omega", with each goal's date following on from the one before. | Stacked goals show in order with dates that add up. |
+| 8.2 | **Goals in sequence:** "a Retriever, then a month of Omega", with each goal's date following on from the one before. | Stacked goals show in order with dates that add up. Built (`v0.14.0`): "After" on the Goals page and `goal add --after`; a following goal's ISK, date and training count the goals before it, each skill level once; goal-reached alerts use the totals. |
 | 8.3 | **Refining skills in "what to train next":** weighed against how much ore the character actually mines. | Reprocessing skills are suggested with the ISK they'd add at the character's real volume. |
 
 ### Second: plan several characters at once (design 6.3)
