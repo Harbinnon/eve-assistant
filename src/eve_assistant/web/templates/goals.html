@@ -47,7 +47,7 @@
       <span class="small-print">{{ (done * 100)|round|int }}% of the skill points trained</span></p>
     {% with req = s.requirement, is_alpha = s.is_alpha %}{% include "_requirement.html" %}{% endwith %}
   {% endif %}
-  {% if s.price is not none or s.isk_needed is not none or s.fit_cost %}
+  {% if s.price is not none or s.isk_needed is not none or s.fit_cost or s.target_isk == 0 %}
   <dl class="facts spaced">
     {% if s.fit_cost %}{% set c = s.fit_cost %}
     <dt>Fit</dt><dd><span class="player-text" title="Fit name chosen by you">“{{ c.fit.name }}”</span> <span class="muted">· {{ "saved in game" if c.fit.source == "saved" else "pasted" }}, {{ c.fit.items|length }} different items</span></dd>
@@ -55,7 +55,8 @@
     <dt>Items to buy</dt><dd>{{ c.items|isk }} ISK</dd>
     {% if c.owned %}<dt>Already yours</dt><dd class="muted">{{ c.owned|join(", ") }}</dd>{% endif %}
     <dt>Target</dt><dd>{{ c.total|isk }} ISK <span class="muted">(CCP averages, not a hub quote)</span></dd>
-    {% elif s.price is not none %}<dt>Rough price</dt><dd>{{ s.price|isk }} ISK <span class="muted">(CCP average, not a hub quote)</span></dd>{% endif %}
+    {% elif s.price is not none %}<dt>Rough price</dt><dd>{{ s.price|isk }} ISK <span class="muted">(CCP average, not a hub quote)</span></dd>
+    {% elif s.target_isk == 0 and s.goal.kind == "fly_ship" %}<dt>Price</dt><dd><span class="pill good">already yours</span></dd>{% endif %}
     {% if s.target_isk and s.goal.kind in ("isk", "omega") %}<dt>Target</dt><dd>{{ s.target_isk|isk }} ISK{% if s.goal.kind == "omega" %} <span class="muted">(at today's PLEX price)</span>{% endif %}</dd>{% endif %}
     {% if s.wallet is not none %}<dt>Wallet</dt><dd>{{ s.wallet|isk }} ISK{% if not s.character_name %} <span class="muted">(all characters)</span>{% endif %}</dd>{% endif %}
     {% if s.target_isk and s.goal.kind in ("isk", "omega") and s.wallet is not none %}
@@ -94,12 +95,13 @@
   <label for="kind">Type
     <select id="kind" name="kind">
       <option value="ship">Fly a ship</option>
+      <option value="item">Use an item (implant, module, drone)</option>
       <option value="skill">Train a skill</option>
       <option value="isk">Have an amount of ISK</option>
       <option value="omega">Omega via PLEX (months)</option>
     </select>
   </label>
-  <label for="target">Ship, skill or ISK amount
+  <label for="target">Ship, item, skill or ISK amount
     <input id="target" name="target" placeholder="Retriever" list="goal-names" autocomplete="off">
     <datalist id="goal-names">{% for n in suggestions %}<option value="{{ n }}">{% endfor %}</datalist>
   </label>

@@ -384,7 +384,11 @@ def _cmd_skills(args) -> int:
 def _cmd_goal_add(args) -> int:
     with store.connect() as db:
         character_id = goals.resolve_character(db, args.character) if args.character else None
-        if args.kind == "ship":
+        if args.kind == "item":
+            goal_id = goals.add_goal(
+                db, "fly_ship", character_id, type_id=skills.find_type(db, args.target)
+            )
+        elif args.kind == "ship":
             fit_text = args.fit or ""
             if fit_text and Path(fit_text).is_file():
                 fit_text = Path(fit_text).read_text(encoding="utf-8")
@@ -1192,8 +1196,8 @@ def build_parser() -> argparse.ArgumentParser:
         dest="goal_command", required=True
     )
     add = goal.add_parser("add", help="add a goal")
-    add.add_argument("kind", choices=("ship", "skill", "isk"))
-    add.add_argument("target", help="ship or skill name, or an ISK amount")
+    add.add_argument("kind", choices=("ship", "item", "skill", "isk"))
+    add.add_argument("target", help="ship, item or skill name, or an ISK amount")
     add.add_argument("level", nargs="?", type=int, help="skill level (skill goals)")
     add.add_argument("--character", help=CHARACTER_HELP)
     add.add_argument(

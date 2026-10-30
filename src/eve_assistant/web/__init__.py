@@ -1293,7 +1293,14 @@ def create_app(
                     whose = [goal.character_id] if goal.character_id else worth.all_characters(conn)
                     worth_lines[goal.goal_id] = _worth(conn, whose)
             names = _names(conn)
-            suggestions = skills.names_in(conn, skills.SHIP_CATEGORY, skills.SKILL_CATEGORY)
+            suggestions = skills.names_in(
+                conn,
+                skills.SHIP_CATEGORY,
+                skills.SKILL_CATEGORY,
+                skills.IMPLANT_CATEGORY,
+                skills.MODULE_CATEGORY,
+                skills.DRONE_CATEGORY,
+            )
             active = active_character(request, conn)
             omega_view = omega.compare(conn, active[0]) if active else None
             saved_fits = [f.name for f in fittings.saved(conn, active[0])] if active else []
@@ -1372,7 +1379,13 @@ def create_app(
         conn = db()
         try:
             character_id = goals.resolve_character(conn, character) if character else None
-            if kind == "ship":
+            if kind == "item":
+                if fit.strip():
+                    raise GoalError("A fit only goes with a ship goal.")
+                goals.add_goal(
+                    conn, "fly_ship", character_id, type_id=skills.find_type(conn, target)
+                )
+            elif kind == "ship":
                 chosen = goals.fit_from_text(conn, fit, character_id)
                 if not target.strip() and chosen is None:
                     raise GoalError("Name the ship, or paste its fit.")

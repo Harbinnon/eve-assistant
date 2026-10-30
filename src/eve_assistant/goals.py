@@ -8,6 +8,11 @@ the learned play time per week (see pace.py).
 A ship goal can be for a fit (roadmap 8.1): then its skills are the hull's
 and every item's, and its ISK is the hull and items still to buy, at CCP's
 average prices, less anything the character already owns.
+
+"Use an item" goals (an implant, a module, a drone) are stored as kind
+fly_ship, which has always meant "able to use this item": the label says
+"Use a ..." for anything that isn't a ship. An item the character already
+has (in a hangar, plugged in, or in a jump clone) isn't counted in the ISK.
 """
 
 import json
@@ -207,11 +212,20 @@ def _wallet(db: sqlite3.Connection, character_id: int | None) -> float | None:
 
 
 def _owned(db: sqlite3.Connection, character_id: int) -> dict[int, int]:
-    """How many of each item the character has, anywhere."""
+    """How many of each item the character has: in its assets, plugged into its
+    active clone, or in a jump clone (implants aren't in the assets)."""
     counts: dict[int, int] = {}
     for item in snapshots.latest(db, character_id, "assets") or []:
         if isinstance(item, dict) and "type_id" in item:
             counts[item["type_id"]] = counts.get(item["type_id"], 0) + int(item.get("quantity", 1))
+    plugged = list(snapshots.latest(db, character_id, "implants") or [])
+    clones = snapshots.latest(db, character_id, "clones") or {}
+    for clone in clones.get("jump_clones", []) if isinstance(clones, dict) else []:
+        if isinstance(clone, dict):
+            plugged += clone.get("implants", [])
+    for type_id in plugged:
+        if isinstance(type_id, int):
+            counts[type_id] = counts.get(type_id, 0) + 1
     return counts
 
 
@@ -254,10 +268,14 @@ def _skills_part(db: sqlite3.Connection, goal: Goal, reasons: list[Reason]):
         item_ids = [type_id for type_id, _count in goal.fit.items]
         requirement = skills.plan_fit(db, character, goal.type_id, item_ids)
         return requirement, cost.hull, character.is_alpha, cost.total, cost
+    requirement = skills.plan(db, character, goal.type_id)
+    if _owned(db, goal.character_id).get(goal.type_id):
+        reasons.append(Reason("already_owned", {"item": skills.type_name(db, goal.type_id)}))
+        return requirement, None, character.is_alpha, 0.0, None  # nothing to buy
     price = price_of(db, goal.type_id)
     if price is None:
         reasons.append(Reason("no_price"))
-    return skills.plan(db, character, goal.type_id), price, character.is_alpha, price, None
+    return requirement, price, character.is_alpha, price, None
 
 
 def _goal_date(db: sqlite3.Connection, goal: Goal, isk_needed, reasons: list[Reason]):

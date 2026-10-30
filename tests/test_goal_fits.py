@@ -191,3 +191,80 @@ def test_the_cli_takes_a_fit_from_a_file(tmp_path, monkeypatch, capsys):
     out = capsys.readouterr().out
     assert 'Fit "Ice run" (your name for it): 11,560,000 ISK to buy' in out
     assert "already yours: 1 × Strip Laser" in out
+
+
+# --- "Use an item" goals ------------------------------------------------------
+
+MINDLINK = 300
+
+
+def _with_mindlink(conn):
+    conn.execute("INSERT INTO sde_groups VALUES (9, 20, 'Cyber Leadership', 1)")
+    conn.execute(
+        "INSERT INTO sde_types (type_id, name, group_id, published) "
+        "VALUES (?, 'Mining Foreman Mindlink', 9, 1)",
+        (MINDLINK,),
+    )
+    conn.executemany(
+        "INSERT INTO sde_type_attributes VALUES (?, ?, ?)",
+        [(MINDLINK, 182, BARGE), (MINDLINK, 277, 1)],
+    )
+    conn.execute("INSERT INTO market_prices VALUES (?, 25000000.0, NULL, 'x')", (MINDLINK,))
+    conn.commit()
+
+
+def test_an_item_goal_is_to_use_it(db):
+    _with_mindlink(db)
+    goal_id = goals.add_goal(db, "fly_ship", 7, type_id=MINDLINK)
+    goal = next(g for g in goals.active_goals(db) if g.goal_id == goal_id)
+    assert goal.label == "Use a Mining Foreman Mindlink"
+    status = goals.evaluate(db, goal)
+    assert status.price == 25_000_000.0
+    assert [(s.skill_name, s.level) for s in status.requirement.steps] == [
+        ("Mining", 3), ("Mining Barge", 1)
+    ]  # fmt: skip
+
+
+@pytest.mark.parametrize("where", ["implants", "clones"])
+def test_an_item_you_already_have_costs_nothing(db, where):
+    _with_mindlink(db)
+    if where == "implants":  # plugged into the active clone
+        snapshots.record(db, 7, "implants", [MINDLINK])
+    else:  # in a jump clone
+        snapshots.record(db, 7, "clones", {"jump_clones": [{"implants": [MINDLINK]}]})
+    goal_id = goals.add_goal(db, "fly_ship", 7, type_id=MINDLINK)
+    status = goals.evaluate(db, next(g for g in goals.active_goals(db) if g.goal_id == goal_id))
+    assert (status.price, status.target_isk, status.isk_needed) == (None, 0.0, 0.0)
+    owned = next(r for r in status.reasons if r.code == "already_owned")
+    assert "already have a Mining Foreman Mindlink" in explain.describe(owned.code, owned.detail)
+
+
+def test_the_goals_page_offers_use_an_item(tmp_path):
+    path = tmp_path / "g.sqlite3"
+    conn = _db(path)
+    _with_mindlink(conn)
+    conn.close()
+    with TestClient(create_app(path), base_url="http://127.0.0.1") as client:
+        page = client.get("/goals").text
+        assert '<option value="item">Use an item (implant, module, drone)</option>' in page
+        assert '<option value="Mining Foreman Mindlink">' in page  # suggested while typing
+        token = re.search(r'name="token" value="([^"]+)"', page).group(1)
+        form = {"token": token, "kind": "item", "character": "Miner",
+                "target": "Mining Foreman Mindlink"}  # fmt: skip
+        added = client.post("/goals", data=form).text
+        assert "Use a Mining Foreman Mindlink" in added
+        refused = client.post("/goals", data={**form, "fit": FIT}).text
+        assert "A fit only goes with a ship goal." in refused
+
+
+def test_the_cli_adds_an_item_goal(tmp_path, monkeypatch, capsys):
+    path = tmp_path / "g.sqlite3"
+    conn = _db(path)
+    _with_mindlink(conn)
+    conn.close()
+    real_connect = store.connect
+    monkeypatch.setattr(cli.store, "connect", lambda *_a: real_connect(path))
+    assert cli.main(["goal", "add", "item", "Mining Foreman Mindlink",
+                     "--character", "Miner"]) == 0  # fmt: skip
+    assert cli.main(["goals"]) == 0
+    assert "Use a Mining Foreman Mindlink (Miner)" in capsys.readouterr().out

@@ -128,6 +128,7 @@ def type_name(db: sqlite3.Connection, type_id: int) -> str:
 
 
 SHIP_CATEGORY, SKILL_CATEGORY = 6, 16
+MODULE_CATEGORY, DRONE_CATEGORY, IMPLANT_CATEGORY = 7, 18, 20  # items a goal can be to use
 
 
 def is_ship(db: sqlite3.Connection, type_id: int) -> bool:
