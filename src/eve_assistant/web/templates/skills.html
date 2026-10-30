@@ -62,6 +62,43 @@
 </section>
 {% endif %}
 
+{% if refining %}{% set r = refining %}
+<section class="card refining">
+  <h2 class="history-title">Refining your ore · {{ character }}</h2>
+  <p>You've mined about {{ "{:,}".format(r.units_a_week|round|int) }} units of ore a week lately.
+    {% if r.refines_now %}Refining some of it pays: about <span class="isk">{{ (r.now_a_week - r.raw_a_week)|isk }} ISK</span> a week more than selling it all raw.
+    {% else %}At your skills, selling it raw pays more than refining it.{% endif %}</p>
+  {% if r.targets and r.gain_a_week >= 1 %}
+  <p>Training {% for name, level in r.targets %}<strong>{{ name }} {{ level }}</strong>{{ ", " if not loop.last }}{% endfor %}
+    (about {{ r.training_minutes|duration }}{% if r.needs_omega %}, some of it Omega only{% endif %})
+    would add about <span class="isk">{{ r.gain_a_week|isk }} ISK</span> a week at that much ore{% if not r.refines_now %}, by making refining beat selling raw{% endif %}.</p>
+  {% elif r.targets %}
+  <p class="muted">Even with every refining skill trained up, refining would add next to nothing for this ore.</p>
+  {% else %}
+  <p class="muted">Your refining skills are as high as they go{% if r.needs_omega %} as Alpha{% endif %}.</p>
+  {% endif %}
+  {% if refining_levels %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>One level up</th><th class="num">Training</th><th class="num">ISK a week</th><th class="num">Skill book</th></tr></thead>
+      <tbody>
+      {% for t in refining_levels %}
+        <tr>
+          <td data-label="One level up">{{ t.skill }} {{ t.level }}{% if t.needs_omega %} <span class="pill omega">Omega</span>{% endif %}</td>
+          <td data-label="Training" class="num">{{ t.training_minutes|duration }}</td>
+          <td data-label="ISK a week" class="num isk">{{ t.isk_a_week|isk }}</td>
+          <td data-label="Skill book" class="num">{% if t.book_price %}{{ t.book_price|isk }}{% if t.payback_weeks %} <span class="muted small-print">pays back in {{ t.payback_weeks|round(1) }} weeks</span>{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+  <p class="muted small-print">From your mining ledger (the last 30 days), each ore sold raw or refined, whichever pays, at CCP's average prices,
+    refined at {{ (r.station_yield * 100)|round|int }}% base yield{% if r.station_yield == 0.5 %} (a typical NPC station){% endif %} with its tax at no standing.</p>
+</section>
+{% endif %}
+
 {% if requirement %}
 <h2>{{ requirement.type_name }} <span class="muted">for {{ character }}</span>
   <span class="pill {{ clone_state }}">{{ clone_state|capitalize }}</span></h2>

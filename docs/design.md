@@ -234,8 +234,19 @@ stopping point.
   book's price and the hours of mining that pay for it. The Skills page
   shows the top three with a "Set as goal" button. An Alpha past the 5M
   skill-point limit can't train at all: its suggestions show the time as
-  Omega and say Omega is needed. Refining skills against ore volume come
-  later.
+  Omega and say Omega is needed.
+- **Refining skills** (roadmap 8.3) don't make mining faster, they make ore
+  worth more, so they're valued at the ore the character actually mines:
+  the last 30 days of its mining ledger (all ESI keeps), as ISK a week. Each
+  ore counts at the better of selling it raw or refining it, both at CCP's
+  average prices, refined at the NPC station the character is docked at if
+  it refines, else a typical one (50% base yield, 5% tax at no standing;
+  structures aren't offered, see section 5). Often refining only beats
+  selling raw once several skills are up, so the Skills page shows both:
+  what every refining skill trained as far as the character can (within
+  Alpha's limits) would add a week, with the training it takes, and the
+  single levels that add the most, with the book's price and the weeks it
+  takes to pay back.
 - **Alpha limits are part of every answer.** "This needs Omega" is a real
   result, not an error.
 

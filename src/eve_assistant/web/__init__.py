@@ -1442,10 +1442,13 @@ def create_app(
                 character = active[1] if active else ""
             requirement, error, clone_state = None, None, None
             train, train_goal, train_capped = [], None, False
+            refining, refining_levels = None, []
             if character:
                 try:
                     character_id = goals.resolve_character(conn, character)
                     train = train_next.suggestions(conn, character_id)
+                    refining = train_next.refining_outlook(conn, character_id)
+                    refining_levels = train_next.refining_suggestions(conn, character_id)
                     train_goal = train_next.goal_for(conn, character_id)
                     train_capped = not train and train_next.at_alpha_limits(conn, character_id)
                 except GoalError:
@@ -1472,6 +1475,8 @@ def create_app(
             train=train,
             train_goal=train_goal,
             train_capped=train_capped,
+            refining=refining,
+            refining_levels=refining_levels,
             error=error,
         )
 
