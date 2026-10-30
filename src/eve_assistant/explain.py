@@ -312,6 +312,10 @@ def describe(code: str, detail: dict | None = None) -> str:
         ),
         "lp_value": lambda: _lp_value(d),
         "corp_tax": lambda: _corp_tax(d),
+        "already_owned": lambda: (
+            f"You already have a {d.get('item', 'one')}, so there's nothing to buy: only "
+            "the skills are left."
+        ),
         "fit_unpriced": lambda: (
             "No market price yet for " + ", ".join(d.get("items", [])) + ", so the target "
             "leaves them out. Prices are read with the next refresh."

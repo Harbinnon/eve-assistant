@@ -81,6 +81,7 @@ shows both "what you can do now" and "what Omega would unlock".
 |---|---|---|
 | **ISK** (one-off or monthly) | 2.4B a month for Omega; 50M for a ship | The gap, the ISK per hour needed at the player's pace, whether it is realistic |
 | **Own and fly a ship** | "a Retriever", later "an Orca" | ISK to buy and fit it, skills needed with training time, whether it needs Omega. With a fit (built 29 Oct 2026, roadmap 8.1), one of the character's saved fits or one pasted in the EFT text Pyfa, EVEShip.fit and the game export: the skills are the hull's and every item's, and the ISK is the hull and items still to buy at CCP's averages, less what the character already owns |
+| **Use an item** (added 29 Oct 2026) | "a Mining Foreman Mindlink" (an implant, module or drone) | Skills needed with training time, whether it needs Omega, and its price, unless the character already has one (in a hangar, plugged in or in a jump clone) |
 | **Skills** | "Mining Barge IV" | Training time, order, what it unlocks |
 | **Omega via PLEX** | "Omega for 1 month (500 PLEX)" | The ISK it comes to at today's PLEX price (so the target follows the price), the gap and the date at the player's pace |
 
