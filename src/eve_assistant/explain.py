@@ -539,6 +539,12 @@ def describe(code: str, detail: dict | None = None) -> str:
             f"{d.get('miner')} mining while {d.get('booster')} boosts wasn't possible: "
             f"{d.get('booster')}'s boosting ship can't get there and carry the ore in time."
         ),
+        "team_mining_risky": lambda: (
+            f"{d.get('miner')} mining while {d.get('hauler') or d.get('booster')} "
+            f"{'hauls' if d.get('hauler') else 'boosts'} wasn't offered: {d.get('miner')}'s "
+            "mining is rated Risky (the ship is a big share of what they own). Tick “Include "
+            "risky options” to allow it."
+        ),
         "team_boost_risky": lambda: (
             f"{d.get('miner')} mining while {d.get('booster')} boosts wasn't offered: the "
             f"boosting is rated Risky for {d.get('booster')}. Tick “Include risky options” "

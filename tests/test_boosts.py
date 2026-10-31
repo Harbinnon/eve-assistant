@@ -185,3 +185,18 @@ def test_plans_saved_before_boosts_still_load():
     )
     db.execute("INSERT INTO team_plan_members VALUES (1, ?, 'miner')", (plan_id,))
     assert [o["shape"] for o in together.load(db, 1).others] == ["side_by_side"]
+
+
+def test_a_miner_whose_mining_is_risky_is_told_so():
+    plan = planner.Plan(7, 60, (), (planner.Alternative(_risky_mining(), "red_risk"),), (), 0.0)
+    assert together._why_no_mining(plan, "no_boost_mining") == "team_mining_risky"
+    assert together._why_no_mining(planner.Plan(7, 60, (), (), (), 0.0), "x") == "x"
+    text = explain.describe("team_mining_risky", {"miner": "Harbinnon", "booster": "Alex"})
+    assert text.startswith("Harbinnon mining while Alex boosts wasn't offered: Harbinnon's")
+
+
+def _risky_mining():
+    from eve_assistant import risk
+    from eve_assistant.activities.base import PlanItem
+
+    return PlanItem("mining", "1:2", "Mine", 1.0, 60, risk.rate("high", 1e9, 1))

@@ -309,6 +309,13 @@ def _can_mine(solo: planner.Plan) -> bool:
     )
 
 
+def _why_no_mining(mined: planner.Plan, otherwise: str) -> str:
+    """Why the miner's plan, made again for working together, doesn't mine: its
+    mining was rated Risky (and risky options are off), or it just loses."""
+    risky = any(a.item.kind == "mining" and a.why_not == "red_risk" for a in mined.alternatives)
+    return "team_mining_risky" if risky else otherwise
+
+
 def _can_carry(db, hauler: Member) -> bool:
     try:
         ships = fleet.owned_ships(db, hauler.character_id)
@@ -328,7 +335,7 @@ def _one_way(db, miner: Member, hauler: Member, solo, plan, rules: _Rules):
     mined = plan(miner, hauled_by=hauler.name)
     mining = next((i for i in mined.items if i.kind == "mining"), None)
     if mining is None:
-        return None, Reason("no_team_mining", names)
+        return None, Reason(_why_no_mining(mined, "no_team_mining"), names)
     step = _haul_step(db, hauler, miner, mining, rules.minutes, rules.highsec_only)
     if step is None:
         return None, Reason("no_team_hauler", names)
@@ -494,7 +501,7 @@ def _boost_way(db, miner: Member, booster: Member, solo, plan, rules: _Rules):
     mined = plan(miner, hauled_by=booster.name, boost=(booster.name, boost.cycle_factor))
     mining = next((i for i in mined.items if i.kind == "mining"), None)
     if mining is None:
-        return None, Reason("no_boost_mining", names)
+        return None, Reason(_why_no_mining(mined, "no_boost_mining"), names)
     step = _boost_step(db, booster, miner, mining, boost, rules)
     if step is None:
         return None, Reason("team_boost_out_of_reach", names)
