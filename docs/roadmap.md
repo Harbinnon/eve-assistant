@@ -119,7 +119,7 @@ against. The owner's priorities, in order:
 
 | # | What | Done when |
 |---|---|---|
-| 8.4 | **One plan for characters played together.** Omega accounts can be logged in at once (the owner plays two), so a plan can split the session between them: one mines while the other hauls or sells, and the ore one mines is what the other carries. Alpha accounts still can't multibox, and the planner never suggests it. | A 60-minute plan for two characters that the owner agrees is sensible, recorded and learned from like any other. |
+| 8.4 | **One plan for characters played together.** Omega accounts can be logged in at once (the owner plays two), so a plan can split the session between them: one mines while the other hauls or sells, and the ore one mines is what the other carries. Alpha accounts still can't multibox, and the planner never suggests it. | A 60-minute plan for two characters that the owner agrees is sensible, recorded and learned from like any other. Built (`v0.16.0`): "Play together" on Today and `plan-together`, refused unless each character has its own Omega account; side by side (nothing taken twice) against one mining while the other hauls, the better picked and the other shown; one ordinary plan per character, linked as a team plan. Waiting for the owner's verdict on a real session. |
 
 ### Then, in no set order
 

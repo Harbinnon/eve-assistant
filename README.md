@@ -121,6 +121,7 @@ eve-assistant ore <character> "<ore>" <qty> [--station Jita] [--allow-lowsec]
 eve-assistant mining <character> [--ship "Venture" --module "Miner I" ...] [--ore Veldspar]
 eve-assistant couriers <character> [--region "The Forge"] [--minutes 60] [--ship "Tayra"]
 eve-assistant plan <character> <minutes> [--allow-lowsec] [--risky] [--ore "Veldspar"]
+eve-assistant plan-together <minutes> <character> <character> ...   characters on separate Omega accounts
 eve-assistant respond <item> do|not_now|mute   record what you did with a suggestion
 eve-assistant mute|unmute <category>  / eve-assistant mutes
 eve-assistant projects                 list open multi-session projects

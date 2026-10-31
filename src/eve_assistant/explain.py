@@ -15,7 +15,16 @@ WHY_NOT = {
     "muted": "You muted this kind of suggestion.",
     "new_limit": "Only one new activity per plan.",
     "too_many_projects": "You already have the most open projects; finish or drop one first.",
+    "teammate": "Another character you're playing with does this.",
+    "hauling": "Hauling for the character you're playing with makes more between you.",
 }
+
+# Playing together (roadmap 8.4): the two shapes a team plan compares.
+SHAPE_NAMES = {
+    "side_by_side": "each playing their own plan",
+    "mine_and_haul": "one mining while the other hauls",
+}
+ROLE_NAMES = {"solo": "", "miner": "mines", "hauler": "hauls"}
 
 
 LEARNED = {
@@ -182,6 +191,29 @@ def _corp_tax(d: dict) -> str:
         "npc": "what NPC corporations take",
     }.get(d.get("source"), "")
     return f"{who} takes {rate:.1%} of mission rewards and bounties ({source})."
+
+
+def _together_chosen(d: dict) -> str:
+    text = (
+        f"Best between you: {SHAPE_NAMES.get(d.get('shape'), d.get('shape'))}, about "
+        f"{numbers.isk(d.get('value', 0))} ISK after expected losses"
+    )
+    if d.get("other_shape") is None:
+        return text + "."
+    gap = d.get("value", 0) - (d.get("other_value") or 0)
+    return (
+        f"{text}, {numbers.isk(gap)} more than "
+        f"{SHAPE_NAMES.get(d['other_shape'], d['other_shape'])}."
+    )
+
+
+def _not_omega(d: dict) -> str:
+    state = d.get("clone_state")
+    what = "is Alpha" if state == "alpha" else "isn't marked Omega"
+    return (
+        f"The {d.get('account')} account ({_and(d.get('characters') or ['?'])}) {what}: "
+        "an Alpha account can't be logged in alongside another account."
+    )
 
 
 def describe(code: str, detail: dict | None = None) -> str:
@@ -434,6 +466,44 @@ def describe(code: str, detail: dict | None = None) -> str:
         "mining_unavailable": lambda: f"Mining not considered: {d.get('why', '')}",
         "couriers_unavailable": lambda: f"Couriers not considered: {d.get('why', '')}",
         "nothing_fits": lambda: "Nothing fits in this amount of time.",
+        "together_too_few": lambda: "Pick two or more characters to play together.",
+        "together_no_account": lambda: (
+            f"{d.get('character')} isn't on an account yet (eve-assistant account assign), "
+            "so whether it can play alongside the others can't be checked."
+        ),
+        "together_same_account": lambda: (
+            f"{_and(d.get('characters') or ['?'])} are on the same account "
+            f"({d.get('account')}), and an account logs in one character at a time."
+        ),
+        "together_not_omega": lambda: _not_omega(d),
+        "together_chosen": lambda: _together_chosen(d),
+        "together_side_by_side_only": lambda: (
+            "With more than two characters, only each playing their own plan is worked out."
+        ),
+        "no_team_mining": lambda: (
+            f"{d.get('miner')} mining while {d.get('hauler')} hauls wasn't worked out: "
+            f"{d.get('miner')}'s best plan for this time doesn't mine."
+        ),
+        "no_team_hauler": lambda: (
+            f"{d.get('miner')} mining while {d.get('hauler')} hauls wasn't possible: "
+            f"{d.get('hauler')} has no ship it can fly that gets there and carries the ore "
+            "in time."
+        ),
+        "team_haul_risky": lambda: (
+            f"{d.get('miner')} mining while {d.get('hauler')} hauls wasn't offered: the "
+            f"hauling is rated Risky for {d.get('hauler')}. Tick “Include risky options” "
+            "to allow it."
+        ),
+        "team_mining": lambda: (
+            f"{d.get('hauler')} collects the cans and sells the ore, so you don't dock to "
+            "unload; you stop in time for the last can to be carried in and sold."
+        ),
+        "team_haul": lambda: (
+            f"About {d.get('m3', 0):,.0f} m³ from {d.get('miner')}, in your "
+            f"{d.get('ship')} ({d.get('capacity', 0):,.0f} m³ a trip): {d.get('trips', 0)} "
+            f"trips, about {d.get('minutes_needed', 0):.0f} min of flying, collecting and "
+            f"selling. The ore's ISK is counted on {d.get('miner')}'s mining step."
+        ),
         "ore_stored_elsewhere": lambda: (
             f"This ore is stored in {d.get('system')}, {d.get('jumps', 0)} jumps away."
             if d.get("jumps")

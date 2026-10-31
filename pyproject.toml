@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "eve-assistant"
-version = "0.15.0"
+version = "0.16.0"
 description = "Goal-driven planning assistant for EVE Online mining, industry and hauling."
 readme = "README.md"
 license = "MIT"

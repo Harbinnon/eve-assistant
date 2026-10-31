@@ -36,6 +36,7 @@ from eve_assistant import (
     skills,
     snapshots,
     store,
+    together,
 )
 from eve_assistant.accounts import AccountError
 from eve_assistant.config import ConfigError, load_config
@@ -142,6 +143,9 @@ def _app(config, secrets, **extra):
     def do_plan(character_id: int, minutes: float, allow_lowsec: bool, allow_risky: bool) -> int:
         return refresh.plan_now(config, secrets, character_id, minutes, allow_lowsec, allow_risky)
 
+    def do_team_plan(ids: list[int], minutes: float, allow_lowsec: bool, allow_risky: bool) -> int:
+        return refresh.team_plan_now(config, secrets, ids, minutes, allow_lowsec, allow_risky)
+
     def do_snapshot(character_id: int) -> list[str]:
         return refresh.snapshot_character(config, secrets, character_id)
 
@@ -157,6 +161,7 @@ def _app(config, secrets, **extra):
     settings = {
         "refresh": do_refresh,
         "make_plan": do_plan,
+        "make_team_plan": do_team_plan,
         "snapshot": do_snapshot,
         "auto_refresh": do_auto_refresh if config.auto_refresh else None,
         "backups_dir": config.backups_dir,
@@ -621,7 +626,42 @@ WHY_NOT = {
     "red_risk": "red on the risk matrix (use --risky to include)",
     "muted": "muted",
     "new_limit": "only one new activity per plan",
+    "teammate": "another character you're playing with does it",
+    "hauling": "hauling for the other character makes more between you",
 }
+
+
+def _cmd_plan_together(args) -> int:
+    config = load_config()
+    secrets = default_store()
+    with store.connect() as db, auth.http_client(config) as client:
+        ids = [goals.resolve_character(db, name) for name in args.characters]
+        esi = EsiClient(client, db, token_for=auth.AccessTokens(config, secrets, client).get)
+        try:
+            team = together.build(
+                db, esi, ids, args.minutes, allow_lowsec=args.allow_lowsec,
+                allow_risky=args.risky, ore_names=args.ore,
+            )  # fmt: skip
+        except together.TogetherError as exc:
+            for reason in exc.reasons:
+                print(explain.describe(reason.code, reason.detail), file=sys.stderr)
+            return 1
+        team = together.record(
+            db, team, {"allow_lowsec": args.allow_lowsec, "risky": args.risky, "ore": args.ore}
+        )
+    shape = explain.SHAPE_NAMES[team.chosen.kind]
+    print(f"Plan together {team.team_id}: {args.minutes:.0f} minutes, {shape}.")
+    for member, plan, role in zip(team.members, team.chosen.plans, team.chosen.roles, strict=True):
+        does = explain.ROLE_NAMES.get(role)
+        print(f"  {member.name}{f' ({does})' if does else ''}, plan {plan.plan_id}:")
+        if not plan.items:
+            print("    Nothing fits right now.")
+        for number, item in enumerate(plan.items, 1):
+            print(f"    {number}. {item.title}")
+            print(f"       {item.isk:,.0f} ISK, {item.minutes:.0f} min, risk {item.risk.rating}")
+    for note in team.notes:
+        print(f"  {explain.describe(note.code, note.detail)}")
+    return 0
 
 
 def _cmd_plan(args) -> int:
@@ -1105,6 +1145,16 @@ def build_parser() -> argparse.ArgumentParser:
     plan_cmd.add_argument("--ore", action="append", help="ore to consider mining (repeat)")
     plan_cmd.add_argument("--alternatives", type=int, default=5, help="how many to list")
     plan_cmd.set_defaults(func=_cmd_plan)
+
+    together_cmd = commands.add_parser(
+        "plan-together", help="plan characters on different Omega accounts played at once"
+    )
+    together_cmd.add_argument("minutes", type=float, help="minutes you have to play")
+    together_cmd.add_argument("characters", nargs="+", help="two or more characters")
+    together_cmd.add_argument("--allow-lowsec", action="store_true", help=LOWSEC_HELP)
+    together_cmd.add_argument("--risky", action="store_true", help="include red-rated options")
+    together_cmd.add_argument("--ore", action="append", help="ore to consider mining (repeat)")
+    together_cmd.set_defaults(func=_cmd_plan_together)
 
     respond = commands.add_parser("respond", help="record what you did with a plan item")
     respond.add_argument("item_id", type=int)

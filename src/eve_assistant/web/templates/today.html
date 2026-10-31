@@ -185,9 +185,29 @@
   <button type="submit" name="compare" value="true" {% if not can_plan %}disabled{% endif %}>Compare characters</button>
   {% endif %}
 </form>
+{% if character_names|length > 1 %}
+<form class="stack card" method="post" action="/today/together">
+  <input type="hidden" name="token" value="{{ form_token }}">
+  <p class="form-for">Play together<span class="muted small-print">characters on different Omega accounts, logged in at once</span></p>
+  <div class="checks" role="group" aria-label="Characters to play together">
+    {% for name in character_names %}
+    <label for="together-{{ loop.index }}"><input id="together-{{ loop.index }}" name="characters" type="checkbox" value="{{ name }}"> {{ name }}</label>
+    {% endfor %}
+  </div>
+  <label for="together-minutes">Minutes
+    <input id="together-minutes" name="minutes" type="number" min="5" max="600" step="5" value="60" class="narrow" required>
+  </label>
+  <div class="checks">
+    <label for="together-lowsec"><input id="together-lowsec" name="allow_lowsec" type="checkbox" value="true"> Allow lowsec</label>
+    <label for="together-risky"><input id="together-risky" name="allow_risky" type="checkbox" value="true"> Include risky options</label>
+  </div>
+  <button type="submit" {% if not can_team_plan %}disabled{% endif %}>Plan together</button>
+</form>
+{% endif %}
 {% if not character_names %}<p class="muted">No characters yet: add one on the <a href="/characters">Characters</a> page.</p>{% endif %}
 <p class="muted small-print">Planning reads live market prices and contracts, so it takes a few seconds.</p>
 {% endif %}
+{% if last_team_id %}<p class="muted small-print"><a href="/teams/{{ last_team_id }}">Your last plan together</a>: start each character's part from there.</p>{% endif %}
 
 {% if results %}
 <h2>Recent sessions</h2>
@@ -260,6 +280,7 @@
 </div>
 {% endif %}
 
+{% if team_id %}<p class="muted small-print">Part of a <a href="/teams/{{ team_id }}">plan together</a>.</p>{% endif %}
 {% set busy = open_sessions|selectattr("character_id", "equalto", plan.character_id)|list %}
 {% if not busy %}
 <form class="session-start" method="post" action="/sessions/start">

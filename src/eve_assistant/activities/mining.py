@@ -19,6 +19,8 @@ from eve_assistant import (
 )
 from eve_assistant.activities import base
 from eve_assistant.activities.base import (
+    HAUL_TRIP_MINUTES,
+    JETTISON_MINUTES,
     MIN_MINING_MINUTES,
     MINUTES_PER_HOLD_TRIP,
     Context,
@@ -60,11 +62,29 @@ def _first_station(db: sqlite3.Connection, system_id: int | None) -> int | None:
     return row["station_id"] if row else None
 
 
+def _mining_minutes(time_left: float, rate: float, hold_m3: float, hauled: bool) -> float:
+    """Minutes actually mining. Alone: a dock trip for each full hold and the
+    sale at the end. With a hauler: a can jettisoned for each full hold, and
+    stopping in time for the hauler to carry the last can in and sell it."""
+    if hauled:
+        mining = max(0.0, time_left - HAUL_TRIP_MINUTES - ore.MINUTES_TO_SELL)
+        per_hold = JETTISON_MINUTES
+    else:
+        mining = max(0.0, time_left - ore.MINUTES_TO_SELL)
+        per_hold = MINUTES_PER_HOLD_TRIP
+    hold_minutes = hold_m3 / rate if hold_m3 else None
+    if hold_minutes:
+        trips = math.ceil(mining / (hold_minutes + per_hold))
+        mining = max(0.0, mining - trips * per_hold)
+    return mining
+
+
 def mining_candidates(
-    db, esi, character_id, ships, minutes, net_worth, ore_names, notes
+    db, esi, character_id, ships, minutes, net_worth, ore_names, notes, hauled_by=None
 ) -> list[PlanItem]:
     """A mining session in each owned, flyable ship that has mining modules fitted,
-    after the time it takes to get into that ship."""
+    after the time it takes to get into that ship. With hauled_by, another
+    character collects the ore and sells it (playing together)."""
     try:
         character = skills.load_character_skills(db, character_id)
     except skills.SkillsError as exc:
@@ -102,15 +122,12 @@ def mining_candidates(
             notes.append(Reason("no_station_to_sell"))
             continue
         here = base.system_info(db, system_id)
-        time_left = minutes - board.minutes
-        mining_minutes = max(0.0, time_left - ore.MINUTES_TO_SELL)
         # The estimate is from the static data; the correction scales it to how
         # fast this player really mines. The raw figure is what gets recorded.
         rate = estimate.m3_per_minute * learned.factor
-        hold_minutes = estimate.hold_m3 / rate if estimate.hold_m3 else None
-        if hold_minutes:
-            trips = math.ceil(mining_minutes / (hold_minutes + MINUTES_PER_HOLD_TRIP))
-            mining_minutes = max(0.0, mining_minutes - trips * MINUTES_PER_HOLD_TRIP)
+        mining_minutes = _mining_minutes(
+            minutes - board.minutes, rate, estimate.hold_m3, hauled_by is not None
+        )
         if mining_minutes < MIN_MINING_MINUTES:
             continue
         volume = rate * mining_minutes
@@ -140,12 +157,17 @@ def mining_candidates(
                 continue
             best = here_options[0]
             hold_value = (best.isk / volume) * (estimate.hold_m3 or volume) if volume else 0.0
+            if hauled_by:
+                then = f"jettisoning each full hold into a can for {hauled_by} to collect"
+                together = {"hauled_by": hauled_by, "mining_system_id": system_id,
+                            "sell_station_id": station_id, "m3": volume}  # fmt: skip
+            else:
+                then, together = f"then {best.title[0].lower()}{best.title[1:]}", {}
             items.append(
                 PlanItem(
                     kind="mining",
                     key=f"{ship.item_id}:{type_id}",
-                    title=f"{prefix} {analysis.type_name} for {mining_minutes:.0f} min, then "
-                    f"{best.title[0].lower()}{best.title[1:]}",
+                    title=f"{prefix} {analysis.type_name} for {mining_minutes:.0f} min, {then}",
                     # What sales really fetch, as learned; unit_prices keep the market's.
                     isk=best.isk * sale.factor,
                     minutes=minutes,
@@ -160,6 +182,7 @@ def mining_candidates(
                         *assessed.reasons,
                         *([fit_note] if fit_note else []),
                         *estimate.reasons,
+                        *([Reason("team_mining", {"hauler": hauled_by})] if hauled_by else []),
                     ),
                     inputs={
                         "type_id": type_id,
@@ -169,10 +192,11 @@ def mining_candidates(
                         "ship_item_id": ship.item_id,
                         "board_minutes": board.minutes,
                         "unit_prices": best.unit_prices,
+                        **together,
                     },
                 )
             )
-            job_item = _for_a_job(db, character_id, items[-1], system_id)
+            job_item = None if hauled_by else _for_a_job(db, character_id, items[-1], system_id)
             if job_item is not None:
                 items.append(job_item)
     if not any_miner:
@@ -256,7 +280,7 @@ def _better_saved_fit(db, character_id, character, ship, current, implants) -> R
 def candidates(ctx: Context) -> list[PlanItem]:
     return mining_candidates(
         ctx.db, ctx.esi, ctx.character_id, ctx.ships, ctx.minutes, ctx.net_worth,
-        ctx.ore_names, ctx.notes,
+        ctx.ore_names, ctx.notes, hauled_by=ctx.hauled_by,
     )  # fmt: skip
 
 

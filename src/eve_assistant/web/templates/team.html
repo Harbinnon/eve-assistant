@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Playing together · EVE Assistant{% endblock %}
+{% block content %}
+<h1>Playing together <span class="muted">· {{ team.minutes_available|int }} minutes</span></h1>
+<p class="muted small-print">Planned {{ team.created_at|ago }}. Each character's part is its own plan: start it when that character starts playing.</p>
+
+<article class="card">
+  <div class="readout">
+    <div><span class="label">Between you</span><span class="value isk">{{ team.value|isk }}<small>ISK</small></span></div>
+    <div><span class="label">How</span><span class="value minor">{{ shape_names.get(team.shape, team.shape) }}</span></div>
+  </div>
+  {% if team.notes %}
+  <ul class="notes">{% for n in team.notes %}<li>{{ explain(n.code, n) }}</li>{% endfor %}</ul>
+  {% endif %}
+</article>
+
+{% for role, p in team.members %}
+<section class="card">
+  <h2 class="history-title"><img class="portrait tiny" src="/images/portrait/{{ p.character_id }}.png" alt="" width="26" height="26"> {{ p.character_name }}{% if role_names.get(role) %} · {{ role_names[role] }}{% endif %}</h2>
+  <p><span class="isk">{{ plan_value(p)|isk }} ISK</span> after expected losses · <a href="/plans/{{ p.plan_id }}">full plan, with what else was considered</a></p>
+  {% if p.items %}
+  <ol class="steps">
+    {% for item in p.items %}
+    <li class="step">
+      <span class="num" aria-hidden="true">{{ loop.index }}</span>
+      <div class="body">
+        <div class="title">{{ item.title }}</div>
+        <div class="figures">
+          <strong>{{ item.isk|isk }} ISK</strong> · {{ item.minutes|round|int }} min ·
+          <span class="pill risk {{ item.risk_rating }}">{{ risk_labels[item.risk_rating] }}</span>
+          {% if item.expected_loss > 0 %} · expected loss {{ item.expected_loss|isk }}{% endif %}
+        </div>
+        {% if item.details.reasons %}
+        <details class="why">
+          <summary>Why?</summary>
+          <ul>
+            <li>{{ risk_summary(item.details.risk) }}</li>
+            {% for r in item.details.reasons %}<li>{{ explain(r.code, r) }}</li>{% endfor %}
+          </ul>
+        </details>
+        {% endif %}
+      </div>
+    </li>
+    {% endfor %}
+  </ol>
+  {% else %}
+  <p class="muted">Nothing fits for {{ p.character_name }} right now.</p>
+  {% endif %}
+  {% if p.character_id in busy %}
+  <p class="muted small-print">{{ p.character_name }} is playing.</p>
+  {% else %}
+  <form class="session-start" method="post" action="/sessions/start">
+    <input type="hidden" name="token" value="{{ form_token }}">
+    <input type="hidden" name="plan_id" value="{{ p.plan_id }}">
+    <button class="{{ 'primary' if loop.first else '' }}" type="submit">Start {{ p.character_name }}'s plan</button>
+  </form>
+  {% endif %}
+</section>
+{% endfor %}
+
+{% if team.other %}
+<h2>The other way: {{ shape_names.get(team.other.shape, team.other.shape) }}</h2>
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>Character</th><th>Would do</th><th class="num">ISK after losses</th></tr></thead>
+    <tbody>
+    {% for m in team.other.members %}
+      <tr>
+        <td data-label="Character">{{ names_by_id.get(m.character_id, m.character_id) }}</td>
+        <td data-label="Would do">{{ m.steps|join("; ") if m.steps else "nothing fits" }}</td>
+        <td data-label="ISK after losses" class="num">{{ m.value|isk }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p class="muted small-print">About {{ team.other.value|isk }} ISK between you that way.</p>
+{% endif %}
+{% endblock %}

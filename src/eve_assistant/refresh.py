@@ -35,6 +35,7 @@ from eve_assistant import (
     sovereignty,
     store,
     structures,
+    together,
     trade,
 )
 from eve_assistant.config import Config
@@ -270,6 +271,32 @@ def plan_now(
                 db, plan, {"allow_lowsec": allow_lowsec, "risky": allow_risky, "source": "web"}
             )
         return plan.plan_id
+    finally:
+        db.close()
+
+
+def team_plan_now(
+    config: Config,
+    secrets: SecretStore,
+    character_ids: list[int],
+    minutes: float,
+    allow_lowsec: bool = False,
+    allow_risky: bool = False,
+    db_path: Path | str = store.DEFAULT_DB_PATH,
+) -> int:
+    """Build and record a plan for characters played together. Returns its ID;
+    raises together.TogetherError if they can't play together."""
+    db = store.connect(db_path)
+    try:
+        with auth.http_client(config) as client:
+            esi = EsiClient(client, db, token_for=auth.AccessTokens(config, secrets, client).get)
+            team = together.build(
+                db, esi, character_ids, minutes, allow_lowsec=allow_lowsec, allow_risky=allow_risky
+            )
+            team = together.record(
+                db, team, {"allow_lowsec": allow_lowsec, "risky": allow_risky, "source": "web"}
+            )
+        return team.team_id
     finally:
         db.close()
 

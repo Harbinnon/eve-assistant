@@ -7,7 +7,7 @@ from unittest import mock
 import pytest
 from fastapi.testclient import TestClient
 
-from eve_assistant import campaigns, industry, refresh, signals, snapshots, store
+from eve_assistant import campaigns, industry, refresh, signals, snapshots, store, web
 from eve_assistant.config import Config, ConfigError, load_config
 from eve_assistant.esi import PLANETS_SCOPE, SCOPES
 from eve_assistant.esi.client import EsiError, EsiRateLimited
@@ -182,11 +182,12 @@ def test_nobody_logged_in_means_nothing_to_do(db_path, monkeypatch):
     assert refresh.auto_refresh_once(CONFIG, None, db_path, now=NOW).checked == {}
 
 
-def test_the_dashboard_runs_ticks_and_shows_their_status(db_path):
+def test_the_dashboard_runs_ticks_and_shows_their_status(db_path, monkeypatch):
     tick = mock.Mock(
         return_value=SimpleNamespace(problems=["Miner, wallet: timed out"], retry_after=None)
     )
-    app = create_app(db_path, auto_refresh=tick, auto_tick_seconds=0.05)
+    monkeypatch.setattr(web, "AUTO_TICK_SECONDS", 0.05)
+    app = create_app(db_path, auto_refresh=tick)
     with TestClient(app, base_url="http://127.0.0.1") as client:
         deadline = time.monotonic() + 5
         while tick.call_count < 2 and time.monotonic() < deadline:
@@ -198,9 +199,10 @@ def test_the_dashboard_runs_ticks_and_shows_their_status(db_path):
     assert "1 problem: Miner, wallet: timed out" in page
 
 
-def test_a_failing_tick_keeps_the_loop_alive(db_path):
+def test_a_failing_tick_keeps_the_loop_alive(db_path, monkeypatch):
     tick = mock.Mock(side_effect=RuntimeError("boom"))
-    app = create_app(db_path, auto_refresh=tick, auto_tick_seconds=0.05)
+    monkeypatch.setattr(web, "AUTO_TICK_SECONDS", 0.05)
+    app = create_app(db_path, auto_refresh=tick)
     with TestClient(app, base_url="http://127.0.0.1") as client:
         deadline = time.monotonic() + 5
         while tick.call_count < 2 and time.monotonic() < deadline:

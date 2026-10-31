@@ -17,6 +17,11 @@ from eve_assistant.skills import Reason
 MINUTES_PER_HOLD_TRIP = 3.0  # dock, unload, undock between full holds
 MINUTES_TO_QUEUE_SKILLS = 1.0
 MIN_MINING_MINUTES = 10.0  # shorter than this is not worth undocking for
+# Mining with a hauler (playing together): the miner jettisons each full hold
+# into a can instead of docking; the hauler collects the cans.
+JETTISON_MINUTES = 0.5  # stop and jettison a full hold
+COLLECT_MINUTES = 1.0  # a hauler finding a can and taking the ore
+HAUL_TRIP_MINUTES = MINUTES_PER_HOLD_TRIP + COLLECT_MINUTES  # collect, dock, unload, undock
 
 
 @dataclass(frozen=True)
@@ -57,6 +62,7 @@ class Context:
     ships: list
     ore_names: list[str] | None
     notes: list[Reason]  # activities add notes about what they assumed
+    hauled_by: str | None = None  # playing together: who collects this miner's ore
 
 
 def accessible_structure(db: sqlite3.Connection, location_id: int | None) -> int | None:
