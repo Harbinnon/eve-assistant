@@ -54,6 +54,7 @@ from eve_assistant.store import utc_now
 
 SHAPES = ("side_by_side", "mine_and_haul", "mine_and_boost")
 SHARED_KINDS = ("courier", "trade")  # one character takes it, not each
+SOMEWHERE = "the miner's system"  # when the system has no name in the static data
 
 
 class TogetherError(Exception):
@@ -235,7 +236,7 @@ def _haul_step(db, hauler: Member, miner: Member, mining: PlanItem, minutes, hig
         signals.hull_payout(db, haul.ship.type_id),
         risk.model(db),
     )
-    where = here["name"] if here else "the miner's system"
+    where = here["name"] if here else SOMEWHERE
     board = (
         f"board your {haul.ship.name} ({haul.board.minutes:.0f} min), then "
         if haul.board.needs_switch
@@ -319,7 +320,7 @@ def _compress_step(db, hauler: Member, miner: Member, mining: PlanItem, ship, ru
         signals.hull_payout(db, ship.type_id),
         risk.model(db),
     )
-    where = here["name"] if here else "the miner's system"
+    where = here["name"] if here else SOMEWHERE
     switch = (
         f"board your {ship.name} ({board.minutes:.0f} min), then " if board.needs_switch else ""
     )
@@ -551,7 +552,7 @@ def _boost_step(db, booster: Member, miner: Member, mining: PlanItem, boost, rul
         "field": carry.trips == 0,
         "m3": carry.carried, "trips": carry.trips, "minutes_needed": carry.needed,
     }  # fmt: skip
-    where = here["name"] if here else "the miner's system"
+    where = here["name"] if here else SOMEWHERE
     return PlanItem(
         kind="team_boost",
         key=f"{miner.character_id}:{boost.ship.item_id}",
