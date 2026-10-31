@@ -468,7 +468,7 @@ def describe(code: str, detail: dict | None = None) -> str:
         "nothing_fits": lambda: "Nothing fits in this amount of time.",
         "together_too_few": lambda: "Pick two or more characters to play together.",
         "together_no_account": lambda: (
-            f"{d.get('character')} isn't on an account yet (eve-assistant account assign), "
+            f"{d.get('character')} isn't on an account yet (set it on the Characters page), "
             "so whether it can play alongside the others can't be checked."
         ),
         "together_same_account": lambda: (
