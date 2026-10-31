@@ -44,6 +44,14 @@
 </div>
 {% endif %}
 
+{% for k in clashes %}
+<div class="problems" role="alert">
+  <strong>{{ k.characters[0] }} and {{ k.characters[1] }} were both online at {{ k.at|when }}</strong>,
+  so they can't be on the same account ({{ k.account }}): EVE logs in one character per account at a
+  time. Use <strong>Change account</strong> on one of them below.
+</div>
+{% endfor %}
+
 {% if not characters %}
 <p>No characters yet. Press <strong>Add a character</strong> to log one in with EVE.</p>
 {% else %}
@@ -73,7 +81,7 @@
         </label>
         <button class="small" type="submit">Save</button>
       </form>
-      <p class="muted small-print">Give characters on the same EVE account the same name. Alpha or Omega is for the whole account; plans, skills and playing together depend on it.</p>
+      <p class="muted small-print">Give characters on the same EVE account the same name{% if account_names %} (so far: {{ account_names|join(", ") }}){% endif %}: clear the box to type another. Alpha or Omega is for the whole account; plans, skills and playing together depend on it.</p>
     </details>
     <dl class="facts">
       <dt>Skill points</dt><dd>{{ "{:,}".format(c.total_sp) }}</dd>
