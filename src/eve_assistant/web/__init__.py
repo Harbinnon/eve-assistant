@@ -427,7 +427,6 @@ def create_app(
     make_team_plan: TeamPlanner | None = None,
     allowed_hosts: tuple[str, ...] = LOCAL_HOSTS,
     auto_refresh: AutoRefresher | None = None,
-    auto_tick_seconds: float = AUTO_TICK_SECONDS,
     backups_dir: Path | str | None = None,
     add_character: Callable[[], str] | None = None,
     fetch_image: images.Fetch | None = None,
@@ -439,7 +438,7 @@ def create_app(
     make_plan: builds and records a plan (needs ESI), returning its ID.
     make_team_plan: the same for characters played together, returning the team plan's ID.
     snapshot: snapshots one character (needs ESI), returning problem lines.
-    auto_refresh: one background refresh tick (needs ESI), run every auto_tick_seconds."""
+    auto_refresh: one background refresh tick (needs ESI), run every AUTO_TICK_SECONDS."""
     account = account or AccountStatus()
     missing_scopes, planets_on = account.missing_scopes, account.planets_on
     alert_channels = account.alert_channels
@@ -476,7 +475,7 @@ def create_app(
 
     async def auto_loop() -> None:
         while True:
-            delay = auto_tick_seconds
+            delay = AUTO_TICK_SECONDS  # read each time, so tests can make it short
             try:
                 report = await asyncio.to_thread(auto_refresh)
                 auto_status["problems"] = list(report.problems)

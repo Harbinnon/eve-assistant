@@ -258,7 +258,8 @@ def test_a_team_plan_is_recorded_as_one_plan_each_and_is_append_only():
     inputs = db.execute(
         "SELECT inputs FROM plans WHERE plan_id = ?", (stored.members[1][1].plan_id,)
     ).fetchone()[0]
-    assert '"role": "hauler"' in inputs and '"with": ["Miner"]' in inputs
+    assert '"role": "hauler"' in inputs
+    assert '"with": ["Miner"]' in inputs
     assert together.team_of(db, stored.members[0][1].plan_id) == team.team_id
     assert together.latest_team_id(db) == team.team_id
     with pytest.raises(sqlite3.IntegrityError, match="append-only"):
@@ -300,7 +301,8 @@ def test_the_dashboard_plans_together_and_starts_each_character(tmp_path):
         assert asked == [([7, 8], 60.0)]
         page = client.get(f"/teams/{team_id}").text
         assert "Playing together" in page
-        assert "Miner · mines" in page and "Hauler · hauls" in page
+        assert "Miner · mines" in page
+        assert "Hauler · hauls" in page
         assert "one mining while the other hauls" in page
         assert "The other way: each playing their own plan" in page
         assert "Start Miner's plan" in page
@@ -364,7 +366,8 @@ def test_the_cli_prints_and_records_the_plan(tmp_path, monkeypatch, capsys):
     assert cli.main(["plan-together", "60", "Miner", "Hauler"]) == 0
     out = capsys.readouterr().out
     assert "minutes, one mining while the other hauls." in out
-    assert "Miner (mines), plan" in out and "Hauler (hauls), plan" in out
+    assert "Miner (mines), plan" in out
+    assert "Hauler (hauls), plan" in out
     assert "Best between you: one mining while the other hauls" in out
     db = store.connect(path)
     assert together.latest_team_id(db) is not None

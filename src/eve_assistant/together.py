@@ -404,8 +404,8 @@ def record(db: sqlite3.Connection, team: TeamPlan, inputs: dict) -> TeamPlan:
             "INSERT INTO team_plan_members (team_id, plan_id, role) VALUES (?, ?, ?)",
             [(team_id, p.plan_id, role) for p, role in zip(stored, team.chosen.roles, strict=True)],
         )
-    chosen = replace(team.chosen, plans=tuple(stored))
-    return replace(team, chosen=chosen, team_id=team_id)
+    chosen = Shape(team.chosen.kind, tuple(stored), team.chosen.roles)
+    return TeamPlan(team.minutes, team.members, chosen, team.other, team.notes, team_id)
 
 
 @dataclass(frozen=True)

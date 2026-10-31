@@ -165,7 +165,7 @@ def _set_aside(candidates, mutes, allow_risky) -> tuple[list[PlanItem], list[Alt
 def _set_aside_taken(usable, alternatives, taken) -> list[PlanItem]:
     """Playing together: what another character in the group already does
     becomes an alternative."""
-    alternatives += [Alternative(i, "teammate") for i in usable if (i.kind, i.key) in taken]
+    alternatives.extend(Alternative(i, "teammate") for i in usable if (i.kind, i.key) in taken)
     return [i for i in usable if (i.kind, i.key) not in taken]
 
 
