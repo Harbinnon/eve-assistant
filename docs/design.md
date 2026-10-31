@@ -579,7 +579,8 @@ done, marked "new to you", and only from activities the tool can model.
 
 - **Mining yield** depends on ship, modules, skills and boosts. The main
   multipliers come from the static data, not a Pyfa reimplementation; the
-  mining ledger corrects the rest. Plans predict with what is actually
+  mining ledger corrects the rest. Boosts are counted only from a character
+  playing together (section 6.3), whose burst the tool can see. Plans predict with what is actually
   fitted; a saved fit for the same hull that would mine 5% or more is
   mentioned beside it as a what-if, with any modules that aren't on the
   ship or in its hangar. Fit names are the player's own text and shown as
@@ -731,11 +732,33 @@ back every few seconds and opens the plan when it's ready. A character
 that can't mine, or has no ship that carries ore, isn't planned a second
 time for the other shape.
 
+Planned together, a character's ore choices also include what the others
+have mined in the same system (from their mining ledgers), since they'll
+be mining side by side; every shape uses this, so the comparison is fair.
+
 Each character's part is recorded as an ordinary plan, so starting, ticking
 off and learning work unchanged; a team plan (append-only, like plans)
 links them with the shape chosen and what the other would have made.
-Sale prices aren't learned from the hauler's sales yet, and mining boosts,
-fleet hangars (Orca, Porpoise) and alerts for the group come later.
+Sale prices aren't learned from the hauler's sales yet, and alerts for the
+group come later.
+
+**One mines, one boosts** (roadmap 8.5) is the third shape, tried both ways
+round like hauling. The booster is a character with a Mining Foreman Burst
+fitted on a ship it can fly (a Porpoise, say). Its strength comes from the
+static data, as EVE builds it: the charge's base value (Mining Laser
+Optimization: -15% mining cycle time) times the burst module (1.0 for a
+Burst I, 1.25 for a II), the Mining Director skill (10% a level), the ship
+(an industrial command ship's 2% a level of Industrial Command Ships), an
+Industrial Core fitted (assumed running; the static data gives a flat bonus,
+to check against the game) and a Mining Foreman Mindlink plugged in. Each
+factor is listed under "Why?" so it can be checked against EVE's own boost
+tooltip. The miner mines that much faster and never docks: the booster
+stays beside them, takes the ore (compressed if an ore compressor is fitted)
+and sells it at the end, making trips only if its hold fills. The charges
+the burst uses, one a cycle, are a cost on the booster's step, and the step
+says to load them when fewer are loaded than the session needs. Not counted
+yet: the Efficiency charge's critical hits, the booster's own mining drones,
+and hauling the compressed ore to a better market.
 
 ### 6.4 Corporations
 

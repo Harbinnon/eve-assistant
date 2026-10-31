@@ -2,9 +2,10 @@
 
 Values come from the static data; this module only holds the rules that
 connect them (which skill a ship bonus scales with). Not modelled yet, and
-reported as such: mining crystals, drones, fleet boosts, rigs and stacking
-penalties. The estimate is rough by design; the mining ledger corrects it
-once real sessions are recorded (phase 3).
+reported as such: mining crystals, drones, fleet boosts (except a booster
+playing together, boosts.py), rigs and stacking penalties. The estimate is
+rough by design; the mining ledger corrects it once real sessions are
+recorded (phase 3).
 """
 
 import math

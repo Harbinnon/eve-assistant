@@ -173,8 +173,8 @@ def test_one_mining_while_the_other_hauls_wins_when_it_makes_more():
     assert haul.isk == 0.0  # the ore's value is on the miner's step
     assert haul.inputs["trips"] == 2  # 5,100 m³ in a 5,000 m³ hauler
     assert haul.title.startswith("Collect the cans Miner jettisons: about 2 trips")
-    assert team.other.kind == "side_by_side"
-    assert team.chosen.value > team.other.value
+    assert [shape.kind for shape in team.others] == ["side_by_side"]
+    assert team.chosen.value > team.others[0].value
     codes = [n.code for n in team.notes]
     assert codes[0] == "together_chosen"
     assert "no_team_mining" in codes  # the hauler has no mining ship
@@ -186,7 +186,7 @@ def test_side_by_side_wins_when_the_hauler_cant_keep_up():
     db = _world(hauler_m3=10.0)  # 510 trips: far too many
     team = _build(db)
     assert team.chosen.kind == "side_by_side"
-    assert team.other is None
+    assert team.others == ()
     assert {"no_team_hauler", "no_team_mining"} <= {n.code for n in team.notes}
     assert team.chosen.roles == ("solo", "solo")
 
@@ -255,7 +255,7 @@ def test_a_team_plan_is_recorded_as_one_plan_each_and_is_append_only():
     assert stored.shape == "mine_and_haul"
     assert [(role, p.character_name) for role, p in stored.members] == [
         ("miner", "Miner"), ("hauler", "Hauler")]  # fmt: skip
-    assert stored.other["shape"] == "side_by_side"
+    assert stored.others[0]["shape"] == "side_by_side"
     assert stored.value == pytest.approx(team.chosen.value)
     inputs = db.execute(
         "SELECT inputs FROM plans WHERE plan_id = ?", (stored.members[1][1].plan_id,)
@@ -382,7 +382,7 @@ def test_a_failed_plan_together_shows_why(tmp_path):
 
 
 @respx.mock
-def test_a_character_that_cant_mine_or_carry_isnt_planned_again():
+def test_a_character_that_cant_mine_or_carry_isnt_planned_again(monkeypatch):
     _mock_esi()
     db = _world()
     built = []
@@ -392,11 +392,8 @@ def test_a_character_that_cant_mine_or_carry_isnt_planned_again():
         built.append((character_id, options.get("hauled_by")))
         return real(db_, esi, character_id, minutes, **options)
 
-    planner.build_plan = counting
-    try:
-        _build(db)
-    finally:
-        planner.build_plan = real
+    monkeypatch.setattr(planner, "build_plan", counting)
+    _build(db)
     # Own plans for both, then Miner mining for Hauler; Hauler has no mining ship,
     # so Hauler mining for Miner is never planned.
     assert built == [(7, None), (8, None), (7, "Hauler")]
@@ -465,3 +462,39 @@ def test_reason_texts_exist_for_every_together_code():
                  "team_haul"):  # fmt: skip
         assert explain.describe(code, {}) != code, code
     assert explain.describe(Reason("x").code) == "x"  # unknown codes fall back
+
+
+def test_a_miner_may_mine_what_a_partner_mined_in_that_system():
+    from eve_assistant.activities import mining as mining_activity
+
+    db = _world()
+    db.execute(
+        "INSERT INTO sde_types (type_id, name, group_id, published, volume) "
+        "VALUES (1231, 'Ytirium', 462, 1, 0.1)"
+    )
+    snapshots.record(db, 8, "mining_ledger", [
+        {"type_id": 1231, "solar_system_id": HOME, "quantity": 9},
+        {"type_id": ORE, "solar_system_id": HOME, "quantity": 9},
+        {"type_id": 1231, "solar_system_id": 1, "quantity": 9}])  # fmt: skip
+    notes = []
+    alone = mining_activity._ore_choices(db, 7, HOME, None, [])
+    together_ = mining_activity._ore_choices(db, 7, HOME, None, notes, partners=(8,))
+    assert alone == [ORE]
+    assert together_ == [ORE, 1231]  # own first, then the partner's new ones
+    assert [n.detail for n in notes if n.code == "ores_from_partners"] == [{"count": 1}]
+
+
+@respx.mock
+def test_every_plan_together_counts_the_partners_ores(monkeypatch):
+    _mock_esi()
+    db = _world()
+    partners = []
+    real = planner.build_plan
+
+    def noting(db_, esi, character_id, minutes, **options):
+        partners.append((character_id, options.get("ore_partners")))
+        return real(db_, esi, character_id, minutes, **options)
+
+    monkeypatch.setattr(planner, "build_plan", noting)
+    _build(db)
+    assert set(partners) == {(7, (8,)), (8, (7,))}

@@ -120,6 +120,7 @@ against. The owner's priorities, in order:
 | # | What | Done when |
 |---|---|---|
 | 8.4 | **One plan for characters played together.** Omega accounts can be logged in at once (the owner plays two), so a plan can split the session between them: one mines while the other hauls or sells, and the ore one mines is what the other carries. Alpha accounts still can't multibox, and the planner never suggests it. | A 60-minute plan for two characters that the owner agrees is sensible, recorded and learned from like any other. Built (`v0.16.0`): "Play together" on Today and `plan-together`, refused unless each character has its own Omega account; side by side (nothing taken twice) against one mining while the other hauls, the better picked and the other shown; one ordinary plan per character, linked as a team plan. Waiting for the owner's verdict on a real session. |
+| 8.5 | **Mining boosts and the Porpoise when playing together.** The owner's Porpoise boosts the other character's barge. | A plan together counts the boost the game would give, from the static data. Built (`v0.18.0`): "one mines, one boosts" as a third shape: burst strength from charge, module, Mining Director, ship, Industrial Core and Mindlink; the miner mines faster and never docks; the booster carries (compressed) and sells, its charges a cost. |
 
 ### Then, in no set order
 

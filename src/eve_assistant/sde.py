@@ -60,6 +60,15 @@ ATTRIBUTE_NAMES = frozenset(
         "virusStrength",
         "virusCoherenceBonus",
         "accessDifficultyBonusAbsolutePercent",
+        # Roadmap 8.5: mining boosts (burst charges, burst modules and what
+        # strengthens them: skill, ship, Industrial Core, mindlink).
+        "warfareBuff1ID",
+        "warfareBuff1Multiplier",
+        "warfareBuff1Value",
+        "commandStrengthBonus",
+        "shipBonusICS2",
+        "mindlinkBonus",
+        "industrialCoreBonusMiningBurstStrength",
     }
 )
 ATTRIBUTE_NAME_SUFFIXES = (
@@ -74,7 +83,7 @@ AGENT_TYPE_BASIC = 2
 
 # Bump when load() starts filling new tables or attributes; a database loaded
 # by an older loader is then reported as needing a reload.
-LOADER_VERSION = 5
+LOADER_VERSION = 6
 
 
 def _kept_attribute_ids(names: dict[int, str]) -> frozenset[int]:
