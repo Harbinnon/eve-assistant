@@ -1197,6 +1197,7 @@ def create_app(
         try:
             summaries = overview.all_characters(conn)
             account_names = accounts.labels(conn)
+            clashes = accounts.clashes(conn)
             worth_lines = {c.character_id: _worth(conn, [c.character_id]) for c in summaries}
             corps, timers = _corps_and_planets(conn, [c.character_id for c in summaries])
         finally:
@@ -1212,6 +1213,7 @@ def create_app(
             "characters.html",
             characters=summaries,
             account_names=account_names,
+            clashes=clashes,
             clone_states=accounts.CLONE_STATES,
             max_label=accounts.MAX_LABEL,
             worth_lines=worth_lines,

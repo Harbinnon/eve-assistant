@@ -690,7 +690,10 @@ in again. History, goals and learning come along.
 Any number of characters across any number of accounts. Each character
 logs in through EVE's own login page. Characters are grouped into accounts
 once on the Characters page, because ESI doesn't say which account a character
-belongs to.
+belongs to. The page warns when two characters put on one account were
+online at the same time in the last two weeks (an overlap of more than two
+minutes, so switching characters doesn't count): one of them must be on
+another account.
 
 Account rules the planner respects (EVE University wiki; to be confirmed
 against CCP's current EULA):
