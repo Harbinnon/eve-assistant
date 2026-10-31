@@ -184,6 +184,10 @@ def _carry_minutes(board, path, per_jump, trips: int) -> float:
     )
 
 
+def _jumps(count: int) -> str:
+    return f"{count} jump{'' if count == 1 else 's'}"
+
+
 def _hauler_ship(db, hauler: Member, system_id: int, m3: float, minutes: float, highsec_only):
     """The ship at least risk that gets the hauler to the miner and carries the
     ore in time: (ship, boarding, path, trips, capacity, minutes needed)."""
@@ -230,7 +234,7 @@ def _haul_step(db, hauler: Member, miner: Member, mining: PlanItem, minutes, hig
         if haul.board.needs_switch
         else ""
     )
-    travel = f"fly to {where} ({jumps} jumps) and " if jumps else ""
+    travel = f"fly to {where} ({_jumps(jumps)}) and " if jumps else ""
     title = (
         f"{board}{travel}collect the cans {miner.name} jettisons: about {haul.trips} trips "
         f"to the station in {where}, then sell the ore there"
@@ -417,19 +421,19 @@ def _boost_title(boost, miner: Member, carry: _Carry, where: str, charges: int) 
         if board.needs_switch
         else ""
     )
-    travel = f"fly to {where} ({jumps} jumps) and " if jumps else ""
+    travel = f"fly to {where} ({_jumps(jumps)}) and " if jumps else ""
     load = (
         f"Load {charges} {boost.charge}s first ({boost.charges_loaded} loaded). "
         if boost.charges_loaded < charges
         else ""
     )
     title = (
-        f"{load}{switch}{travel}boost {miner.name} with your {boost.burst} ({boost.charge}: "
+        f"{switch}{travel}boost {miner.name} with your {boost.burst} ({boost.charge}: "
         f"cycles {-boost.cycle_change:.0f}% shorter), take their ore into your "
         f"{boost.ship.name}{', compress it' if carry.compresses else ''} and sell it at the "
         f"station in {where}"
     )
-    return title[0].upper() + title[1:]
+    return load + title[0].upper() + title[1:]
 
 
 def _boost_step(db, booster: Member, miner: Member, mining: PlanItem, boost, rules: _Rules):

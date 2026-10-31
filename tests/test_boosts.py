@@ -200,3 +200,16 @@ def _risky_mining():
     from eve_assistant.activities.base import PlanItem
 
     return PlanItem("mining", "1:2", "Mine", 1.0, 60, risk.rate("high", 1e9, 1))
+
+
+def test_the_booster_step_reads_as_two_sentences():
+    from eve_assistant import fleet
+
+    db = _booster_world(charges=0)
+    boost = boosts.best_boost(db, 8)
+    ship = fleet.owned_ships(db, 8)[0]
+    board = fleet.Boarding(ship, 0.0, 0, [1])
+    carry = together._Carry((board, [1, 2], 1.0), 10.0, True, 5000.0, 1, 5.0)
+    title = together._boost_title(boost, together.members(db, [7])[0], carry, "Home", 60)
+    assert title.startswith("Load 60 Mining Laser Optimization Charges first (0 loaded). Fly to")
+    assert "(1 jump) and boost Miner" in title
