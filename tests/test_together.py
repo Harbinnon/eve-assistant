@@ -8,6 +8,8 @@ a minute, a 1,000 m³ ore hold); character 8 sits in a hauler at the station.
 
 import re
 import sqlite3
+import threading
+import time
 from types import SimpleNamespace
 
 import httpx
@@ -297,7 +299,8 @@ def test_the_dashboard_plans_together_and_starts_each_character(tmp_path):
             data={"token": _token(today), "characters": ["Miner", "Hauler"], "minutes": "60"},
             follow_redirects=False,
         )
-        assert made.headers["location"] == f"/teams/{team_id}"
+        assert made.headers["location"].startswith("/teams/planning/")
+        assert _finished(client, made.headers["location"]) == f"/teams/{team_id}"
         assert asked == [([7, 8], 60.0)]
         page = client.get(f"/teams/{team_id}").text
         assert "Playing together" in page
@@ -317,6 +320,86 @@ def test_the_dashboard_plans_together_and_starts_each_character(tmp_path):
         assert "Miner is playing." in page
         assert "Start Hauler's plan" in page
         assert "Your last plan together" in client.get("/today").text
+
+
+def _finished(client, waiting: str) -> str:
+    """Where the waiting page sends you once planning in the background is done."""
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        response = client.get(waiting, follow_redirects=False)
+        if response.status_code == 303:
+            return response.headers["location"]
+        time.sleep(0.02)
+    raise AssertionError("planning never finished")
+
+
+def test_planning_together_runs_in_the_background_with_a_waiting_page(tmp_path):
+    path = tmp_path / "t.sqlite3"
+    _world(path).close()
+    release = threading.Event()
+
+    def slow(*_a):
+        release.wait(5)
+        return 41
+
+    with TestClient(create_app(path, make_team_plan=slow), base_url=LOCAL) as client:
+        token = _token(client.get("/today").text)
+        waiting = client.post(
+            "/today/together",
+            data={"token": token, "characters": ["Miner", "Hauler"], "minutes": "240"},
+            follow_redirects=False,
+        ).headers["location"]
+        page = " ".join(client.get(waiting).text.split())
+        assert "<h1>Planning together" in page
+        assert "240 minutes" in page
+        assert "<strong>Miner and Hauler</strong>" in page
+        assert 'http-equiv="refresh" content="5;' in page  # checks back by itself
+        release.set()
+        assert _finished(client, waiting) == "/teams/41"
+        assert client.get("/teams/planning/nonsense").status_code == 404
+
+
+def test_a_failed_plan_together_shows_why(tmp_path):
+    path = tmp_path / "t.sqlite3"
+    _world(path).close()
+
+    def broken(*_a):
+        raise RuntimeError("markets unreachable")
+
+    with TestClient(create_app(path, make_team_plan=broken), base_url=LOCAL) as client:
+        token = _token(client.get("/today").text)
+        waiting = client.post(
+            "/today/together",
+            data={"token": token, "characters": ["Miner", "Hauler"], "minutes": "60"},
+            follow_redirects=False,
+        ).headers["location"]
+        deadline = time.monotonic() + 5
+        page = ""
+        while "markets unreachable" not in page and time.monotonic() < deadline:
+            page = client.get(waiting).text
+            time.sleep(0.02)
+    assert "Could not build a plan: markets unreachable" in page
+
+
+@respx.mock
+def test_a_character_that_cant_mine_or_carry_isnt_planned_again():
+    _mock_esi()
+    db = _world()
+    built = []
+    real = planner.build_plan
+
+    def counting(db_, esi, character_id, minutes, **options):
+        built.append((character_id, options.get("hauled_by")))
+        return real(db_, esi, character_id, minutes, **options)
+
+    planner.build_plan = counting
+    try:
+        _build(db)
+    finally:
+        planner.build_plan = real
+    # Own plans for both, then Miner mining for Hauler; Hauler has no mining ship,
+    # so Hauler mining for Miner is never planned.
+    assert built == [(7, None), (8, None), (7, "Hauler")]
 
 
 def test_the_dashboard_says_why_characters_cant_play_together(tmp_path):
