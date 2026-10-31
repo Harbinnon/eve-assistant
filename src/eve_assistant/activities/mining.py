@@ -80,7 +80,16 @@ def _mining_minutes(time_left: float, rate: float, hold_m3: float, hauled: bool)
 
 
 def mining_candidates(
-    db, esi, character_id, ships, minutes, net_worth, ore_names, notes, hauled_by=None
+    db,
+    esi,
+    character_id,
+    ships,
+    minutes,
+    net_worth,
+    ore_names,
+    notes,
+    hauled_by=None,
+    boost=None,
 ) -> list[PlanItem]:
     """A mining session in each owned, flyable ship that has mining modules fitted,
     after the time it takes to get into that ship. With hauled_by, another
@@ -125,6 +134,8 @@ def mining_candidates(
         # The estimate is from the static data; the correction scales it to how
         # fast this player really mines. The raw figure is what gets recorded.
         rate = estimate.m3_per_minute * learned.factor
+        if boost:  # a booster's Mining Foreman Burst shortens every cycle
+            rate /= boost[1]
         mining_minutes = _mining_minutes(
             minutes - board.minutes, rate, estimate.hold_m3, hauled_by is not None
         )
@@ -157,7 +168,15 @@ def mining_candidates(
                 continue
             best = here_options[0]
             hold_value = (best.isk / volume) * (estimate.hold_m3 or volume) if volume else 0.0
-            if hauled_by:
+            if boost:
+                then = (
+                    f"boosted by {boost[0]} (cycles {(1 - boost[1]) * 100:.0f}% shorter), "
+                    f"passing each full hold to {boost[0]}"
+                )
+                together = {"hauled_by": hauled_by, "boosted_by": boost[0],
+                            "cycle_factor": boost[1], "mining_system_id": system_id,
+                            "sell_station_id": station_id, "m3": volume}  # fmt: skip
+            elif hauled_by:
                 then = f"jettisoning each full hold into a can for {hauled_by} to collect"
                 together = {"hauled_by": hauled_by, "mining_system_id": system_id,
                             "sell_station_id": station_id, "m3": volume}  # fmt: skip
@@ -182,7 +201,17 @@ def mining_candidates(
                         *assessed.reasons,
                         *([fit_note] if fit_note else []),
                         *estimate.reasons,
-                        *([Reason("team_mining", {"hauler": hauled_by})] if hauled_by else []),
+                        *(
+                            [
+                                Reason(
+                                    "team_boosted", {"booster": boost[0], "cycle_factor": boost[1]}
+                                )
+                            ]
+                            if boost
+                            else [Reason("team_mining", {"hauler": hauled_by})]
+                            if hauled_by
+                            else []
+                        ),  # fmt: skip
                     ),
                     inputs={
                         "type_id": type_id,
@@ -280,7 +309,7 @@ def _better_saved_fit(db, character_id, character, ship, current, implants) -> R
 def candidates(ctx: Context) -> list[PlanItem]:
     return mining_candidates(
         ctx.db, ctx.esi, ctx.character_id, ctx.ships, ctx.minutes, ctx.net_worth,
-        ctx.ore_names, ctx.notes, hauled_by=ctx.hauled_by,
+        ctx.ore_names, ctx.notes, hauled_by=ctx.hauled_by, boost=ctx.boost,
     )  # fmt: skip
 
 

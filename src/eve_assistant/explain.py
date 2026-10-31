@@ -17,14 +17,16 @@ WHY_NOT = {
     "too_many_projects": "You already have the most open projects; finish or drop one first.",
     "teammate": "Another character you're playing with does this.",
     "hauling": "Hauling for the character you're playing with makes more between you.",
+    "boosting": "Boosting the character you're playing with makes more between you.",
 }
 
 # Playing together (roadmap 8.4): the two shapes a team plan compares.
 SHAPE_NAMES = {
     "side_by_side": "each playing their own plan",
     "mine_and_haul": "one mining while the other hauls",
+    "mine_and_boost": "one mining while the other boosts and carries",
 }
-ROLE_NAMES = {"solo": "", "miner": "mines", "hauler": "hauls"}
+ROLE_NAMES = {"solo": "", "miner": "mines", "hauler": "hauls", "booster": "boosts"}
 
 
 LEARNED = {
@@ -204,6 +206,31 @@ def _together_chosen(d: dict) -> str:
     return (
         f"{text}, {numbers.isk(gap)} more than "
         f"{SHAPE_NAMES.get(d['other_shape'], d['other_shape'])}."
+    )
+
+
+def _team_boost(d: dict) -> str:
+    factors = " × ".join(f"{what} {value:.3g}" for what, value in d.get("factors", []))
+    cost = (
+        f"{d.get('charges', 0)} charges a session, about {numbers.isk(d.get('charge_cost', 0))} ISK"
+        if d.get("priced")
+        else f"{d.get('charges', 0)} charges a session (no price known)"
+    )
+    loaded = (
+        "" if d.get("loaded", 0) >= d.get("charges", 0) else f"; {d.get('loaded', 0)} loaded now"
+    )
+    carried = (
+        f"about {d.get('m3', 0):,.0f} m³ compressed"
+        if d.get("compressed")
+        else f"about {d.get('m3', 0):,.0f} m³"
+    )
+    return (
+        f"{d.get('charge')}: {d.get('base', 0):.0f}% × strength {d.get('strength', 0):.2f} "
+        f"({factors}) = cycles {-d.get('cycle_change', 0):.1f}% shorter for {d.get('miner')}. "
+        f"Uses {cost}{loaded}. Carries {carried} from {d.get('miner')} in your {d.get('ship')} "
+        f"({d.get('trips', 0)} trip{'s' if d.get('trips', 0) != 1 else ''}), about "
+        f"{d.get('minutes_needed', 0):.0f} min of flying, unloading and selling; the boost "
+        "assumes you stay beside them. The ore's ISK is counted on their mining step."
     )
 
 
@@ -492,6 +519,29 @@ def describe(code: str, detail: dict | None = None) -> str:
         "team_haul_risky": lambda: (
             f"{d.get('miner')} mining while {d.get('hauler')} hauls wasn't offered: the "
             f"hauling is rated Risky for {d.get('hauler')}. Tick “Include risky options” "
+            "to allow it."
+        ),
+        "team_boost": lambda: _team_boost(d),
+        "team_boosted": lambda: (
+            f"{d.get('booster')}'s Mining Foreman Burst makes each cycle "
+            f"{(1 - (d.get('cycle_factor') or 1)) * 100:.0f}% shorter, so you mine that much "
+            f"faster; {d.get('booster')} takes your ore, so you don't dock to unload."
+        ),
+        "no_boost_mining": lambda: (
+            f"{d.get('miner')} mining while {d.get('booster')} boosts wasn't worked out: "
+            f"{d.get('miner')}'s best plan for this time doesn't mine."
+        ),
+        "no_team_booster": lambda: (
+            f"{d.get('miner')} mining while {d.get('booster')} boosts wasn't possible: "
+            f"{d.get('booster')} has no Mining Foreman Burst fitted on a ship it can fly."
+        ),
+        "team_boost_out_of_reach": lambda: (
+            f"{d.get('miner')} mining while {d.get('booster')} boosts wasn't possible: "
+            f"{d.get('booster')}'s boosting ship can't get there and carry the ore in time."
+        ),
+        "team_boost_risky": lambda: (
+            f"{d.get('miner')} mining while {d.get('booster')} boosts wasn't offered: the "
+            f"boosting is rated Risky for {d.get('booster')}. Tick “Include risky options” "
             "to allow it."
         ),
         "team_mining": lambda: (

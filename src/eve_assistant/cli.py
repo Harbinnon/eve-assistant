@@ -628,6 +628,7 @@ WHY_NOT = {
     "new_limit": "only one new activity per plan",
     "teammate": "another character you're playing with does it",
     "hauling": "hauling for the other character makes more between you",
+    "boosting": "boosting the other character makes more between you",
 }
 
 

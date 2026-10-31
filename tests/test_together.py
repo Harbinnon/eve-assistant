@@ -173,8 +173,8 @@ def test_one_mining_while_the_other_hauls_wins_when_it_makes_more():
     assert haul.isk == 0.0  # the ore's value is on the miner's step
     assert haul.inputs["trips"] == 2  # 5,100 m³ in a 5,000 m³ hauler
     assert haul.title.startswith("Collect the cans Miner jettisons: about 2 trips")
-    assert team.other.kind == "side_by_side"
-    assert team.chosen.value > team.other.value
+    assert [shape.kind for shape in team.others] == ["side_by_side"]
+    assert team.chosen.value > team.others[0].value
     codes = [n.code for n in team.notes]
     assert codes[0] == "together_chosen"
     assert "no_team_mining" in codes  # the hauler has no mining ship
@@ -186,7 +186,7 @@ def test_side_by_side_wins_when_the_hauler_cant_keep_up():
     db = _world(hauler_m3=10.0)  # 510 trips: far too many
     team = _build(db)
     assert team.chosen.kind == "side_by_side"
-    assert team.other is None
+    assert team.others == ()
     assert {"no_team_hauler", "no_team_mining"} <= {n.code for n in team.notes}
     assert team.chosen.roles == ("solo", "solo")
 
@@ -255,7 +255,7 @@ def test_a_team_plan_is_recorded_as_one_plan_each_and_is_append_only():
     assert stored.shape == "mine_and_haul"
     assert [(role, p.character_name) for role, p in stored.members] == [
         ("miner", "Miner"), ("hauler", "Hauler")]  # fmt: skip
-    assert stored.other["shape"] == "side_by_side"
+    assert stored.others[0]["shape"] == "side_by_side"
     assert stored.value == pytest.approx(team.chosen.value)
     inputs = db.execute(
         "SELECT inputs FROM plans WHERE plan_id = ?", (stored.members[1][1].plan_id,)

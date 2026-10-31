@@ -18,6 +18,11 @@ picked:
   carries the ore to the station and sells it. The miner mines for longer,
   and the hauler's time earns nothing else. Offered only when the miner's best
   plan is mining and the hauler has a ship that gets there and keeps up.
+- one mines, one boosts (two characters, roadmap 8.5): the booster runs a
+  Mining Foreman Burst beside the miner (boosts.py: cycles shorter by the
+  burst's strength), takes the ore into its own hold, compressing it if a
+  compressor is fitted, and sells it at the end. The burst charges it uses
+  are a cost on its step.
 
 The chosen plans are recorded like any other (one per character, so sessions,
 outcomes and learning work unchanged) and linked as a team plan, together
@@ -30,6 +35,7 @@ import sqlite3
 from dataclasses import dataclass, replace
 
 from eve_assistant import (
+    boosts,
     corrections,
     fleet,
     ore,
@@ -46,7 +52,7 @@ from eve_assistant.esi.client import EsiClient
 from eve_assistant.skills import Reason
 from eve_assistant.store import utc_now
 
-SHAPES = ("side_by_side", "mine_and_haul")
+SHAPES = ("side_by_side", "mine_and_haul", "mine_and_boost")
 SHARED_KINDS = ("courier", "trade")  # one character takes it, not each
 
 
@@ -82,7 +88,7 @@ class TeamPlan:
     minutes: float
     members: tuple[Member, ...]
     chosen: Shape
-    other: Shape | None  # the shape that lost, when there was one
+    others: tuple[Shape, ...]  # the shapes that lost, best first
     notes: tuple[Reason, ...]
     team_id: int | None = None
 
@@ -162,10 +168,25 @@ class _Haul:
     minutes_needed: float
 
 
+def _reach(db, character_id: int, ship: fleet.FleetShip, system_id: int, highsec_only: bool):
+    """Getting into this ship and flying it to where the miner mines:
+    (boarding, path, minutes a jump), or None if it can't be done."""
+    per_jump = corrections.minutes_per_jump(db, character_id)[0]
+    board = fleet.boarding(db, character_id, ship, highsec_only, per_jump)
+    start = board.path[-1] if board else None
+    path = routes.jumps_between(db, start, system_id, highsec_only) if start else None
+    return None if path is None else (board, path, per_jump)
+
+
+def _carry_minutes(board, path, per_jump, trips: int) -> float:
+    return (
+        board.minutes + (len(path) - 1) * per_jump + trips * HAUL_TRIP_MINUTES + ore.MINUTES_TO_SELL
+    )
+
+
 def _hauler_ship(db, hauler: Member, system_id: int, m3: float, minutes: float, highsec_only):
     """The ship at least risk that gets the hauler to the miner and carries the
     ore in time: (ship, boarding, path, trips, capacity, minutes needed)."""
-    per_jump = corrections.minutes_per_jump(db, hauler.character_id)[0]
     try:
         ships = fleet.owned_ships(db, hauler.character_id)
     except skills.SkillsError:
@@ -173,20 +194,13 @@ def _hauler_ship(db, hauler: Member, system_id: int, m3: float, minutes: float, 
     best = None
     for ship in ships:
         capacity = ship.capacity_for(True)
-        board = fleet.boarding(db, hauler.character_id, ship, highsec_only, per_jump)
-        start = board.path[-1] if board and capacity > 0 else None
-        path = routes.jumps_between(db, start, system_id, highsec_only) if start else None
-        if path is None:
+        reach = _reach(db, hauler.character_id, ship, system_id, highsec_only) if capacity else None
+        if reach is None:
             continue
         trips = math.ceil(m3 / capacity)
-        needed = (
-            board.minutes
-            + (len(path) - 1) * per_jump
-            + trips * HAUL_TRIP_MINUTES
-            + ore.MINUTES_TO_SELL
-        )
+        needed = _carry_minutes(*reach, trips)
         if needed <= minutes and (best is None or ship.value < best.ship.value):
-            best = _Haul(ship, board, path, trips, capacity, needed)
+            best = _Haul(ship, reach[0], reach[1], trips, capacity, needed)
     return best
 
 
@@ -258,9 +272,11 @@ def _haul_step(db, hauler: Member, miner: Member, mining: PlanItem, minutes, hig
     )
 
 
-def _hauler_plan(solo: planner.Plan, step: PlanItem, minutes: float) -> planner.Plan:
-    """Quick jobs from the hauler's own plan that fit beside the hauling, then
-    the hauling; its own main activity becomes an alternative."""
+def _hauler_plan(
+    solo: planner.Plan, step: PlanItem, minutes: float, why: str = "hauling"
+) -> planner.Plan:
+    """Quick jobs from the helper's own plan that fit beside the hauling (or
+    boosting), then that step; its own main activity becomes an alternative."""
     spare = minutes - step.inputs["minutes_needed"]
     quick = []
     for item in solo.items:
@@ -268,7 +284,7 @@ def _hauler_plan(solo: planner.Plan, step: PlanItem, minutes: float) -> planner.
             quick.append(item)
             spare -= item.minutes
     step = replace(step, minutes=minutes - sum(i.minutes for i in quick))
-    given_up = [planner.Alternative(i, "hauling") for i in solo.items if i not in quick]
+    given_up = [planner.Alternative(i, why) for i in solo.items if i not in quick]
     return planner.Plan(
         character_id=solo.character_id,
         minutes_available=minutes,
@@ -322,12 +338,12 @@ def _one_way(db, miner: Member, hauler: Member, solo, plan, rules: _Rules):
     return Shape("mine_and_haul", (mined, hauled), ("miner", "hauler")), None  # miner first
 
 
-def _mine_and_haul(db, found, solo, plan, rules: _Rules):
-    """The better of each character mining while the other hauls, and a note
-    for each way round that doesn't work."""
+def _both_ways(db, found, solo, plan, rules: _Rules, one_way):
+    """The better of each character mining while the other helps (hauls or
+    boosts), and a note for each way round that doesn't work."""
     best, notes = None, []
     for miner, hauler in ((found[0], found[1]), (found[1], found[0])):
-        shape, why = _one_way(db, miner, hauler, solo, plan, rules)
+        shape, why = one_way(db, miner, hauler, solo, plan, rules)
         if shape is None:
             notes.append(why)
             continue
@@ -336,6 +352,156 @@ def _mine_and_haul(db, found, solo, plan, rules: _Rules):
         if best is None or shape.value > best.value:
             best = shape
     return best, notes
+
+
+def _compressed_m3(db, type_id: int | None, quantity: int) -> float | None:
+    row = db.execute(
+        "SELECT t.volume FROM sde_compressible_types c JOIN sde_types t "
+        "ON t.type_id = c.compressed_type_id WHERE c.type_id = ?",
+        (type_id,),
+    ).fetchone()
+    return quantity * row[0] if row and row[0] else None
+
+
+def _compresses(db, ship: fleet.FleetShip) -> bool:
+    """An ore compressor is fitted: the ship carries ore compressed."""
+    return any("Ore Compressor" in skills.type_name(db, t) for t in set(ship.fitted))
+
+
+@dataclass(frozen=True)
+class _Carry:
+    reach: tuple  # (boarding, path, minutes a jump)
+    carried: float  # m3 in the booster's hold: compressed when it can compress
+    compresses: bool
+    capacity: float
+    trips: int
+    needed: float
+
+
+def _boost_carry(db, booster: Member, boost, mining: PlanItem, rules: _Rules) -> "_Carry | None":
+    """Whether the booster's ship gets to the miner and carries the ore in time."""
+    inputs = mining.inputs
+    system_id, m3 = inputs.get("mining_system_id"), inputs.get("m3") or 0.0
+    capacity = boost.ship.capacity_for(True)
+    if system_id is None or m3 <= 0 or capacity <= 0:
+        return None
+    reach = _reach(db, booster.character_id, boost.ship, system_id, rules.highsec_only)
+    if reach is None:
+        return None
+    compresses = _compresses(db, boost.ship)
+    squeezed = (
+        _compressed_m3(db, inputs.get("type_id"), inputs.get("quantity") or 0)
+        if compresses
+        else None
+    )
+    carried = squeezed if squeezed is not None else m3
+    trips = max(1, math.ceil(carried / capacity))
+    needed = _carry_minutes(*reach, trips)
+    if needed > rules.minutes:
+        return None
+    return _Carry(reach, carried, squeezed is not None, capacity, trips, needed)
+
+
+def _boost_title(boost, miner: Member, carry: _Carry, where: str, charges: int) -> str:
+    board, path, _per_jump = carry.reach
+    jumps = len(path) - 1
+    switch = (
+        f"board your {boost.ship.name} ({board.minutes:.0f} min), then "
+        if board.needs_switch
+        else ""
+    )
+    travel = f"fly to {where} ({jumps} jumps) and " if jumps else ""
+    load = (
+        f"Load {charges} {boost.charge}s first ({boost.charges_loaded} loaded). "
+        if boost.charges_loaded < charges
+        else ""
+    )
+    title = (
+        f"{load}{switch}{travel}boost {miner.name} with your {boost.burst} ({boost.charge}: "
+        f"cycles {-boost.cycle_change:.0f}% shorter), take their ore into your "
+        f"{boost.ship.name}{', compress it' if carry.compresses else ''} and sell it at the "
+        f"station in {where}"
+    )
+    return title[0].upper() + title[1:]
+
+
+def _boost_step(db, booster: Member, miner: Member, mining: PlanItem, boost, rules: _Rules):
+    """The booster's step: boost the miner, carry and sell their ore. Its ISK is
+    the charges the bursts use; the ore's value is on the miner's step."""
+    carry = _boost_carry(db, booster, boost, mining, rules)
+    if carry is None:
+        return None
+    inputs = mining.inputs
+    system_id = inputs["mining_system_id"]
+    board, path, _per_jump = carry.reach
+    here = base.system_info(db, system_id)
+    assessed = risk.assess(db, [*board.path, *path[1:]], here["region"] if here else None)
+    held = min(carry.capacity, carry.carried) / carry.carried if carry.carried else 0.0
+    rating = risk.rate(
+        assessed.band,
+        boost.ship.value + held * mining.isk,  # its ship and the most it holds at once
+        risk.net_worth(db, booster.character_id),
+        signals.hull_payout(db, boost.ship.type_id),
+        risk.model(db),
+    )
+    charges = boost.charges_needed(rules.minutes)
+    cost = charges * (boost.charge_price or 0.0)
+    detail = {
+        "miner": miner.name, "ship": boost.ship.name, "burst": boost.burst,
+        "charge": boost.charge, "base": boost.base, "strength": boost.strength,
+        "cycle_change": boost.cycle_change,
+        "factors": [[what, value] for what, value in boost.factors],
+        "charges": charges, "loaded": boost.charges_loaded, "charge_cost": cost,
+        "priced": boost.charge_price is not None, "compressed": carry.compresses,
+        "m3": carry.carried, "trips": carry.trips, "minutes_needed": carry.needed,
+    }  # fmt: skip
+    where = here["name"] if here else "the miner's system"
+    return PlanItem(
+        kind="team_boost",
+        key=f"{miner.character_id}:{boost.ship.item_id}",
+        title=_boost_title(boost, miner, carry, where, charges),
+        isk=-cost,
+        minutes=rules.minutes,
+        risk=rating,
+        reasons=(Reason("team_boost", detail), *assessed.reasons),
+        inputs={
+            "miner_id": miner.character_id,
+            "ship_item_id": boost.ship.item_id,
+            "mining_system_id": system_id,
+            "sell_station_id": inputs.get("sell_station_id"),
+            "type_id": inputs.get("type_id"),
+            "quantity": inputs.get("quantity"),
+            "m3": carry.carried,
+            "trips": carry.trips,
+            "jumps": len(path) - 1,
+            "minutes_needed": carry.needed,
+            "charge_type_id": boost.charge_type_id,
+            "charges": charges,
+            "unit_prices": inputs.get("unit_prices", {}),
+        },
+    )
+
+
+def _boost_way(db, miner: Member, booster: Member, solo, plan, rules: _Rules):
+    """The miner mining with the booster's bursts on them: (shape, None) or
+    (None, why not). The cheap checks come first."""
+    names = {"miner": miner.name, "booster": booster.name}
+    if not _can_mine(solo[miner.character_id]):
+        return None, Reason("no_boost_mining", names)
+    boost = boosts.best_boost(db, booster.character_id)
+    if boost is None:
+        return None, Reason("no_team_booster", names)
+    mined = plan(miner, hauled_by=booster.name, boost=(booster.name, boost.cycle_factor))
+    mining = next((i for i in mined.items if i.kind == "mining"), None)
+    if mining is None:
+        return None, Reason("no_boost_mining", names)
+    step = _boost_step(db, booster, miner, mining, boost, rules)
+    if step is None:
+        return None, Reason("team_boost_out_of_reach", names)
+    if step.risk.rating == "red" and not rules.allow_risky:  # as the planner does
+        return None, Reason("team_boost_risky", names)
+    boosted = _hauler_plan(solo[booster.character_id], step, rules.minutes, why="boosting")
+    return Shape("mine_and_boost", (mined, boosted), ("miner", "booster")), None  # miner first
 
 
 def build(
@@ -355,22 +521,27 @@ def build(
         raise TogetherError(problems)
     highsec_only = not allow_lowsec or "route:lowsec" in preferences.active_mutes(db)
 
-    def plan(member: Member, taken=frozenset(), hauled_by=None) -> planner.Plan:
+    def plan(member: Member, taken=frozenset(), hauled_by=None, boost=None) -> planner.Plan:
         return planner.build_plan(
             db, esi, member.character_id, minutes, allow_lowsec=allow_lowsec,
             allow_risky=allow_risky, ore_names=ore_names, taken=taken, hauled_by=hauled_by,
+            boost=boost,
         )  # fmt: skip
 
     side, solo = _side_by_side(found, plan)
     notes: list[Reason] = []
-    haul = None
+    shapes = [side]
     if len(found) == 2:
         rules = _Rules(minutes, highsec_only, allow_risky)
-        haul, why = _mine_and_haul(db, found, solo, plan, rules)
-        notes += why
+        for one_way in (_one_way, _boost_way):
+            shape, why = _both_ways(db, found, solo, plan, rules, one_way)
+            notes += why
+            shapes += [shape] if shape else []
     else:
         notes.append(Reason("together_side_by_side_only"))
-    chosen, other = (haul, side) if haul and haul.value > side.value else (side, haul)
+    shapes.sort(key=lambda shape: -shape.value)  # stable: side by side wins a tie
+    chosen, others = shapes[0], tuple(shapes[1:])
+    other = others[0] if others else None
     notes.insert(
         0,
         Reason(
@@ -383,12 +554,10 @@ def build(
             },
         ),  # fmt: skip
     )
-    return TeamPlan(minutes, tuple(found), chosen, other, tuple(notes))
+    return TeamPlan(minutes, tuple(found), chosen, others, tuple(notes))
 
 
-def _shape_summary(shape: Shape | None, found: tuple[Member, ...]) -> dict | None:
-    if shape is None:
-        return None
+def _shape_summary(shape: Shape, found: tuple[Member, ...]) -> dict:
     return {
         "shape": shape.kind,
         "value": shape.value,
@@ -410,7 +579,7 @@ def record(db: sqlite3.Connection, team: TeamPlan, inputs: dict) -> TeamPlan:
         stored.append(planner.record(db, plan, {**inputs, "together": together}))
     details = {
         "value": team.chosen.value,
-        "other": _shape_summary(team.other, team.members),
+        "others": [_shape_summary(shape, team.members) for shape in team.others],
         "notes": [{"code": n.code, **n.detail} for n in team.notes],
         "inputs": inputs,
     }
@@ -425,7 +594,7 @@ def record(db: sqlite3.Connection, team: TeamPlan, inputs: dict) -> TeamPlan:
             [(team_id, p.plan_id, role) for p, role in zip(stored, team.chosen.roles, strict=True)],
         )
     chosen = Shape(team.chosen.kind, tuple(stored), team.chosen.roles)
-    return TeamPlan(team.minutes, team.members, chosen, team.other, team.notes, team_id)
+    return TeamPlan(team.minutes, team.members, chosen, team.others, team.notes, team_id)
 
 
 @dataclass(frozen=True)
@@ -435,7 +604,7 @@ class StoredTeam:
     minutes_available: float
     shape: str
     members: tuple[tuple[str, planner.StoredPlan], ...]  # (role, plan)
-    other: dict | None
+    others: tuple[dict, ...]  # the shapes that lost, best first
     notes: tuple[dict, ...]
 
     @property
@@ -458,7 +627,8 @@ def load(db: sqlite3.Connection, team_id: int) -> StoredTeam:
         minutes_available=row["minutes_available"],
         shape=row["shape"],
         members=tuple((r["role"], planner.load_plan(db, r["plan_id"])) for r in linked),
-        other=details.get("other"),
+        # Plans before 8.5 kept one "other" shape.
+        others=tuple(details.get("others") or ([details["other"]] if details.get("other") else [])),
         notes=tuple(details.get("notes", [])),
     )
 

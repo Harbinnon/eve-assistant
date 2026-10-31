@@ -58,13 +58,13 @@
 </section>
 {% endfor %}
 
-{% if team.other %}
-<h2>The other way: {{ shape_names.get(team.other.shape, team.other.shape) }}</h2>
+{% for other in team.others %}
+<h2>{{ "The other way" if loop.length == 1 else "Another way" }}: {{ shape_names.get(other.shape, other.shape) }}</h2>
 <div class="table-wrap">
   <table>
     <thead><tr><th>Character</th><th>Would do</th><th class="num">ISK after losses</th></tr></thead>
     <tbody>
-    {% for m in team.other.members %}
+    {% for m in other.members %}
       <tr>
         <td data-label="Character">{{ names_by_id.get(m.character_id, m.character_id) }}</td>
         <td data-label="Would do">{{ m.steps|join("; ") if m.steps else "nothing fits" }}</td>
@@ -74,6 +74,6 @@
     </tbody>
   </table>
 </div>
-<p class="muted small-print">About {{ team.other.value|isk }} ISK between you that way.</p>
-{% endif %}
+<p class="muted small-print">About {{ other.value|isk }} ISK between you that way.</p>
+{% endfor %}
 {% endblock %}
