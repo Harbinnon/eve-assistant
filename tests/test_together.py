@@ -382,7 +382,7 @@ def test_a_failed_plan_together_shows_why(tmp_path):
 
 
 @respx.mock
-def test_a_character_that_cant_mine_or_carry_isnt_planned_again():
+def test_a_character_that_cant_mine_or_carry_isnt_planned_again(monkeypatch):
     _mock_esi()
     db = _world()
     built = []
@@ -392,11 +392,8 @@ def test_a_character_that_cant_mine_or_carry_isnt_planned_again():
         built.append((character_id, options.get("hauled_by")))
         return real(db_, esi, character_id, minutes, **options)
 
-    planner.build_plan = counting
-    try:
-        _build(db)
-    finally:
-        planner.build_plan = real
+    monkeypatch.setattr(planner, "build_plan", counting)
+    _build(db)
     # Own plans for both, then Miner mining for Hauler; Hauler has no mining ship,
     # so Hauler mining for Miner is never planned.
     assert built == [(7, None), (8, None), (7, "Hauler")]
@@ -488,7 +485,7 @@ def test_a_miner_may_mine_what_a_partner_mined_in_that_system():
 
 
 @respx.mock
-def test_every_plan_together_counts_the_partners_ores():
+def test_every_plan_together_counts_the_partners_ores(monkeypatch):
     _mock_esi()
     db = _world()
     partners = []
@@ -498,9 +495,6 @@ def test_every_plan_together_counts_the_partners_ores():
         partners.append((character_id, options.get("ore_partners")))
         return real(db_, esi, character_id, minutes, **options)
 
-    planner.build_plan = noting
-    try:
-        _build(db)
-    finally:
-        planner.build_plan = real
+    monkeypatch.setattr(planner, "build_plan", noting)
+    _build(db)
     assert set(partners) == {(7, (8,)), (8, (7,))}
