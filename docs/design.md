@@ -689,7 +689,7 @@ in again. History, goals and learning come along.
 
 Any number of characters across any number of accounts. Each character
 logs in through EVE's own login page. Characters are grouped into accounts
-once in settings, because ESI doesn't say which account a character
+once on the Characters page, because ESI doesn't say which account a character
 belongs to.
 
 Account rules the planner respects (EVE University wiki; to be confirmed

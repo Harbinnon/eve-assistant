@@ -9,6 +9,7 @@ import sqlite3
 from dataclasses import dataclass
 
 CLONE_STATES = ("unknown", "alpha", "omega")
+MAX_LABEL = 40
 
 
 class AccountError(Exception):
@@ -55,6 +56,22 @@ def set_clone_state(db: sqlite3.Connection, label: str, state: str) -> None:
     if not updated:
         raise AccountError(f"No account called '{label}'.")
     db.commit()
+
+
+def set_up(db: sqlite3.Connection, character_id: int, label: str, state: str) -> None:
+    """Put a character on an account and mark that account Alpha or Omega (the
+    Characters page does both at once). The state applies to the whole account."""
+    label = label.strip()
+    if state not in CLONE_STATES:
+        raise AccountError(f"Clone state must be one of: {', '.join(CLONE_STATES)}.")
+    if len(label) > MAX_LABEL:
+        raise AccountError(f"Keep the account name under {MAX_LABEL} characters.")
+    assign(db, character_id, label)
+    set_clone_state(db, label, state)
+
+
+def labels(db: sqlite3.Connection) -> list[str]:
+    return [r[0] for r in db.execute("SELECT label FROM accounts ORDER BY label")]
 
 
 def overview(db: sqlite3.Connection) -> list[AccountView]:

@@ -43,6 +43,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from eve_assistant import (
+    accounts,
     activities,
     backups,
     checklist,
@@ -213,6 +214,7 @@ BAND_LABELS = {
 MESSAGES = {
     "market_refreshing": "Reading the trade hubs' markets from EVE: about a minute.",
     "goal_added": "Goal added.",
+    "account_set": "Account saved.",
     "goal_done": "Goal marked done.",
     "goal_dropped": "Goal dropped.",
     "refreshed": "Character data refreshed from EVE.",
@@ -1179,6 +1181,7 @@ def create_app(
         conn = db()
         try:
             summaries = overview.all_characters(conn)
+            account_names = accounts.labels(conn)
             worth_lines = {c.character_id: _worth(conn, [c.character_id]) for c in summaries}
             corps, timers = _corps_and_planets(conn, [c.character_id for c in summaries])
         finally:
@@ -1193,6 +1196,9 @@ def create_app(
             request,
             "characters.html",
             characters=summaries,
+            account_names=account_names,
+            clone_states=accounts.CLONE_STATES,
+            max_label=accounts.MAX_LABEL,
             worth_lines=worth_lines,
             problems=problems,
             missing=missing,
@@ -1230,6 +1236,24 @@ def create_app(
         return FileResponse(
             path, media_type="image/png", headers={"Cache-Control": "private, max-age=86400"}
         )
+
+    @app.post("/characters/{character_id}/account")
+    def set_account(
+        request: Request,
+        character_id: int,
+        token: str = Form(...),
+        label: str = Form(...),
+        state: str = Form(...),
+    ):
+        check_form(request, token)
+        conn = db()
+        try:
+            accounts.set_up(conn, character_id, label, state)
+        except accounts.AccountError as exc:
+            raise HTTPException(400, str(exc)) from None  # the form itself prevents these
+        finally:
+            conn.close()
+        return back(CHARACTERS, msg="account_set")
 
     @app.post("/characters/add")
     def add_character_now(request: Request, token: str = Form(...)):
