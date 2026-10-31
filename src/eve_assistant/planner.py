@@ -62,7 +62,7 @@ class PlanError(Exception):
 @dataclass(frozen=True)
 class Alternative:
     item: PlanItem
-    why_not: str  # code: worse, too_long, red_risk, muted, new_limit
+    why_not: str  # code: worse, too_long, red_risk, muted, new_limit, teammate, hauling
 
 
 @dataclass(frozen=True)
@@ -160,6 +160,26 @@ def _set_aside(candidates, mutes, allow_risky) -> tuple[list[PlanItem], list[Alt
         else:
             usable.append(item)
     return usable, alternatives
+
+
+def _set_aside_taken(usable, alternatives, taken) -> list[PlanItem]:
+    """Playing together: what another character in the group already does
+    becomes an alternative."""
+    alternatives += [Alternative(i, "teammate") for i in usable if (i.kind, i.key) in taken]
+    return [i for i in usable if (i.kind, i.key) not in taken]
+
+
+def is_quick_job(item: PlanItem) -> bool:
+    """A step done where the character is docked, before the main activity."""
+    if item.kind in ("skill", "manufacturing"):
+        return True
+    if item.kind == "planet":
+        return item.inputs.get("jumps") == 0
+    return (
+        item.kind == "sell_hangar"
+        and item.inputs.get("jumps") == 0
+        and item.inputs.get("travel_jumps", 0) == 0
+    )
 
 
 def _promised_stacks(db, character_id) -> set[tuple]:
@@ -278,7 +298,12 @@ def build_plan(
     allow_lowsec: bool = False,
     allow_risky: bool = False,
     ore_names: list[str] | None = None,
+    taken: frozenset[tuple[str, str]] = frozenset(),
+    hauled_by: str | None = None,
 ) -> Plan:
+    """taken: (kind, key) of what another character playing together already
+    does. hauled_by: playing together, the character who collects this one's
+    ore and sells it."""
     if minutes <= 0:
         raise PlanError("Give the number of minutes you have, e.g. 60.")
     notes: list[Reason] = []
@@ -292,7 +317,9 @@ def build_plan(
         notes.append(Reason("mining_unavailable", {"why": str(exc)}))
         ships = []
 
-    context = Context(db, esi, character_id, minutes, worth, highsec_only, ships, ore_names, notes)
+    context = Context(
+        db, esi, character_id, minutes, worth, highsec_only, ships, ore_names, notes, hauled_by
+    )
     learned = risk.model(db)
     candidates = _rated(
         [item for activity in activities.ALL for item in activity.candidates(context)],
@@ -302,6 +329,8 @@ def build_plan(
     usable, alternatives = _set_aside(
         _with_new_flags(db, character_id, candidates), mutes, allow_risky
     )
+    if taken:
+        usable = _set_aside_taken(usable, alternatives, taken)
 
     fit = _Fitting(minutes, minutes, _promised_stacks(db, character_id))
     _quick_jobs(fit, usable)

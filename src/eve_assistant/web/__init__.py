@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Annotated, Any
 from urllib.parse import urlencode, urlsplit
 
 from fastapi import FastAPI, Form, HTTPException, Request
@@ -74,6 +74,7 @@ from eve_assistant import (
     skills,
     sovereignty,
     store,
+    together,
     trade,
     train_next,
     worth,
@@ -86,6 +87,8 @@ from eve_assistant.web import charts
 
 # make_plan(character_id, minutes, allow_lowsec, allow_risky) -> plan_id
 PlanMaker = Callable[[int, float, bool, bool], int]
+# make_team_plan(character_ids, minutes, allow_lowsec, allow_risky) -> team plan ID
+TeamPlanner = Callable[[list[int], float, bool, bool], int]
 SnapshotTaker = Callable[[int], list[str]]
 # Returns an object with .problems (list[str]) and .retry_after (seconds or None).
 AutoRefresher = Callable[[], object]
@@ -421,6 +424,7 @@ def create_app(
     refresh: Callable[[], list[str]] | None = None,
     make_plan: PlanMaker | None = None,
     snapshot: SnapshotTaker | None = None,
+    make_team_plan: TeamPlanner | None = None,
     allowed_hosts: tuple[str, ...] = LOCAL_HOSTS,
     auto_refresh: AutoRefresher | None = None,
     auto_tick_seconds: float = AUTO_TICK_SECONDS,
@@ -433,6 +437,7 @@ def create_app(
 ) -> FastAPI:
     """refresh: called by the Refresh button; returns problem lines, empty when all went well.
     make_plan: builds and records a plan (needs ESI), returning its ID.
+    make_team_plan: the same for characters played together, returning the team plan's ID.
     snapshot: snapshots one character (needs ESI), returning problem lines.
     auto_refresh: one background refresh tick (needs ESI), run every auto_tick_seconds."""
     account = account or AccountStatus()
@@ -738,6 +743,7 @@ def create_app(
                     except planner.PlanError:
                         continue
             compared = planner.who_should_play(compared)
+            last_team_id = together.latest_team_id(conn)
             active = active_character(request, conn)
             latest = planner.latest_plan_id(conn, active[0] if active else None)
             recent = planner.load_plan(conn, latest) if latest else None
@@ -774,6 +780,8 @@ def create_app(
             compared=compared,
             outbid=outbid,
             stopped_planets=stopped,
+            can_team_plan=make_team_plan is not None,
+            last_team_id=last_team_id,
         )
 
     @app.post("/sessions/{session_id}/steps/{item_id}/{action}")
@@ -858,6 +866,7 @@ def create_app(
             results = outcomes.recent(conn, 5)
             noticed = detection.suggestions(conn)
             ship_type_id = overview.summarize(conn, stored.character_id).ship_type_id
+            team_id = together.team_of(conn, plan_id)
         finally:
             conn.close()
         return render(
@@ -873,6 +882,64 @@ def create_app(
             session_views=[],  # a plan you opened is shown even while playing
             noticed=noticed,
             ship_type_id=ship_type_id,
+            can_team_plan=make_team_plan is not None,
+            team_id=team_id,
+        )
+
+    @app.post("/today/together")
+    def plan_together(
+        request: Request,
+        token: str = Form(...),
+        minutes: float = Form(...),
+        allow_lowsec: bool = Form(False),
+        allow_risky: bool = Form(False),
+        characters: Annotated[list[str] | None, Form()] = None,
+    ):
+        check_form(request, token)
+        if make_team_plan is None:
+            return today_page(request, error="Planning is not available here.")
+        conn = db()
+        try:
+            ids = [goals.resolve_character(conn, name) for name in characters or []]
+            problems = together.check(together.members(conn, ids))
+        except GoalError as exc:
+            return today_page(request, error=str(exc))
+        finally:
+            conn.close()
+        if problems:  # checked here too, so a refusal doesn't wait for market reads
+            return today_page(request, error=_described(problems))
+        start_market_scan()
+        try:
+            team_id = make_team_plan(ids, minutes, allow_lowsec, allow_risky)
+        except together.TogetherError as exc:
+            return today_page(request, error=_described(exc.reasons))
+        except Exception as exc:  # noqa: BLE001  # shown to the person, never swallowed silently
+            return today_page(request, error=f"Could not build a plan: {exc}")
+        return back(f"/teams/{team_id}")
+
+    def _described(reasons) -> str:
+        return " ".join(explain.describe(r.code, r.detail) for r in reasons)
+
+    @app.get("/teams/{team_id}", response_class=HTMLResponse)
+    def team_page(request: Request, team_id: int):
+        conn = db()
+        try:
+            try:
+                team = together.load(conn, team_id)
+            except planner.PlanError as exc:
+                raise HTTPException(404, str(exc)) from None
+            busy = {s.character_id for s in sessions.open_sessions(conn)}
+            names = {r["character_id"]: r["name"] for r in conn.execute(CHARACTERS_BY_NAME)}
+        finally:
+            conn.close()
+        return render(
+            request,
+            "team.html",
+            team=team,
+            busy=busy,
+            names_by_id=names,
+            shape_names=explain.SHAPE_NAMES,
+            role_names=explain.ROLE_NAMES,
         )
 
     def _after_session(request: Request, result: session_flow.Result, msg: str):
@@ -892,6 +959,13 @@ def create_app(
             raise HTTPException(404, str(exc)) from None
         except sessions.SessionError as exc:
             return today_page(request, error=str(exc))
+        conn = db()
+        try:
+            team_id = together.team_of(conn, plan_id)
+        finally:
+            conn.close()
+        if team_id is not None and not result.problems:  # back to start the others
+            return back(f"/teams/{team_id}", msg="session_started")
         return _after_session(request, result, "session_started")
 
     @app.post("/sessions/{session_id}/{how}")

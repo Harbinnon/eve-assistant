@@ -700,8 +700,32 @@ against CCP's current EULA):
 - **Alpha accounts cannot multibox**: while one is logged in, no other
   account may be. The planner never suggests it.
 - Several Omega accounts can play together (e.g. one mines, one hauls).
-  **Planning for several characters at once is a later phase**; the
-  account model exists from phase 1 so it can be added cleanly.
+
+**Playing together** (roadmap 8.4). "Play together" on Today (or
+`plan-together`) plans characters that will be logged in at the same time.
+It's refused unless each character is on its own account and every one of
+those accounts is Omega; a character not grouped into an account can't be
+checked, so it's refused until it is. Two shapes are compared, and the one
+worth more ISK after expected losses between them is picked:
+- **Side by side:** each character's own best plan for the same minutes.
+  What only one can take (a courier contract, a trade) goes to the
+  character whose plan is worth most; the others plan again without it.
+- **One mines, one hauls** (two characters): the miner jettisons each full
+  hold into a can (half a minute) instead of docking to unload, and stops in
+  time for the last can to be carried in and sold; the hauler collects the
+  cans and sells the ore where the miner would have. The hauler's ship is
+  the one at least risk that gets there and keeps up in time, its own main
+  activity is given up (quick jobs where it's docked still fit), and its
+  step is rated like any other: Risky hauling is left out unless risky
+  options are allowed. The ore's ISK is on the miner's step, where outcomes
+  value mined ore. Both ways round are tried. With more than two
+  characters, only side by side is worked out.
+
+Each character's part is recorded as an ordinary plan, so starting, ticking
+off and learning work unchanged; a team plan (append-only, like plans)
+links them with the shape chosen and what the other would have made.
+Sale prices aren't learned from the hauler's sales yet, and mining boosts,
+fleet hangars (Orca, Porpoise) and alerts for the group come later.
 
 ### 6.4 Corporations
 
