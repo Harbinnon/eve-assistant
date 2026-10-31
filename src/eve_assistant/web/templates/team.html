@@ -30,6 +30,17 @@
           <span class="pill risk {{ item.risk_rating }}">{{ risk_labels[item.risk_rating] }}</span>
           {% if item.expected_loss > 0 %} · expected loss {{ item.expected_loss|isk }}{% endif %}
         </div>
+        {% if item.kind == "mining" and item.details.inputs.type_id %}
+        <div class="responses">
+    <form class="inline" method="post" action="/plan-items/{{ item.item_id }}/respond">
+      <input type="hidden" name="token" value="{{ form_token }}">
+      <input type="hidden" name="response" value="mute">
+      <input type="hidden" name="scope" value="ore">
+      <input type="hidden" name="return_to" value="/teams/{{ team.team_id }}">
+      <button class="small" type="submit" title="This ore isn't around (only in ore anomalies, say): stop planning it">Not this ore</button>
+    </form>
+        </div>
+        {% endif %}
         {% if item.details.reasons %}
         <details class="why">
           <summary>Why?</summary>

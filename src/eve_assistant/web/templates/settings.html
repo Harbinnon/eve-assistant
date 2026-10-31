@@ -22,6 +22,19 @@
         </td>
       </tr>
     {% endfor %}
+    {% for category, name in ores_out %}
+      <tr>
+        <td data-label="Suggestions about">Mining {{ name }} <span class="muted small-print">(you said it isn't around)</span></td>
+        <td data-label="State"><span class="pill amber">muted</span></td>
+        <td>
+          <form class="inline" method="post" action="/settings/unmute">
+            <input type="hidden" name="token" value="{{ form_token }}">
+            <input type="hidden" name="category" value="{{ category }}">
+            <button class="small" type="submit">Unmute</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
     </tbody>
   </table>
 </div>

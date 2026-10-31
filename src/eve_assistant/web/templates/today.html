@@ -25,6 +25,14 @@
     {% endif %}
     {% set options = [("not_now", "Not now"), ("mute", "Not this kind")] %}
     {% if item.kind == "project_start" and item.response != "do" %}{% set options = [("do", "Start project")] + options %}{% endif %}
+    {% if item.kind == "mining" and item.details.inputs.type_id %}
+    <form class="inline" method="post" action="/plan-items/{{ item.item_id }}/respond">
+      <input type="hidden" name="token" value="{{ form_token }}">
+      <input type="hidden" name="response" value="mute">
+      <input type="hidden" name="scope" value="ore">
+      <button class="small" type="submit" title="This ore isn't around (only in ore anomalies, say): stop planning it">Not this ore</button>
+    </form>
+    {% endif %}
     {% for value, label in options %}
     <form class="inline" method="post" action="/plan-items/{{ item.item_id }}/respond">
       <input type="hidden" name="token" value="{{ form_token }}">

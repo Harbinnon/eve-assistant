@@ -14,6 +14,7 @@ import contextlib
 import json
 import logging
 import math
+import re
 import secrets
 import sqlite3
 import threading
@@ -229,6 +230,7 @@ MESSAGES = {
     "do": "Project started: it's under Open projects.",
     "not_now": "Recorded: not now.",
     "mute": "Muted. You can undo that in Settings.",
+    "ore_ruled_out": "Got it: that ore won't be planned again. You can undo that in Settings.",
     "muted": "Muted.",
     "unmuted": "Unmuted.",
     "project_done": "Project marked done.",
@@ -1073,7 +1075,14 @@ def create_app(
         return back(TODAY, msg="detected_recorded" if action == "record" else "detected_dismissed")
 
     @app.post("/plan-items/{item_id}/respond")
-    def respond(request: Request, item_id: int, token: str = Form(...), response: str = Form(...)):
+    def respond(
+        request: Request,
+        item_id: int,
+        token: str = Form(...),
+        response: str = Form(...),
+        scope: str = Form("kind"),
+        return_to: str = Form(""),
+    ):
         check_form(request, token)
         conn = db()
         try:
@@ -1085,16 +1094,19 @@ def create_app(
             if response == "do" and row["kind"] != "project_start":
                 raise HTTPException(400, COMMIT_WITH_THE_PLAN)
             try:
-                planner.respond(conn, item_id, response)
+                planner.respond(conn, item_id, response, scope)
             except planner.PlanError as exc:
                 raise HTTPException(400, str(exc)) from None
             following = [s for s in sessions.open_sessions(conn) if s.plan_id == row["plan_id"]]
         finally:
             conn.close()
+        msg = "ore_ruled_out" if scope == "ore" else response
+        if re.fullmatch(r"/teams/\d+", return_to):  # a plan together, never another address
+            return back(return_to, msg=msg)
         if following:  # answered from the session view: go back to it
-            return back(TODAY, anchor=f"session-{following[0].session_id}", msg=response)
+            return back(TODAY, anchor=f"session-{following[0].session_id}", msg=msg)
         # Back to the step that was answered, not the top of the page.
-        return back(f"/plans/{row['plan_id']}", anchor=f"item-{item_id}", msg=response)
+        return back(f"/plans/{row['plan_id']}", anchor=f"item-{item_id}", msg=msg)
 
     @app.get("/preferences")
     def old_preferences_page():
@@ -1105,6 +1117,10 @@ def create_app(
         conn = db()
         try:
             active = preferences.active_mutes(conn)
+            ores_out = sorted(
+                (preferences.ore_category(t), skills.type_name(conn, t))
+                for t in preferences.ruled_out_ores(conn)
+            )
             weekly = projects.weekly_minutes(conn)
             play_time = pace.weekly_play(conn)
             folder = Path(backups_dir) if backups_dir else backups.default_folder(db_path)
@@ -1117,6 +1133,7 @@ def create_app(
             request,
             "settings.html",
             active=active,
+            ores_out=ores_out,
             categories=preferences.KNOWN,
             weekly_hours=weekly / 60,
             play_time=play_time,

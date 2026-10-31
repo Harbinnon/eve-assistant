@@ -735,6 +735,19 @@ time for the other shape.
 Planned together, a character's ore choices also include what the others
 have mined in the same system (from their mining ledgers), since they'll
 be mining side by side; every shape uses this, so the comparison is fair.
+When the helper (booster or hauler) flies a ship with an ore compressor,
+the miner beside it compresses in its own hold, as the game allows: the hold
+never fills, nothing needs carrying, the miner keeps the ore and sells it at
+the end, and the helper's step is just getting there and staying beside
+them (boosting, or with the compressor running). Without a compressor the
+helper takes the ore (cans, or passed to a booster), in the ship needing
+the fewest trips, then the one with least at risk.
+
+The mining ledger shows what was mined, not whether it's still there: an
+ore from an ore anomaly (Ytirium, say) is gone once the anomaly is, and no
+API shows which anomalies are up. So a mining step has **Not this ore**: it
+rules that ore out of plans (a mute, `ore:<type ID>`), until it's unmuted
+in Settings. Naming an ore (`plan --ore`) still plans it.
 
 Each character's part is recorded as an ordinary plan, so starting, ticking
 off and learning work unchanged; a team plan (append-only, like plans)
@@ -752,9 +765,10 @@ Burst I, 1.25 for a II), the Mining Director skill (10% a level), the ship
 Industrial Core fitted (assumed running; the static data gives a flat bonus,
 to check against the game) and a Mining Foreman Mindlink plugged in. Each
 factor is listed under "Why?" so it can be checked against EVE's own boost
-tooltip. The miner mines that much faster and never docks: the booster
-stays beside them, takes the ore (compressed if an ore compressor is fitted)
-and sells it at the end, making trips only if its hold fills. The charges
+tooltip. The miner mines that much faster and never docks: with an ore
+compressor on the booster, the miner compresses in its own hold (see
+below); without one, the booster takes the ore and sells it at the end,
+making trips only if its hold fills. The charges
 the burst uses, one a cycle, are a cost on the booster's step, and the step
 says to load them when fewer are loaded than the session needs. Not counted
 yet: the Efficiency charge's critical hits, the booster's own mining drones,

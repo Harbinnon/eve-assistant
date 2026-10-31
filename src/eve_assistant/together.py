@@ -54,6 +54,7 @@ from eve_assistant.store import utc_now
 
 SHAPES = ("side_by_side", "mine_and_haul", "mine_and_boost")
 SHARED_KINDS = ("courier", "trade")  # one character takes it, not each
+SOMEWHERE = "the miner's system"  # when the system has no name in the static data
 
 
 class TogetherError(Exception):
@@ -178,19 +179,24 @@ def _reach(db, character_id: int, ship: fleet.FleetShip, system_id: int, highsec
     return None if path is None else (board, path, per_jump)
 
 
+def _travel_minutes(board, path, per_jump) -> float:
+    return board.minutes + (len(path) - 1) * per_jump
+
+
 def _carry_minutes(board, path, per_jump, trips: int) -> float:
-    return (
-        board.minutes + (len(path) - 1) * per_jump + trips * HAUL_TRIP_MINUTES + ore.MINUTES_TO_SELL
-    )
+    return _travel_minutes(board, path, per_jump) + trips * HAUL_TRIP_MINUTES + ore.MINUTES_TO_SELL
 
 
 def _jumps(count: int) -> str:
     return f"{count} jump{'' if count == 1 else 's'}"
 
 
-def _hauler_ship(db, hauler: Member, system_id: int, m3: float, minutes: float, highsec_only):
-    """The ship at least risk that gets the hauler to the miner and carries the
-    ore in time: (ship, boarding, path, trips, capacity, minutes needed)."""
+def _hauler_ship(db, hauler: Member, mining: PlanItem, minutes: float, highsec_only):
+    """The ship that gets the hauler to the miner and carries the ore in time:
+    fewest trips first, then the least at risk. (A ship with a compressor
+    doesn't carry at all: see _compress_step.)"""
+    inputs = mining.inputs
+    system_id, m3 = inputs["mining_system_id"], inputs["m3"]
     try:
         ships = fleet.owned_ships(db, hauler.character_id)
     except skills.SkillsError:
@@ -201,9 +207,11 @@ def _hauler_ship(db, hauler: Member, system_id: int, m3: float, minutes: float, 
         reach = _reach(db, hauler.character_id, ship, system_id, highsec_only) if capacity else None
         if reach is None:
             continue
-        trips = math.ceil(m3 / capacity)
+        trips = max(1, math.ceil(m3 / capacity))
         needed = _carry_minutes(*reach, trips)
-        if needed <= minutes and (best is None or ship.value < best.ship.value):
+        if needed <= minutes and (
+            best is None or (trips, ship.value) < (best.trips, best.ship.value)
+        ):
             best = _Haul(ship, reach[0], reach[1], trips, capacity, needed)
     return best
 
@@ -214,7 +222,7 @@ def _haul_step(db, hauler: Member, miner: Member, mining: PlanItem, minutes, hig
     system_id, m3 = inputs.get("mining_system_id"), inputs.get("m3") or 0.0
     if system_id is None or m3 <= 0:
         return None
-    haul = _hauler_ship(db, hauler, system_id, m3, minutes, highsec_only)
+    haul = _hauler_ship(db, hauler, mining, minutes, highsec_only)
     if haul is None:
         return None
     here = base.system_info(db, system_id)
@@ -228,17 +236,23 @@ def _haul_step(db, hauler: Member, miner: Member, mining: PlanItem, minutes, hig
         signals.hull_payout(db, haul.ship.type_id),
         risk.model(db),
     )
-    where = here["name"] if here else "the miner's system"
+    where = here["name"] if here else SOMEWHERE
     board = (
         f"board your {haul.ship.name} ({haul.board.minutes:.0f} min), then "
         if haul.board.needs_switch
         else ""
     )
     travel = f"fly to {where} ({_jumps(jumps)}) and " if jumps else ""
-    title = (
-        f"{board}{travel}collect the cans {miner.name} jettisons: about {haul.trips} trips "
-        f"to the station in {where}, then sell the ore there"
-    )
+    if haul.trips == 1:
+        title = (
+            f"{board}{travel}collect the cans {miner.name} jettisons and keep them in your hold "
+            f"(it all fits, so no trips until the end), then sell the ore at the station in {where}"
+        )
+    else:
+        title = (
+            f"{board}{travel}collect the cans {miner.name} jettisons: about {haul.trips} "
+            f"trips to the station in {where}, then sell the ore there"
+        )
     return PlanItem(
         kind="team_haul",
         key=f"{miner.character_id}:{haul.ship.item_id}",
@@ -272,6 +286,73 @@ def _haul_step(db, hauler: Member, miner: Member, mining: PlanItem, minutes, hig
             "jumps": jumps,
             "minutes_needed": haul.minutes_needed,
             "unit_prices": inputs.get("unit_prices", {}),
+        },
+    )
+
+
+def _compressor_ship(db, character_id: int) -> fleet.FleetShip | None:
+    """A ship the character can fly with an ore compressor fitted: the one it's
+    in, else the one with least at risk."""
+    try:
+        ships = fleet.owned_ships(db, character_id)
+    except skills.SkillsError:
+        return None
+    able = [s for s in ships if s.usable and _compresses(db, s)]
+    return min(able, key=lambda s: (not s.is_active, s.value), default=None)
+
+
+def _compress_step(db, hauler: Member, miner: Member, mining: PlanItem, ship, rules: "_Rules"):
+    """The helper's step when its ship compresses: stay beside the miner with the
+    compressor running. The miner compresses in its own hold and sells at the end."""
+    system_id = mining.inputs.get("mining_system_id")
+    reach = (
+        _reach(db, hauler.character_id, ship, system_id, rules.highsec_only) if system_id else None
+    )
+    if reach is None or _travel_minutes(*reach) > rules.minutes:
+        return None
+    board, path, _per_jump = reach
+    here = base.system_info(db, system_id)
+    assessed = risk.assess(db, [*board.path, *path[1:]], here["region"] if here else None)
+    rating = risk.rate(
+        assessed.band,
+        ship.value,  # it holds no ore: the miner keeps it
+        risk.net_worth(db, hauler.character_id),
+        signals.hull_payout(db, ship.type_id),
+        risk.model(db),
+    )
+    where = here["name"] if here else SOMEWHERE
+    switch = (
+        f"board your {ship.name} ({board.minutes:.0f} min), then " if board.needs_switch else ""
+    )
+    travel = f"fly to {where} ({_jumps(len(path) - 1)}) and " if len(path) > 1 else ""
+    title = (
+        f"{switch}{travel}stay beside {miner.name} in your {ship.name} with its compressor "
+        "running, so they compress the ore in their own hold: no hauling needed"
+    )
+    needed = _travel_minutes(*reach)
+    return PlanItem(
+        kind="team_haul",
+        key=f"{miner.character_id}:{ship.item_id}",
+        title=title[0].upper() + title[1:],
+        isk=0.0,
+        minutes=rules.minutes,
+        risk=rating,
+        reasons=(
+            Reason(
+                "team_haul",
+                {"miner": miner.name, "ship": ship.name, "field": True, "minutes_needed": needed},
+            ),  # fmt: skip
+            *assessed.reasons,
+        ),
+        inputs={
+            "miner_id": miner.character_id,
+            "ship_item_id": ship.item_id,
+            "mining_system_id": system_id,
+            "type_id": mining.inputs.get("type_id"),
+            "m3": 0.0,
+            "trips": 0,
+            "jumps": len(path) - 1,
+            "minutes_needed": needed,
         },
     )
 
@@ -336,11 +417,17 @@ def _one_way(db, miner: Member, hauler: Member, solo, plan, rules: _Rules):
         return None, Reason("no_team_mining", names)
     if not _can_carry(db, hauler):
         return None, Reason("no_team_hauler", names)
-    mined = plan(miner, hauled_by=hauler.name)
+    compressor = _compressor_ship(db, hauler.character_id)
+    near = f"{hauler.name}'s {compressor.name}" if compressor else None
+    mined = plan(miner, hauled_by=hauler.name, compression_by=near)
     mining = next((i for i in mined.items if i.kind == "mining"), None)
     if mining is None:
         return None, Reason(_why_no_mining(mined, "no_team_mining"), names)
-    step = _haul_step(db, hauler, miner, mining, rules.minutes, rules.highsec_only)
+    step = (
+        _compress_step(db, hauler, miner, mining, compressor, rules)
+        if compressor
+        else _haul_step(db, hauler, miner, mining, rules.minutes, rules.highsec_only)
+    )
     if step is None:
         return None, Reason("no_team_hauler", names)
     if step.risk.rating == "red" and not rules.allow_risky:  # as the planner does
@@ -363,15 +450,6 @@ def _both_ways(db, found, solo, plan, rules: _Rules, one_way):
         if best is None or shape.value > best.value:
             best = shape
     return best, notes
-
-
-def _compressed_m3(db, type_id: int | None, quantity: int) -> float | None:
-    row = db.execute(
-        "SELECT t.volume FROM sde_compressible_types c JOIN sde_types t "
-        "ON t.type_id = c.compressed_type_id WHERE c.type_id = ?",
-        (type_id,),
-    ).fetchone()
-    return quantity * row[0] if row and row[0] else None
 
 
 def _compresses(db, ship: fleet.FleetShip) -> bool:
@@ -399,18 +477,16 @@ def _boost_carry(db, booster: Member, boost, mining: PlanItem, rules: _Rules) ->
     reach = _reach(db, booster.character_id, boost.ship, system_id, rules.highsec_only)
     if reach is None:
         return None
-    compresses = _compresses(db, boost.ship)
-    squeezed = (
-        _compressed_m3(db, inputs.get("type_id"), inputs.get("quantity") or 0)
-        if compresses
-        else None
-    )
-    carried = squeezed if squeezed is not None else m3
-    trips = max(1, math.ceil(carried / capacity))
+    if _compresses(db, boost.ship):  # the miner compresses in its own hold: nothing to carry
+        needed = _travel_minutes(*reach)
+        if needed > rules.minutes:
+            return None
+        return _Carry(reach, 0.0, True, capacity, 0, needed)
+    trips = max(1, math.ceil(m3 / capacity))
     needed = _carry_minutes(*reach, trips)
     if needed > rules.minutes:
         return None
-    return _Carry(reach, carried, squeezed is not None, capacity, trips, needed)
+    return _Carry(reach, m3, False, capacity, trips, needed)
 
 
 def _boost_title(boost, miner: Member, carry: _Carry, where: str, charges: int) -> str:
@@ -427,12 +503,21 @@ def _boost_title(boost, miner: Member, carry: _Carry, where: str, charges: int) 
         if boost.charges_loaded < charges
         else ""
     )
-    title = (
+    boosting = (
         f"{switch}{travel}boost {miner.name} with your {boost.burst} ({boost.charge}: "
-        f"cycles {-boost.cycle_change:.0f}% shorter), take their ore into your "
-        f"{boost.ship.name}{', compress it' if carry.compresses else ''} and sell it at the "
-        f"station in {where}"
+        f"cycles {-boost.cycle_change:.0f}% shorter)"
     )
+    if carry.trips == 0:  # the miner compresses in its own hold beside you
+        title = (
+            f"{boosting} with your compressor running, so they compress the ore in their own "
+            "hold: no hauling needed"
+        )
+    else:
+        keeps = " (it all fits, so no trips until the end)" if carry.trips == 1 else ""
+        title = (
+            f"{boosting}, take their ore into your {boost.ship.name}{keeps} and sell it at the "
+            f"station in {where}"
+        )
     return load + title[0].upper() + title[1:]
 
 
@@ -464,9 +549,10 @@ def _boost_step(db, booster: Member, miner: Member, mining: PlanItem, boost, rul
         "factors": [[what, value] for what, value in boost.factors],
         "charges": charges, "loaded": boost.charges_loaded, "charge_cost": cost,
         "priced": boost.charge_price is not None, "compressed": carry.compresses,
+        "field": carry.trips == 0,
         "m3": carry.carried, "trips": carry.trips, "minutes_needed": carry.needed,
     }  # fmt: skip
-    where = here["name"] if here else "the miner's system"
+    where = here["name"] if here else SOMEWHERE
     return PlanItem(
         kind="team_boost",
         key=f"{miner.character_id}:{boost.ship.item_id}",
@@ -502,7 +588,10 @@ def _boost_way(db, miner: Member, booster: Member, solo, plan, rules: _Rules):
     boost = boosts.best_boost(db, booster.character_id)
     if boost is None:
         return None, Reason("no_team_booster", names)
-    mined = plan(miner, hauled_by=booster.name, boost=(booster.name, boost.cycle_factor))
+    near = f"{booster.name}'s {boost.ship.name}" if _compresses(db, boost.ship) else None
+    mined = plan(
+        miner, hauled_by=booster.name, boost=(booster.name, boost.cycle_factor), compression_by=near
+    )
     mining = next((i for i in mined.items if i.kind == "mining"), None)
     if mining is None:
         return None, Reason(_why_no_mining(mined, "no_boost_mining"), names)
@@ -532,13 +621,15 @@ def build(
         raise TogetherError(problems)
     highsec_only = not allow_lowsec or "route:lowsec" in preferences.active_mutes(db)
 
-    def plan(member: Member, taken=frozenset(), hauled_by=None, boost=None) -> planner.Plan:
+    def plan(
+        member: Member, taken=frozenset(), hauled_by=None, boost=None, compression_by=None
+    ) -> planner.Plan:
         # Played together, a miner may mine what the others have mined in that system.
         partners = tuple(m.character_id for m in found if m is not member)
         return planner.build_plan(
             db, esi, member.character_id, minutes, allow_lowsec=allow_lowsec,
             allow_risky=allow_risky, ore_names=ore_names, taken=taken, hauled_by=hauled_by,
-            boost=boost, ore_partners=partners,
+            boost=boost, ore_partners=partners, compression_by=compression_by,
         )  # fmt: skip
 
     side, solo = _side_by_side(found, plan)

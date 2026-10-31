@@ -12,6 +12,7 @@ from eve_assistant import (
     freelance,
     mining,
     ore,
+    preferences,
     risk,
     signals,
     skills,
@@ -47,8 +48,15 @@ def _ore_choices(
     this system (playing together, by any of the characters), else common ones."""
     if named:
         return [skills.find_type(db, name) for name in named]
+    ruled_out = preferences.ruled_out_ores(db)
     own = _mined_here(db, character_id, system_id)
     shared = [t for p in partners for t in _mined_here(db, p, system_id) if t not in own]
+    skipped = [t for t in dict.fromkeys([*own, *shared]) if t in ruled_out]
+    if skipped:
+        names = [skills.type_name(db, t) for t in skipped]
+        notes.append(Reason("ores_ruled_out", {"ores": names}))
+    own = [t for t in own if t not in ruled_out]
+    shared = [t for t in shared if t not in ruled_out]
     mined = list(dict.fromkeys([*own, *shared]))
     if shared:
         notes.append(Reason("ores_from_partners", {"count": len(set(shared))}))
@@ -61,7 +69,7 @@ def _ore_choices(
         row = db.execute(
             "SELECT type_id FROM sde_types WHERE name = ? AND published = 1", (name,)
         ).fetchone()
-        if row:
+        if row and row["type_id"] not in ruled_out:
             found.append(row["type_id"])
     return found
 
@@ -91,13 +99,38 @@ def _mining_minutes(time_left: float, rate: float, hold_m3: float, hauled: bool)
     return mining
 
 
-def _team_reasons(boost, hauled_by) -> list[Reason]:
-    """Playing together: who boosts this miner, or who hauls for it."""
+def _team_reasons(boost, hauled_by, compression_by=None) -> list[Reason]:
+    """Playing together: who boosts this miner, and how its ore is handled."""
+    reasons = []
     if boost:
-        return [Reason("team_boosted", {"booster": boost[0], "cycle_factor": boost[1]})]
-    if hauled_by:
-        return [Reason("team_mining", {"hauler": hauled_by})]
-    return []
+        reasons.append(Reason("team_boosted", {"booster": boost[0], "cycle_factor": boost[1]}))
+    if compression_by:
+        reasons.append(Reason("team_compressing", {"near": compression_by}))
+    elif hauled_by:
+        reasons.append(Reason("team_mining", {"hauler": hauled_by}))
+    return reasons
+
+
+def _team_wording(best, boost, hauled_by, compression_by, where: dict) -> tuple[str, dict]:
+    """The end of a mining step's title, and what it records, playing together.
+    Beside a ship whose compressor runs, the miner compresses in its own hold:
+    it never fills, so it keeps the ore and sells it at the end."""
+    sell = f"{best.title[0].lower()}{best.title[1:]}"
+    if not boost and not hauled_by:
+        return f"then {sell}", {}
+    keep = (
+        f"compressing each full hold in your own hold beside {compression_by}, then {sell}"
+        if compression_by
+        else None
+    )
+    together = {**where, "hauled_by": hauled_by}
+    if compression_by:
+        together["compressed_near"] = compression_by
+    if boost:
+        together.update(boosted_by=boost[0], cycle_factor=boost[1])
+        boosted = f"boosted by {boost[0]} (cycles {(1 - boost[1]) * 100:.0f}% shorter), "
+        return boosted + (keep or f"passing each full hold to {boost[0]}"), together
+    return keep or f"jettisoning each full hold into a can for {hauled_by} to collect", together
 
 
 def _estimate_reasons(reasons, boosted: bool) -> tuple:
@@ -125,6 +158,7 @@ def mining_candidates(
     hauled_by=None,
     boost=None,
     ore_partners: tuple[int, ...] = (),
+    compression_by: str | None = None,
 ) -> list[PlanItem]:
     """A mining session in each owned, flyable ship that has mining modules fitted,
     after the time it takes to get into that ship. With hauled_by, another
@@ -203,20 +237,8 @@ def mining_candidates(
                 continue
             best = here_options[0]
             hold_value = (best.isk / volume) * (estimate.hold_m3 or volume) if volume else 0.0
-            if boost:
-                then = (
-                    f"boosted by {boost[0]} (cycles {(1 - boost[1]) * 100:.0f}% shorter), "
-                    f"passing each full hold to {boost[0]}"
-                )
-                together = {"hauled_by": hauled_by, "boosted_by": boost[0],
-                            "cycle_factor": boost[1], "mining_system_id": system_id,
-                            "sell_station_id": station_id, "m3": volume}  # fmt: skip
-            elif hauled_by:
-                then = f"jettisoning each full hold into a can for {hauled_by} to collect"
-                together = {"hauled_by": hauled_by, "mining_system_id": system_id,
-                            "sell_station_id": station_id, "m3": volume}  # fmt: skip
-            else:
-                then, together = f"then {best.title[0].lower()}{best.title[1:]}", {}
+            where = {"mining_system_id": system_id, "sell_station_id": station_id, "m3": volume}
+            then, together = _team_wording(best, boost, hauled_by, compression_by, where)
             items.append(
                 PlanItem(
                     kind="mining",
@@ -236,7 +258,7 @@ def mining_candidates(
                         *assessed.reasons,
                         *([fit_note] if fit_note else []),
                         *_estimate_reasons(estimate.reasons, boosted=bool(boost)),
-                        *_team_reasons(boost, hauled_by),
+                        *_team_reasons(boost, hauled_by, compression_by),
                     ),
                     inputs={
                         "type_id": type_id,
@@ -335,7 +357,7 @@ def candidates(ctx: Context) -> list[PlanItem]:
     return mining_candidates(
         ctx.db, ctx.esi, ctx.character_id, ctx.ships, ctx.minutes, ctx.net_worth,
         ctx.ore_names, ctx.notes, hauled_by=ctx.hauled_by, boost=ctx.boost,
-        ore_partners=ctx.ore_partners,
+        ore_partners=ctx.ore_partners, compression_by=ctx.compression_by,
     )  # fmt: skip
 
 
