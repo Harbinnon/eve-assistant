@@ -91,6 +91,15 @@ def _mining_minutes(time_left: float, rate: float, hold_m3: float, hauled: bool)
     return mining
 
 
+def _team_reasons(boost, hauled_by) -> list[Reason]:
+    """Playing together: who boosts this miner, or who hauls for it."""
+    if boost:
+        return [Reason("team_boosted", {"booster": boost[0], "cycle_factor": boost[1]})]
+    if hauled_by:
+        return [Reason("team_mining", {"hauler": hauled_by})]
+    return []
+
+
 def _estimate_reasons(reasons, boosted: bool) -> tuple:
     """The estimate's reasons; with a booster, fleet boosts are no longer "not modelled"."""
     if not boosted:
@@ -227,17 +236,7 @@ def mining_candidates(
                         *assessed.reasons,
                         *([fit_note] if fit_note else []),
                         *_estimate_reasons(estimate.reasons, boosted=bool(boost)),
-                        *(
-                            [
-                                Reason(
-                                    "team_boosted", {"booster": boost[0], "cycle_factor": boost[1]}
-                                )
-                            ]
-                            if boost
-                            else [Reason("team_mining", {"hauler": hauled_by})]
-                            if hauled_by
-                            else []
-                        ),  # fmt: skip
+                        *_team_reasons(boost, hauled_by),
                     ),
                     inputs={
                         "type_id": type_id,

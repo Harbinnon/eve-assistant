@@ -234,6 +234,20 @@ def _team_boost(d: dict) -> str:
     )
 
 
+def _count(number: int, word: str) -> str:
+    """3, "ore" -> "3 ores"; 1, "ore" -> "1 ore"."""
+    return f"{number} {word}{'' if number == 1 else 's'}"
+
+
+def _team_mining_risky(d: dict) -> str:
+    helper, does = (d.get("hauler"), "hauls") if d.get("hauler") else (d.get("booster"), "boosts")
+    return (
+        f"{d.get('miner')} mining while {helper} {does} wasn't offered: {d.get('miner')}'s "
+        "mining is rated Risky (the ship is a big share of what they own). Tick “Include "
+        "risky options” to allow it."
+    )
+
+
 def _not_omega(d: dict) -> str:
     state = d.get("clone_state")
     what = "is Alpha" if state == "alpha" else "isn't marked Omega"
@@ -539,20 +553,15 @@ def describe(code: str, detail: dict | None = None) -> str:
             f"{d.get('miner')} mining while {d.get('booster')} boosts wasn't possible: "
             f"{d.get('booster')}'s boosting ship can't get there and carry the ore in time."
         ),
-        "team_mining_risky": lambda: (
-            f"{d.get('miner')} mining while {d.get('hauler') or d.get('booster')} "
-            f"{'hauls' if d.get('hauler') else 'boosts'} wasn't offered: {d.get('miner')}'s "
-            "mining is rated Risky (the ship is a big share of what they own). Tick “Include "
-            "risky options” to allow it."
-        ),
+        "team_mining_risky": lambda: _team_mining_risky(d),
         "team_boost_risky": lambda: (
             f"{d.get('miner')} mining while {d.get('booster')} boosts wasn't offered: the "
             f"boosting is rated Risky for {d.get('booster')}. Tick “Include risky options” "
             "to allow it."
         ),
         "ores_from_partners": lambda: (
-            f"Includes {d.get('count', 0)} ore{'s' if d.get('count', 0) != 1 else ''} that "
-            "a character you're playing with has mined in this system."
+            f"Includes {_count(d.get('count', 0), 'ore')} that a character you're playing "
+            "with has mined in this system."
         ),
         "team_mining": lambda: (
             f"{d.get('hauler')} collects the cans and sells the ore, so you don't dock to "
