@@ -68,10 +68,11 @@ Once, after setup:
 2. `eve-assistant login` logs a character in (or, once the dashboard is
    running, **Add a character** on its Characters page). Repeat for each
    character.
-3. `eve-assistant account assign <character id> <account name>` groups
-   characters by account, and `eve-assistant account state <account name>
-   alpha` (or `omega`) says which accounts are Alpha, so plans respect
-   Alpha limits.
+3. On the Characters page, **Set account** on each character: give
+   characters on the same EVE account the same name, and say whether the
+   account is Alpha or Omega, so plans respect Alpha limits and characters
+   can play together. (Or `eve-assistant account assign <character id>
+   <account name>` and `eve-assistant account state <account name> alpha`.)
 4. Optional: set `[logs] gamelogs_dir` in `config/local.toml` to EVE's
    Gamelogs folder (usually `Documents\EVE\logs\Gamelogs`), so mining
    rates are learned cycle by cycle.
