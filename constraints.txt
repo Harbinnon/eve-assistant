@@ -41,7 +41,7 @@ pip_api==0.0.35
 pip_audit==2.10.1
 platformdirs==4.12.2
 pluggy==1.6.0
-pre_commit==4.6.2
+pre_commit==4.7.0
 py-serializable==2.1.0
 pycparser==3.0
 pydantic==2.13.5
