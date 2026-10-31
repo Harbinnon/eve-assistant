@@ -33,13 +33,25 @@ from eve_assistant.skills import Reason
 DEFAULT_ORES = ("Veldspar", "Scordite", "Pyroxeres", "Plagioclase")
 
 
-def _ore_choices(db, character_id, system_id, named: list[str] | None, notes) -> list[int]:
-    if named:
-        return [skills.find_type(db, name) for name in named]
+def _mined_here(db, character_id: int, system_id) -> list[int]:
     ledger = snapshots.latest(db, character_id, "mining_ledger") or []
-    mined = list(
+    return list(
         dict.fromkeys(e["type_id"] for e in ledger if e.get("solar_system_id") == system_id)
     )
+
+
+def _ore_choices(
+    db, character_id, system_id, named: list[str] | None, notes, partners: tuple[int, ...] = ()
+) -> list[int]:
+    """Ores to consider: named ones, else what the mining ledger shows was mined in
+    this system (playing together, by any of the characters), else common ones."""
+    if named:
+        return [skills.find_type(db, name) for name in named]
+    own = _mined_here(db, character_id, system_id)
+    shared = [t for p in partners for t in _mined_here(db, p, system_id) if t not in own]
+    mined = list(dict.fromkeys([*own, *shared]))
+    if shared:
+        notes.append(Reason("ores_from_partners", {"count": len(set(shared))}))
     if mined:
         notes.append(Reason("ores_from_mining_ledger"))
         return mined
@@ -103,6 +115,7 @@ def mining_candidates(
     notes,
     hauled_by=None,
     boost=None,
+    ore_partners: tuple[int, ...] = (),
 ) -> list[PlanItem]:
     """A mining session in each owned, flyable ship that has mining modules fitted,
     after the time it takes to get into that ship. With hauled_by, another
@@ -164,7 +177,7 @@ def mining_candidates(
             if board.needs_switch
             else "Mine"
         )
-        for type_id in _ore_choices(db, character_id, system_id, ore_names, notes):
+        for type_id in _ore_choices(db, character_id, system_id, ore_names, notes, ore_partners):
             unit = db.execute(
                 "SELECT volume FROM sde_types WHERE type_id = ?", (type_id,)
             ).fetchone()
@@ -323,6 +336,7 @@ def candidates(ctx: Context) -> list[PlanItem]:
     return mining_candidates(
         ctx.db, ctx.esi, ctx.character_id, ctx.ships, ctx.minutes, ctx.net_worth,
         ctx.ore_names, ctx.notes, hauled_by=ctx.hauled_by, boost=ctx.boost,
+        ore_partners=ctx.ore_partners,
     )  # fmt: skip
 
 

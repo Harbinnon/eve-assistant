@@ -301,6 +301,7 @@ def build_plan(
     taken: frozenset[tuple[str, str]] = frozenset(),
     hauled_by: str | None = None,
     boost: tuple[str, float] | None = None,
+    ore_partners: tuple[int, ...] = (),
 ) -> Plan:
     """taken: (kind, key) of what another character playing together already
     does. hauled_by: playing together, the character who collects this one's
@@ -320,7 +321,7 @@ def build_plan(
 
     context = Context(
         db, esi, character_id, minutes, worth, highsec_only, ships, ore_names, notes, hauled_by,
-        boost,
+        boost, ore_partners,
     )  # fmt: skip
     learned = risk.model(db)
     candidates = _rated(

@@ -64,6 +64,7 @@ class Context:
     notes: list[Reason]  # activities add notes about what they assumed
     hauled_by: str | None = None  # playing together: who collects this miner's ore
     boost: tuple[str, float] | None = None  # (booster, cycle time factor), e.g. ("Alex", 0.71)
+    ore_partners: tuple[int, ...] = ()  # playing together: whose mining ledgers also count
 
 
 def accessible_structure(db: sqlite3.Connection, location_id: int | None) -> int | None:

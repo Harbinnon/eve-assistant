@@ -550,6 +550,10 @@ def describe(code: str, detail: dict | None = None) -> str:
             f"boosting is rated Risky for {d.get('booster')}. Tick “Include risky options” "
             "to allow it."
         ),
+        "ores_from_partners": lambda: (
+            f"Includes {d.get('count', 0)} ore{'s' if d.get('count', 0) != 1 else ''} that "
+            "a character you're playing with has mined in this system."
+        ),
         "team_mining": lambda: (
             f"{d.get('hauler')} collects the cans and sells the ore, so you don't dock to "
             "unload; you stop in time for the last can to be carried in and sold."

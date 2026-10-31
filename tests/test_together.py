@@ -465,3 +465,42 @@ def test_reason_texts_exist_for_every_together_code():
                  "team_haul"):  # fmt: skip
         assert explain.describe(code, {}) != code, code
     assert explain.describe(Reason("x").code) == "x"  # unknown codes fall back
+
+
+def test_a_miner_may_mine_what_a_partner_mined_in_that_system():
+    from eve_assistant.activities import mining as mining_activity
+
+    db = _world()
+    db.execute(
+        "INSERT INTO sde_types (type_id, name, group_id, published, volume) "
+        "VALUES (1231, 'Ytirium', 462, 1, 0.1)"
+    )
+    snapshots.record(db, 8, "mining_ledger", [
+        {"type_id": 1231, "solar_system_id": HOME, "quantity": 9},
+        {"type_id": ORE, "solar_system_id": HOME, "quantity": 9},
+        {"type_id": 1231, "solar_system_id": 1, "quantity": 9}])  # fmt: skip
+    notes = []
+    alone = mining_activity._ore_choices(db, 7, HOME, None, [])
+    together_ = mining_activity._ore_choices(db, 7, HOME, None, notes, partners=(8,))
+    assert alone == [ORE]
+    assert together_ == [ORE, 1231]  # own first, then the partner's new ones
+    assert [n.detail for n in notes if n.code == "ores_from_partners"] == [{"count": 1}]
+
+
+@respx.mock
+def test_every_plan_together_counts_the_partners_ores():
+    _mock_esi()
+    db = _world()
+    partners = []
+    real = planner.build_plan
+
+    def noting(db_, esi, character_id, minutes, **options):
+        partners.append((character_id, options.get("ore_partners")))
+        return real(db_, esi, character_id, minutes, **options)
+
+    planner.build_plan = noting
+    try:
+        _build(db)
+    finally:
+        planner.build_plan = real
+    assert set(partners) == {(7, (8,)), (8, (7,))}

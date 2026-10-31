@@ -533,10 +533,12 @@ def build(
     highsec_only = not allow_lowsec or "route:lowsec" in preferences.active_mutes(db)
 
     def plan(member: Member, taken=frozenset(), hauled_by=None, boost=None) -> planner.Plan:
+        # Played together, a miner may mine what the others have mined in that system.
+        partners = tuple(m.character_id for m in found if m is not member)
         return planner.build_plan(
             db, esi, member.character_id, minutes, allow_lowsec=allow_lowsec,
             allow_risky=allow_risky, ore_names=ore_names, taken=taken, hauled_by=hauled_by,
-            boost=boost,
+            boost=boost, ore_partners=partners,
         )  # fmt: skip
 
     side, solo = _side_by_side(found, plan)

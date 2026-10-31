@@ -732,6 +732,10 @@ back every few seconds and opens the plan when it's ready. A character
 that can't mine, or has no ship that carries ore, isn't planned a second
 time for the other shape.
 
+Planned together, a character's ore choices also include what the others
+have mined in the same system (from their mining ledgers), since they'll
+be mining side by side; every shape uses this, so the comparison is fair.
+
 Each character's part is recorded as an ordinary plan, so starting, ticking
 off and learning work unchanged; a team plan (append-only, like plans)
 links them with the shape chosen and what the other would have made.
