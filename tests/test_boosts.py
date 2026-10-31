@@ -26,7 +26,7 @@ ATTRIBUTES = {
 }
 
 
-def _booster_world(wallet=50_000_000.0, charges=10, mindlink=False):
+def _booster_world(wallet=50_000_000.0, charges=10, mindlink=False, compressor=True):
     db = _world()
     db.executemany(
         "INSERT INTO sde_groups VALUES (?, ?, ?, 1)",
@@ -58,11 +58,14 @@ def _booster_world(wallet=50_000_000.0, charges=10, mindlink=False):
     )  # fmt: skip
     db.execute("INSERT INTO sde_compressible_types VALUES (?, ?)", (ORE, COMPRESSED))
     db.execute("INSERT INTO market_prices VALUES (?, 1000, 1000, 'now')", (CHARGE,))
-    fitted = [{"type_id": BURST, "location_id": 9002, "location_flag": "HiSlot0", "quantity": 1},
-              {"type_id": CORE, "location_id": 9002, "location_flag": "HiSlot1", "quantity": 1},
-              {"type_id": SHIELD, "location_id": 9002, "location_flag": "HiSlot3", "quantity": 1},
-              {"type_id": COMPRESSOR, "location_id": 9002, "location_flag": "HiSlot2",
-               "quantity": 1}]  # fmt: skip
+    fitted = [
+        {"type_id": BURST, "location_id": 9002, "location_flag": "HiSlot0", "quantity": 1},
+        {"type_id": CORE, "location_id": 9002, "location_flag": "HiSlot1", "quantity": 1},
+        {"type_id": SHIELD, "location_id": 9002, "location_flag": "HiSlot3", "quantity": 1},
+    ]
+    if compressor:
+        fitted.append({"type_id": COMPRESSOR, "location_id": 9002, "location_flag": "HiSlot2",
+                       "quantity": 1})  # fmt: skip
     if charges:
         fitted.append({"type_id": CHARGE, "location_id": 9002, "location_flag": "HiSlot0",
                        "quantity": charges})  # fmt: skip
@@ -122,26 +125,28 @@ def test_one_mining_while_the_other_boosts_wins_when_it_makes_most():
     assert team.chosen.roles == ("miner", "booster")
     mined, boosted = team.chosen.plans
     mining = next(i for i in mined.items if i.kind == "mining")
-    assert "boosted by Hauler (cycles 29% shorter), passing each full hold to Hauler" in (
-        mining.title
-    )
+    # Beside the booster's compressor, the miner compresses in its own hold and keeps the ore.
+    assert (
+        "boosted by Hauler (cycles 29% shorter), compressing each full hold in your own hold "
+        "beside Hauler's Test Hauler, then sell the ore in Home"
+    ) in mining.title
+    assert "team_compressing" in {r.code for r in mining.reasons}
     assert mining.inputs["cycle_factor"] == pytest.approx(1 - 0.15 * STRENGTH)
     step = boosted.items[-1]
     assert step.kind == "team_boost"
     assert step.isk == -60 * 1000.0  # the charges it uses
     assert step.title.startswith("Load 60 Mining Laser Optimization Charges first (10 loaded).")
-    assert ", compress it (it all fits compressed, so no trips until the end) and sell" in (
-        step.title
+    assert step.title.endswith(
+        "with your compressor running, so they compress the ore in their own hold: "
+        "no hauling needed"
     )
     haul = next(s for s in team.others if s.kind == "mine_and_haul")
     hauling = haul.plans[haul.roles.index("hauler")].items[-1]
-    assert "compress them in your Test Hauler (it all fits compressed, so no trips" in (
-        hauling.title
-    )
-    assert hauling.reasons[0].detail["compressed"]
+    assert hauling.title.startswith("Stay beside Miner in your Test Hauler with its compressor")
+    assert hauling.reasons[0].detail["field"]
     detail = step.reasons[0].detail
-    assert detail["compressed"]
-    assert detail["trips"] == 1  # compressed, it all fits
+    assert detail["field"]
+    assert detail["trips"] == 0  # nothing to carry
     assert {shape.kind for shape in team.others} == {"mine_and_haul", "side_by_side"}
     boosted_value = team.chosen.value
     hauled_value = next(s for s in team.others if s.kind == "mine_and_haul").value
@@ -179,7 +184,10 @@ def test_the_reason_spells_out_the_strength():
     assert "Mining Foreman Burst II 1.25 × Mining Director 4 1.4" in text
     assert "cycles 29.3% shorter for Harbinnon" in text
     assert "Uses 240 charges a session, about 240k ISK; 0 loaded now" in text
-    assert "about 120 m³ compressed" in text
+    assert "Carries about 120 m³ from Harbinnon in your Porpoise (1 trip)" in text
+    field = explain.describe("team_boost", {"miner": "Harbinnon", "field": True,
+                                            "minutes_needed": 3.0})  # fmt: skip
+    assert "Your compressor lets Harbinnon compress the ore in their own hold" in field
 
 
 def test_plans_saved_before_boosts_still_load():
@@ -221,3 +229,16 @@ def test_the_booster_step_reads_as_two_sentences():
     title = together._boost_title(boost, together.members(db, [7])[0], carry, "Home", 60)
     assert title.startswith("Load 60 Mining Laser Optimization Charges first (0 loaded). Fly to")
     assert "(1 jump) and boost Miner" in title
+
+
+@respx.mock
+def test_without_a_compressor_the_booster_takes_the_ore():
+    _mock_esi()
+    db = _booster_world(compressor=False)
+    team = _team(db)
+    mined, boosted = team.chosen.plans
+    mining = next(i for i in mined.items if i.kind == "mining")
+    assert "passing each full hold to Hauler" in mining.title
+    step = boosted.items[-1]
+    assert "take their ore into your Test Hauler" in step.title
+    assert step.reasons[0].detail["trips"] >= 1

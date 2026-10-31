@@ -219,18 +219,40 @@ def _team_boost(d: dict) -> str:
     loaded = (
         "" if d.get("loaded", 0) >= d.get("charges", 0) else f"; {d.get('loaded', 0)} loaded now"
     )
-    carried = (
-        f"about {d.get('m3', 0):,.0f} m³ compressed"
-        if d.get("compressed")
-        else f"about {d.get('m3', 0):,.0f} m³"
-    )
     return (
         f"{d.get('charge')}: {d.get('base', 0):.0f}% × strength {d.get('strength', 0):.2f} "
         f"({factors}) = cycles {-d.get('cycle_change', 0):.1f}% shorter for {d.get('miner')}. "
-        f"Uses {cost}{loaded}. Carries {carried} from {d.get('miner')} in your {d.get('ship')} "
-        f"({d.get('trips', 0)} trip{'s' if d.get('trips', 0) != 1 else ''}), about "
-        f"{d.get('minutes_needed', 0):.0f} min of flying, unloading and selling; the boost "
-        "assumes you stay beside them. The ore's ISK is counted on their mining step."
+        f"Uses {cost}{loaded}. {_boost_carrying(d)} The boost assumes you stay beside them; "
+        "the ore's ISK is counted on their mining step."
+    )
+
+
+def _boost_carrying(d: dict) -> str:
+    if d.get("field"):
+        return (
+            f"Your compressor lets {d.get('miner')} compress the ore in their own hold, so "
+            f"nothing needs carrying: about {d.get('minutes_needed', 0):.0f} min to get there."
+        )
+    return (
+        f"Carries about {d.get('m3', 0):,.0f} m³ from {d.get('miner')} in your {d.get('ship')} "
+        f"({_count(d.get('trips', 0), 'trip')}), about {d.get('minutes_needed', 0):.0f} min of "
+        "flying, unloading and selling."
+    )
+
+
+def _team_haul(d: dict) -> str:
+    if d.get("field"):
+        return (
+            f"Your {d.get('ship')}'s compressor lets {d.get('miner')} compress the ore in their "
+            f"own hold, so nothing needs carrying: about {d.get('minutes_needed', 0):.0f} min to "
+            "get there. The ore's ISK is counted on their mining step."
+        )
+    return (
+        f"About {d.get('m3', 0):,.0f} m³{' compressed' if d.get('compressed') else ''} from "
+        f"{d.get('miner')}, in your {d.get('ship')} ({d.get('capacity', 0):,.0f} m³ a trip): "
+        f"{_count(d.get('trips', 0), 'trip')}, about {d.get('minutes_needed', 0):.0f} min of "
+        f"flying, collecting and selling. The ore's ISK is counted on {d.get('miner')}'s mining "
+        "step."
     )
 
 
@@ -539,7 +561,11 @@ def describe(code: str, detail: dict | None = None) -> str:
         "team_boosted": lambda: (
             f"{d.get('booster')}'s Mining Foreman Burst makes each cycle "
             f"{(1 - (d.get('cycle_factor') or 1)) * 100:.0f}% shorter, so you mine that much "
-            f"faster; {d.get('booster')} takes your ore, so you don't dock to unload."
+            "faster."
+        ),
+        "team_compressing": lambda: (
+            f"Beside {d.get('near')} with its compressor running, you compress the ore in your "
+            "own hold, so it never fills: you don't dock to unload, and you sell it at the end."
         ),
         "no_boost_mining": lambda: (
             f"{d.get('miner')} mining while {d.get('booster')} boosts wasn't worked out: "
@@ -567,16 +593,10 @@ def describe(code: str, detail: dict | None = None) -> str:
             "with has mined in this system."
         ),
         "team_mining": lambda: (
-            f"{d.get('hauler')} collects the cans and sells the ore, so you don't dock to "
-            "unload; you stop in time for the last can to be carried in and sold."
+            f"{d.get('hauler')} collects your ore and sells it, so you don't dock to unload; "
+            "you stop in time for the last of it to be carried in and sold."
         ),
-        "team_haul": lambda: (
-            f"About {d.get('m3', 0):,.0f} m³{' compressed' if d.get('compressed') else ''} "
-            f"from {d.get('miner')}, in your "
-            f"{d.get('ship')} ({d.get('capacity', 0):,.0f} m³ a trip): {d.get('trips', 0)} "
-            f"trips, about {d.get('minutes_needed', 0):.0f} min of flying, collecting and "
-            f"selling. The ore's ISK is counted on {d.get('miner')}'s mining step."
-        ),
+        "team_haul": lambda: _team_haul(d),
         "ore_stored_elsewhere": lambda: (
             f"This ore is stored in {d.get('system')}, {d.get('jumps', 0)} jumps away."
             if d.get("jumps")
