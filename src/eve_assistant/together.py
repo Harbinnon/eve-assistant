@@ -166,8 +166,6 @@ class _Haul:
     trips: int
     capacity: float
     minutes_needed: float
-    carried: float  # m3 in the hold: compressed when the ship can compress
-    compresses: bool
 
 
 def _reach(db, character_id: int, ship: fleet.FleetShip, system_id: int, highsec_only: bool):
@@ -194,8 +192,8 @@ def _jumps(count: int) -> str:
 
 def _hauler_ship(db, hauler: Member, mining: PlanItem, minutes: float, highsec_only):
     """The ship that gets the hauler to the miner and carries the ore in time:
-    fewest trips first (a ship that compresses often needs none until the end),
-    then the least at risk."""
+    fewest trips first, then the least at risk. (A ship with a compressor
+    doesn't carry at all: see _compress_step.)"""
     inputs = mining.inputs
     system_id, m3 = inputs["mining_system_id"], inputs["m3"]
     try:
@@ -208,21 +206,12 @@ def _hauler_ship(db, hauler: Member, mining: PlanItem, minutes: float, highsec_o
         reach = _reach(db, hauler.character_id, ship, system_id, highsec_only) if capacity else None
         if reach is None:
             continue
-        squeezed = (
-            _compressed_m3(db, inputs.get("type_id"), inputs.get("quantity") or 0)
-            if _compresses(db, ship)
-            else None
-        )
-        carried = squeezed if squeezed is not None else m3
-        trips = max(1, math.ceil(carried / capacity))
+        trips = max(1, math.ceil(m3 / capacity))
         needed = _carry_minutes(*reach, trips)
-        if needed > minutes:
-            continue
-        haul = _Haul(
-            ship, reach[0], reach[1], trips, capacity, needed, carried, squeezed is not None
-        )
-        if best is None or (haul.trips, ship.value) < (best.trips, best.ship.value):
-            best = haul
+        if needed <= minutes and (
+            best is None or (trips, ship.value) < (best.trips, best.ship.value)
+        ):
+            best = _Haul(ship, reach[0], reach[1], trips, capacity, needed)
     return best
 
 
@@ -254,15 +243,9 @@ def _haul_step(db, hauler: Member, miner: Member, mining: PlanItem, minutes, hig
     )
     travel = f"fly to {where} ({_jumps(jumps)}) and " if jumps else ""
     if haul.trips == 1:
-        keep = (
-            f"compress them in your {haul.ship.name} (it all fits compressed, so no trips "
-            "until the end)"
-            if haul.compresses
-            else "keep them in your hold (it all fits, so no trips until the end)"
-        )
         title = (
-            f"{board}{travel}collect the cans {miner.name} jettisons and {keep}, then sell "
-            f"the ore at the station in {where}"
+            f"{board}{travel}collect the cans {miner.name} jettisons and keep them in your hold "
+            f"(it all fits, so no trips until the end), then sell the ore at the station in {where}"
         )
     else:
         title = (
@@ -282,8 +265,7 @@ def _haul_step(db, hauler: Member, miner: Member, mining: PlanItem, minutes, hig
                 {
                     "miner": miner.name,
                     "ship": haul.ship.name,
-                    "m3": haul.carried,
-                    "compressed": haul.compresses,
+                    "m3": m3,
                     "trips": haul.trips,
                     "capacity": haul.capacity,
                     "minutes_needed": haul.minutes_needed,
@@ -469,15 +451,6 @@ def _both_ways(db, found, solo, plan, rules: _Rules, one_way):
     return best, notes
 
 
-def _compressed_m3(db, type_id: int | None, quantity: int) -> float | None:
-    row = db.execute(
-        "SELECT t.volume FROM sde_compressible_types c JOIN sde_types t "
-        "ON t.type_id = c.compressed_type_id WHERE c.type_id = ?",
-        (type_id,),
-    ).fetchone()
-    return quantity * row[0] if row and row[0] else None
-
-
 def _compresses(db, ship: fleet.FleetShip) -> bool:
     """An ore compressor is fitted: the ship carries ore compressed."""
     return any("Ore Compressor" in skills.type_name(db, t) for t in set(ship.fitted))
@@ -508,18 +481,11 @@ def _boost_carry(db, booster: Member, boost, mining: PlanItem, rules: _Rules) ->
         if needed > rules.minutes:
             return None
         return _Carry(reach, 0.0, True, capacity, 0, needed)
-    compresses = False
-    squeezed = (
-        _compressed_m3(db, inputs.get("type_id"), inputs.get("quantity") or 0)
-        if compresses
-        else None
-    )
-    carried = squeezed if squeezed is not None else m3
-    trips = max(1, math.ceil(carried / capacity))
+    trips = max(1, math.ceil(m3 / capacity))
     needed = _carry_minutes(*reach, trips)
     if needed > rules.minutes:
         return None
-    return _Carry(reach, carried, squeezed is not None, capacity, trips, needed)
+    return _Carry(reach, m3, False, capacity, trips, needed)
 
 
 def _boost_title(boost, miner: Member, carry: _Carry, where: str, charges: int) -> str:
