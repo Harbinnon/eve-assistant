@@ -24,7 +24,8 @@ from dataclasses import dataclass
 
 from eve_assistant import fleet, goals, mining, skills, snapshots
 
-BURST_GROUP = "Mining Foreman Burst"
+BURST_GROUP = "Command Burst"  # every kind of burst
+MINING_BURST = "Mining Foreman Burst"  # the ones that boost mining, by name
 CHARGE_GROUP = "Mining Foreman Burst Charges"
 CYCLE_BUFF = 24  # Mining Laser Optimization: mining modules' capacitor and duration
 DIRECTOR = "Mining Director"
@@ -119,7 +120,9 @@ def boost_of(
     db, character: skills.CharacterSkills, ship: fleet.FleetShip, implants
 ) -> Boost | None:
     """The boost a ship gives with its mining bursts fitted, or None without any."""
-    bursts = _in_group(db, BURST_GROUP)
+    bursts = {
+        t: name for t, name in _in_group(db, BURST_GROUP).items() if name.startswith(MINING_BURST)
+    }
     fitted = [t for t in set(ship.fitted) if t in bursts]
     charge = cycle_charge(db)
     if not fitted or charge is None:

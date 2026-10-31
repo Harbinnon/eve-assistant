@@ -79,6 +79,19 @@ def _mining_minutes(time_left: float, rate: float, hold_m3: float, hauled: bool)
     return mining
 
 
+def _estimate_reasons(reasons, boosted: bool) -> tuple:
+    """The estimate's reasons; with a booster, fleet boosts are no longer "not modelled"."""
+    if not boosted:
+        return tuple(reasons)
+    kept = []
+    for reason in reasons:
+        if reason.code == "not_modelled":
+            items = [i for i in reason.detail.get("items", []) if i != "fleet boosts"]
+            reason = Reason("not_modelled", {**reason.detail, "items": items})
+        kept.append(reason)
+    return tuple(kept)
+
+
 def mining_candidates(
     db,
     esi,
@@ -200,7 +213,7 @@ def mining_candidates(
                         sale.reason(),
                         *assessed.reasons,
                         *([fit_note] if fit_note else []),
-                        *estimate.reasons,
+                        *_estimate_reasons(estimate.reasons, boosted=bool(boost)),
                         *(
                             [
                                 Reason(

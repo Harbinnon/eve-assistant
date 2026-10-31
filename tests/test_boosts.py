@@ -14,7 +14,7 @@ from eve_assistant import boosts, explain, planner, snapshots, together
 from eve_assistant.esi.client import EsiClient
 from tests.test_together import BASE, HAULER, ORE, _mock_esi, _world
 
-BURST, CHARGE, CORE, COMPRESSOR, DIRECTOR, COMMAND, COMPRESSED, MINDLINK = range(500, 508)
+BURST, CHARGE, CORE, COMPRESSOR, DIRECTOR, COMMAND, COMPRESSED, MINDLINK, SHIELD = range(500, 509)
 ATTRIBUTES = {
     "warfareBuff1ID": 2468,
     "warfareBuff1Multiplier": 2596,
@@ -30,7 +30,7 @@ def _booster_world(wallet=50_000_000.0, charges=10, mindlink=False):
     db = _world()
     db.executemany(
         "INSERT INTO sde_groups VALUES (?, ?, ?, 1)",
-        [(70, 7, "Mining Foreman Burst"), (71, 8, "Mining Foreman Burst Charges"),
+        [(70, 7, "Command Burst"), (71, 8, "Mining Foreman Burst Charges"),
          (72, 7, "Industrial Core"), (73, 7, "Ore Compressor"), (74, 16, "Leadership"),
          (75, 25, "Compressed Veldspar"), (76, 20, "Cyber Leadership")],
     )  # fmt: skip
@@ -41,7 +41,7 @@ def _booster_world(wallet=50_000_000.0, charges=10, mindlink=False):
          (COMPRESSOR, "Medium Asteroid Ore Compressor I", 73, 5), (DIRECTOR, "Mining Director",
          74, 0.01), (COMMAND, "Industrial Command Ships", 74, 0.01),
          (COMPRESSED, "Compressed Veldspar", 75, 0.001), (MINDLINK, "Mining Foreman Mindlink",
-         76, 1)],
+         76, 1), (SHIELD, "Shield Command Burst II", 70, 5)],
     )  # fmt: skip
     db.executemany(
         "INSERT INTO sde_dogma_attributes VALUES (?, ?)", [(i, n) for n, i in ATTRIBUTES.items()]
@@ -49,6 +49,7 @@ def _booster_world(wallet=50_000_000.0, charges=10, mindlink=False):
     db.executemany(
         "INSERT INTO sde_type_attributes VALUES (?, ?, ?)",
         [(BURST, ATTRIBUTES["warfareBuff1Value"], 1.25), (BURST, 73, 60_000.0),
+         (SHIELD, ATTRIBUTES["warfareBuff1Value"], 9.0),  # stronger, but not for mining
          (CHARGE, ATTRIBUTES["warfareBuff1ID"], 24), (CHARGE, ATTRIBUTES["warfareBuff1Multiplier"],
          -15.0), (DIRECTOR, ATTRIBUTES["commandStrengthBonus"], 10.0),
          (HAULER, ATTRIBUTES["shipBonusICS2"], 2.0),
@@ -59,6 +60,7 @@ def _booster_world(wallet=50_000_000.0, charges=10, mindlink=False):
     db.execute("INSERT INTO market_prices VALUES (?, 1000, 1000, 'now')", (CHARGE,))
     fitted = [{"type_id": BURST, "location_id": 9002, "location_flag": "HiSlot0", "quantity": 1},
               {"type_id": CORE, "location_id": 9002, "location_flag": "HiSlot1", "quantity": 1},
+              {"type_id": SHIELD, "location_id": 9002, "location_flag": "HiSlot3", "quantity": 1},
               {"type_id": COMPRESSOR, "location_id": 9002, "location_flag": "HiSlot2",
                "quantity": 1}]  # fmt: skip
     if charges:
