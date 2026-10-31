@@ -448,6 +448,11 @@ class UpdateStatus:
     latest: SdeBuild | None  # as of the last daily check; None before the first one
     checked_at: str | None
     reload_needed: bool  # this version of the tool reads more than was loaded
+    update: dict | None = None  # the last update by the dashboard: state, at, error
+
+    @property
+    def updating(self) -> bool:
+        return (self.update or {}).get("state") in ("requested", "running")
 
     @property
     def newer_available(self) -> bool:
@@ -471,6 +476,7 @@ def update_status(db: sqlite3.Connection) -> UpdateStatus:
         latest=latest,
         checked_at=seen["checked_at"] if seen else None,
         reload_needed=needs_reload(db),
+        update=update_state(db),
     )
 
 
@@ -513,3 +519,68 @@ def update(
     ):
         return current, False
     return load(db, download(http, latest)), True
+
+
+# --- updating by itself ------------------------------------------------------
+#
+# With the background refresh on, a newer build is downloaded and loaded by the
+# refresh itself, though not while a play session is open: the load holds the
+# database for a minute or so. "Update now" on the banner asks the next tick to
+# do it anyway. After a failure, the next automatic try waits RETRY_AFTER.
+
+UPDATE_SETTING = "sde_update"
+RETRY_AFTER = timedelta(hours=6)
+STALE_RUN = timedelta(minutes=30)  # a run that never finished: the process stopped
+UPDATE_ERRORS = (SdeError, OSError, sqlite3.Error, zipfile.BadZipFile, KeyError, ValueError)
+
+
+def update_state(db: sqlite3.Connection) -> dict | None:
+    row = db.execute("SELECT value FROM settings WHERE key = ?", (UPDATE_SETTING,)).fetchone()
+    return json.loads(row[0]) if row else None
+
+
+def _set_state(db: sqlite3.Connection, state: str, now: datetime, **extra) -> None:
+    value = {"state": state, "at": now.isoformat(timespec="seconds"), **extra}
+    db.execute(
+        "INSERT INTO settings (key, value) VALUES (?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (UPDATE_SETTING, json.dumps(value)),
+    )
+    db.commit()
+
+
+def request_update(db: sqlite3.Connection, now: datetime | None = None) -> None:
+    """The banner's Update now: the next background tick updates, playing or not."""
+    _set_state(db, "requested", now or datetime.now(UTC))
+
+
+def update_due(db: sqlite3.Connection, now: datetime, playing: bool, automatic: bool) -> bool:
+    """Whether the background refresh should update the static data now."""
+    state = update_state(db) or {}
+    kind = state.get("state")
+    age = now - datetime.fromisoformat(state["at"]) if state.get("at") else None
+    if kind == "requested":
+        return True
+    if kind == "running" and age is not None and age < STALE_RUN:
+        return False  # another tick is at it
+    if not automatic or playing or not update_status(db).needs_update:
+        return False
+    return not (kind == "failed" and age is not None and age < RETRY_AFTER)
+
+
+def update_now(db: sqlite3.Connection, http: httpx.Client, now: datetime) -> SdeBuild:
+    """Download and load the newest build, noting how it went for the banner.
+    Raises SdeError."""
+    _set_state(db, "running", now)
+    try:
+        build, _loaded = update(db, http, force=needs_reload(db))
+    except UPDATE_ERRORS as exc:
+        db.rollback()
+        reason = str(exc) if isinstance(exc, SdeError) else exc.__class__.__name__
+        _set_state(db, "failed", datetime.now(UTC), error=reason)
+        raise SdeError(
+            f"Static data update failed: {reason}. It tries again in "
+            f"{RETRY_AFTER.total_seconds() / 3600:.0f} hours, or press Update now."
+        ) from None
+    _set_state(db, "done", datetime.now(UTC), build_number=build.build_number)
+    return build

@@ -213,6 +213,8 @@ BAND_LABELS = {
 MESSAGES = {
     "market_refreshing": "Reading the trade hubs' markets from EVE: about a minute.",
     "goal_added": "Goal added.",
+    "sde_update_requested": "Static data update asked for: it starts within a minute and "
+    "takes a minute or two.",
     "goal_done": "Goal marked done.",
     "goal_dropped": "Goal dropped.",
     "refreshed": "Character data refreshed from EVE.",
@@ -884,6 +886,19 @@ def create_app(
             can_team_plan=make_team_plan is not None,
             team_id=team_id,
         )
+
+    @app.post("/static-data/update")
+    def update_static_data(request: Request, token: str = Form(...)):
+        """The banner's Update now: the background refresh does it on its next tick."""
+        check_form(request, token)
+        if auto_refresh is None:
+            raise HTTPException(404, NO_PAGE)  # no background refresh to do it
+        conn = db()
+        try:
+            sde.request_update(conn)
+        finally:
+            conn.close()
+        return back(TODAY, msg="sde_update_requested")
 
     @app.post("/today/together")
     def plan_together(

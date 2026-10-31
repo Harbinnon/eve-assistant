@@ -63,6 +63,8 @@ class Config:
     planets: bool = False  # ask for the Planetary Interaction scope at login
     hosted: Hosted | None = None  # set in hosted mode
     send_logs_url: str | None = None  # the hosted copy, for send-logs on the gaming PC
+    # With auto_refresh: load CCP's new static data by itself, when not playing.
+    auto_update_static_data: bool = True
 
 
 def _is_placeholder(value: str | None) -> bool:
@@ -96,6 +98,9 @@ def load_config(path: Path = DEFAULT_CONFIG_PATH) -> Config:
     auto_refresh = app.get("auto_refresh", True)
     if not isinstance(auto_refresh, bool):
         raise ConfigError(f"[app] auto_refresh in {path} must be true or false.")
+    auto_static = app.get("auto_update_static_data", True)
+    if not isinstance(auto_static, bool):
+        raise ConfigError(f"[app] auto_update_static_data in {path} must be true or false.")
     planets = esi.get("planets", False)
     if not isinstance(planets, bool):
         raise ConfigError(f"[esi] planets in {path} must be true or false.")
@@ -118,6 +123,7 @@ def load_config(path: Path = DEFAULT_CONFIG_PATH) -> Config:
         planets=planets,
         hosted=hosted,
         send_logs_url=None if _is_placeholder(send_logs_url) else send_logs_url.strip(),
+        auto_update_static_data=auto_static,
     )
 
 
