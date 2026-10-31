@@ -75,7 +75,7 @@ def test_the_background_refresh_checks_once_a_day(db_path, monkeypatch):
     monkeypatch.setattr(refresh.auth, "list_characters", lambda _s: [])
     monkeypatch.setattr(refresh.auth, "http_client", lambda _c: httpx.Client())
     monkeypatch.setattr(refresh.backups, "run_if_due", lambda *_a: [])
-    config = Config("abc", "http://localhost", None, "local")
+    config = Config("abc", "http://localhost", None, "local", auto_update_static_data=False)
     refresh.auto_refresh_once(config, None, db_path, now=NOW)
     refresh.auto_refresh_once(config, None, db_path, now=NOW + timedelta(hours=1))
     assert route.call_count == 1

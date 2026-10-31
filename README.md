@@ -63,7 +63,8 @@ backend that doesn't exist yet.)
 Once, after setup:
 
 1. `eve-assistant sde-update` downloads CCP's static data (about 100 MB).
-   A banner on every page says when CCP has published a newer build.
+   After that, the dashboard loads CCP's newer builds by itself when you're
+   not in a play session (or press **Update now** on the banner).
 2. `eve-assistant login` logs a character in (or, once the dashboard is
    running, **Add a character** on its Characters page). Repeat for each
    character.

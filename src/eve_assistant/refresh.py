@@ -30,6 +30,7 @@ from eve_assistant import (
     planets,
     planner,
     sde,
+    sessions,
     signals,
     snapshots,
     sovereignty,
@@ -431,14 +432,18 @@ def _refresh_public(db, esi: EsiClient, now: datetime) -> list[str]:
 
 def _check_static_data(config: Config, db_path, now: datetime) -> list[str]:
     """Reload the static data if a newer loader needs it (from the zip already on
-    disk), and once a day note which build CCP has published."""
+    disk), once a day note which build CCP has published, and load a newer one
+    when it's due (by itself when not playing, or when asked on the banner)."""
     db = store.connect(db_path)
     try:
         sde.reload_if_needed(db)
-        if not sde.check_due(db, now):
-            return []
-        with auth.http_client(config) as http:
-            sde.check_for_update(db, http, now)
+        if sde.check_due(db, now):
+            with auth.http_client(config) as http:
+                sde.check_for_update(db, http, now)
+        playing = bool(sessions.open_sessions(db))
+        if sde.update_due(db, now, playing, config.auto_update_static_data):
+            with auth.http_client(config) as http:
+                sde.update_now(db, http, now)
     except sde.SdeError as exc:
         return [str(exc)]
     finally:

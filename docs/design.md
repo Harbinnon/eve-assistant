@@ -1051,10 +1051,17 @@ nothing:
 | Static data build (CCP's latest) | daily | |
 
 CCP rebuilds the static data with most game deployments; once a day the
-background task notes the latest build, and every page shows a banner when
-it is newer than the loaded one (or nothing is loaded, or this version of
-the tool needs a reload), with the command to run. The 100 MB update itself
-stays a terminal command, not a page request.
+background task notes the latest build. When it's newer than the loaded one
+(or nothing is loaded, or this version of the tool needs a reload), the
+background task downloads and loads it itself (about 100 MB, a minute or
+two), though not while a play session is open: the load holds the database
+for that long. Meanwhile every page shows a banner, with an **Update now**
+button that has the next tick do it anyway. The page never does the work
+itself, so two updates can't overlap a refresh. After a failure the next
+automatic try waits 6 hours; the banner shows why it failed.
+`[app] auto_update_static_data = false` leaves it to the button or the
+`sde-update` command. Without the background task, the banner gives the
+command.
 
 Game logs are read on every tick. A rate limit stops the tick and the next
 one waits as long as ESI asked. All ESI work (the background, the Refresh
