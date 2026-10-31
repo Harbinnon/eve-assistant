@@ -213,12 +213,12 @@ BAND_LABELS = {
 MESSAGES = {
     "market_refreshing": "Reading the trade hubs' markets from EVE: about a minute.",
     "goal_added": "Goal added.",
-    "sde_update_requested": "Static data update asked for: it starts within a minute and "
-    "takes a minute or two.",
     "goal_done": "Goal marked done.",
     "goal_dropped": "Goal dropped.",
     "refreshed": "Character data refreshed from EVE.",
     "refresh_problems": "The refresh finished, but not everything could be read (below).",
+    "sde_update_requested": "Static data update asked for: it starts within a minute and "
+    "takes a minute or two.",
     "do": "Project started: it's under Open projects.",
     "not_now": "Recorded: not now.",
     "mute": "Muted. You can undo that in Settings.",
