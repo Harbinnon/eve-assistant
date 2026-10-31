@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Planning together · EVE Assistant{% endblock %}
+{% block content %}
+<h1>Planning together <span class="muted">· {{ minutes|int }} minutes</span></h1>
+<article class="card">
+  <p>Working out a plan for <strong>{{ names|join(" and ") }}</strong>: each playing their own plan,
+    and one mining while the other hauls, with live market prices.</p>
+  <p class="muted">Started {{ seconds }} seconds ago. It can take a few minutes; this page checks again
+    every {{ reload }} seconds and opens the plan when it's ready. You can leave it: the plan is
+    saved either way, under “Your last plan together” on Today.</p>
+</article>
+{% endblock %}

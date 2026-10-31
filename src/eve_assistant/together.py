@@ -286,9 +286,29 @@ class _Rules:
     allow_risky: bool
 
 
+def _can_mine(solo: planner.Plan) -> bool:
+    """Mining was at least considered (chosen or not) in the character's own plan."""
+    return any(i.kind == "mining" for i in solo.items) or any(
+        a.item.kind == "mining" for a in solo.alternatives
+    )
+
+
+def _can_carry(db, hauler: Member) -> bool:
+    try:
+        ships = fleet.owned_ships(db, hauler.character_id)
+    except skills.SkillsError:
+        return False
+    return any(ship.usable and ship.capacity_for(True) > 0 for ship in ships)
+
+
 def _one_way(db, miner: Member, hauler: Member, solo, plan, rules: _Rules):
-    """The miner mining while the hauler hauls: (shape, None), or (None, why not)."""
+    """The miner mining while the hauler hauls: (shape, None), or (None, why not).
+    The cheap checks come first: planning the miner again takes a while."""
     names = {"miner": miner.name, "hauler": hauler.name}
+    if not _can_mine(solo[miner.character_id]):
+        return None, Reason("no_team_mining", names)
+    if not _can_carry(db, hauler):
+        return None, Reason("no_team_hauler", names)
     mined = plan(miner, hauled_by=hauler.name)
     mining = next((i for i in mined.items if i.kind == "mining"), None)
     if mining is None:

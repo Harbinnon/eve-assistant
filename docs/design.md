@@ -724,6 +724,13 @@ worth more ISK after expected losses between them is picked:
   value mined ore. Both ways round are tried. With more than two
   characters, only side by side is worked out.
 
+Planning together builds several plans with live market prices, which can
+take minutes: longer than a reverse proxy waits for a page. So the
+dashboard runs it in the background and shows a waiting page that checks
+back every few seconds and opens the plan when it's ready. A character
+that can't mine, or has no ship that carries ore, isn't planned a second
+time for the other shape.
+
 Each character's part is recorded as an ordinary plan, so starting, ticking
 off and learning work unchanged; a team plan (append-only, like plans)
 links them with the shape chosen and what the other would have made.

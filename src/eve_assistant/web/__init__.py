@@ -90,6 +90,11 @@ from eve_assistant.web import charts
 PlanMaker = Callable[[int, float, bool, bool], int]
 # make_team_plan(character_ids, minutes, allow_lowsec, allow_risky) -> team plan ID
 TeamPlanner = Callable[[list[int], float, bool, bool], int]
+# Planning together takes minutes (several plans, live markets): longer than a
+# reverse proxy waits for a page. So it runs in the background, and a waiting
+# page checks back every few seconds.
+TEAM_PLANNING_RELOAD_SECONDS = 5
+MAX_TEAM_JOBS = 20  # planning jobs remembered (finished ones only matter briefly)
 SnapshotTaker = Callable[[int], list[str]]
 # Returns an object with .problems (list[str]) and .retry_after (seconds or None).
 AutoRefresher = Callable[[], object]
@@ -460,6 +465,28 @@ def create_app(
     # The trade hubs' markets are read in the background (about a minute), when the
     # Trade page or a plan wants them and they're old; one scan at a time.
     market_status: dict = {"running": False, "problems": []}
+    team_jobs: dict[str, dict] = {}  # planning together in the background, by job ID
+
+    def start_team_plan(ids: list[int], names: list[str], minutes: float, lowsec, risky) -> str:
+        job = secrets.token_urlsafe(9)
+        team_jobs[job] = {"state": "running", "started": time.monotonic(), "names": names,
+                          "minutes": minutes}  # fmt: skip
+        for old in list(team_jobs)[:-MAX_TEAM_JOBS]:
+            team_jobs.pop(old, None)
+
+        def run() -> None:
+            try:
+                team_id = make_team_plan(ids, minutes, lowsec, risky)
+            except together.TogetherError as exc:
+                team_jobs[job].update(state="failed", error=_described(exc.reasons))
+            except Exception as exc:  # noqa: BLE001  # shown on the waiting page, never lost
+                log.warning("Planning together failed: %s", exc)
+                team_jobs[job].update(state="failed", error=f"Could not build a plan: {exc}")
+            else:
+                team_jobs[job].update(state="done", team_id=team_id)
+
+        threading.Thread(target=run, daemon=True).start()
+        return job
 
     def start_market_scan(force: bool = False) -> None:
         if scan_markets is None or market_status["running"]:
@@ -925,16 +952,29 @@ def create_app(
         if problems:  # checked here too, so a refusal doesn't wait for market reads
             return today_page(request, error=_described(problems))
         start_market_scan()
-        try:
-            team_id = make_team_plan(ids, minutes, allow_lowsec, allow_risky)
-        except together.TogetherError as exc:
-            return today_page(request, error=_described(exc.reasons))
-        except Exception as exc:  # noqa: BLE001  # shown to the person, never swallowed silently
-            return today_page(request, error=f"Could not build a plan: {exc}")
-        return back(f"/teams/{team_id}")
+        job = start_team_plan(ids, characters or [], minutes, allow_lowsec, allow_risky)
+        return back(f"/teams/planning/{job}")
 
     def _described(reasons) -> str:
         return " ".join(explain.describe(r.code, r.detail) for r in reasons)
+
+    @app.get("/teams/planning/{job}", response_class=HTMLResponse)
+    def team_planning(request: Request, job: str):
+        found = team_jobs.get(job)
+        if found is None:
+            raise HTTPException(404, "No such planning (the dashboard may have restarted).")
+        if found["state"] == "done":
+            return back(f"/teams/{found['team_id']}")
+        if found["state"] == "failed":
+            return today_page(request, error=found["error"])
+        return render(
+            request,
+            "team_planning.html",
+            names=found["names"],
+            minutes=found["minutes"],
+            seconds=int(time.monotonic() - found["started"]),
+            reload=TEAM_PLANNING_RELOAD_SECONDS,
+        )
 
     @app.get("/teams/{team_id}", response_class=HTMLResponse)
     def team_page(request: Request, team_id: int):
