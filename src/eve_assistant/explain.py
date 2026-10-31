@@ -559,6 +559,9 @@ def describe(code: str, detail: dict | None = None) -> str:
             f"boosting is rated Risky for {d.get('booster')}. Tick “Include risky options” "
             "to allow it."
         ),
+        "ores_ruled_out": lambda: (
+            f"Not planned, as you asked: {_and(d.get('ores') or ['?'])} (undo in Settings)."
+        ),
         "ores_from_partners": lambda: (
             f"Includes {_count(d.get('count', 0), 'ore')} that a character you're playing "
             "with has mined in this system."
@@ -568,7 +571,8 @@ def describe(code: str, detail: dict | None = None) -> str:
             "unload; you stop in time for the last can to be carried in and sold."
         ),
         "team_haul": lambda: (
-            f"About {d.get('m3', 0):,.0f} m³ from {d.get('miner')}, in your "
+            f"About {d.get('m3', 0):,.0f} m³{' compressed' if d.get('compressed') else ''} "
+            f"from {d.get('miner')}, in your "
             f"{d.get('ship')} ({d.get('capacity', 0):,.0f} m³ a trip): {d.get('trips', 0)} "
             f"trips, about {d.get('minutes_needed', 0):.0f} min of flying, collecting and "
             f"selling. The ore's ISK is counted on {d.get('miner')}'s mining step."

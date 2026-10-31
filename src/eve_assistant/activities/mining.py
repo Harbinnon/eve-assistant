@@ -12,6 +12,7 @@ from eve_assistant import (
     freelance,
     mining,
     ore,
+    preferences,
     risk,
     signals,
     skills,
@@ -47,8 +48,15 @@ def _ore_choices(
     this system (playing together, by any of the characters), else common ones."""
     if named:
         return [skills.find_type(db, name) for name in named]
+    ruled_out = preferences.ruled_out_ores(db)
     own = _mined_here(db, character_id, system_id)
     shared = [t for p in partners for t in _mined_here(db, p, system_id) if t not in own]
+    skipped = [t for t in dict.fromkeys([*own, *shared]) if t in ruled_out]
+    if skipped:
+        names = [skills.type_name(db, t) for t in skipped]
+        notes.append(Reason("ores_ruled_out", {"ores": names}))
+    own = [t for t in own if t not in ruled_out]
+    shared = [t for t in shared if t not in ruled_out]
     mined = list(dict.fromkeys([*own, *shared]))
     if shared:
         notes.append(Reason("ores_from_partners", {"count": len(set(shared))}))
@@ -61,7 +69,7 @@ def _ore_choices(
         row = db.execute(
             "SELECT type_id FROM sde_types WHERE name = ? AND published = 1", (name,)
         ).fetchone()
-        if row:
+        if row and row["type_id"] not in ruled_out:
             found.append(row["type_id"])
     return found
 

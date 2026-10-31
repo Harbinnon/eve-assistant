@@ -735,6 +735,15 @@ time for the other shape.
 Planned together, a character's ore choices also include what the others
 have mined in the same system (from their mining ledgers), since they'll
 be mining side by side; every shape uses this, so the comparison is fair.
+A ship with an ore compressor carries the ore compressed, whether boosting
+or hauling, and the hauler's ship is the one needing the fewest trips (often
+none until the end), then the least at risk.
+
+The mining ledger shows what was mined, not whether it's still there: an
+ore from an ore anomaly (Ytirium, say) is gone once the anomaly is, and no
+API shows which anomalies are up. So a mining step has **Not this ore**: it
+rules that ore out of plans (a mute, `ore:<type ID>`), until it's unmuted
+in Settings. Naming an ore (`plan --ore`) still plans it.
 
 Each character's part is recorded as an ordinary plan, so starting, ticking
 off and learning work unchanged; a team plan (append-only, like plans)

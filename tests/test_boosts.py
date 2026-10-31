@@ -130,7 +130,15 @@ def test_one_mining_while_the_other_boosts_wins_when_it_makes_most():
     assert step.kind == "team_boost"
     assert step.isk == -60 * 1000.0  # the charges it uses
     assert step.title.startswith("Load 60 Mining Laser Optimization Charges first (10 loaded).")
-    assert ", compress it and sell it" in step.title
+    assert ", compress it (it all fits compressed, so no trips until the end) and sell" in (
+        step.title
+    )
+    haul = next(s for s in team.others if s.kind == "mine_and_haul")
+    hauling = haul.plans[haul.roles.index("hauler")].items[-1]
+    assert "compress them in your Test Hauler (it all fits compressed, so no trips" in (
+        hauling.title
+    )
+    assert hauling.reasons[0].detail["compressed"]
     detail = step.reasons[0].detail
     assert detail["compressed"]
     assert detail["trips"] == 1  # compressed, it all fits

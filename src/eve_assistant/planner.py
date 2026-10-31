@@ -414,7 +414,9 @@ def record(db: sqlite3.Connection, plan: Plan, inputs: dict) -> Plan:
     return Plan(**{**plan.__dict__, "plan_id": plan_id})
 
 
-def respond(db: sqlite3.Connection, item_id: int, response: str) -> None:
+def respond(db: sqlite3.Connection, item_id: int, response: str, scope: str = "kind") -> None:
+    """scope "ore" with "mute": rule out the ore a mining step names ("Not this
+    ore"), not mining as a whole."""
     if response not in ("do", "not_now", "mute"):
         raise PlanError("Response must be do, not_now or mute.")
     row = db.execute(
@@ -424,11 +426,17 @@ def respond(db: sqlite3.Connection, item_id: int, response: str) -> None:
     ).fetchone()
     if row is None:
         raise PlanError(f"No plan item {item_id}.")
+    ore = json.loads(row["details"]).get("inputs", {}).get("type_id")
+    if scope == "ore" and (response != "mute" or row["kind"] != "mining" or not ore):
+        raise PlanError("Only a mining step names an ore to rule out.")
     with db:
         db.execute(
             "INSERT INTO plan_responses (item_id, response, responded_at) VALUES (?, ?, ?)",
             (item_id, response, utc_now()),
         )
+    if scope == "ore":
+        preferences.mute(db, preferences.ore_category(ore))
+        return
     if response == "mute":
         category = "kind:courier" if row["kind"] == "project_start" else f"kind:{row['kind']}"
         if category in preferences.KNOWN:

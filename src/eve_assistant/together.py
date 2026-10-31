@@ -166,6 +166,8 @@ class _Haul:
     trips: int
     capacity: float
     minutes_needed: float
+    carried: float  # m3 in the hold: compressed when the ship can compress
+    compresses: bool
 
 
 def _reach(db, character_id: int, ship: fleet.FleetShip, system_id: int, highsec_only: bool):
@@ -188,9 +190,12 @@ def _jumps(count: int) -> str:
     return f"{count} jump{'' if count == 1 else 's'}"
 
 
-def _hauler_ship(db, hauler: Member, system_id: int, m3: float, minutes: float, highsec_only):
-    """The ship at least risk that gets the hauler to the miner and carries the
-    ore in time: (ship, boarding, path, trips, capacity, minutes needed)."""
+def _hauler_ship(db, hauler: Member, mining: PlanItem, minutes: float, highsec_only):
+    """The ship that gets the hauler to the miner and carries the ore in time:
+    fewest trips first (a ship that compresses often needs none until the end),
+    then the least at risk."""
+    inputs = mining.inputs
+    system_id, m3 = inputs["mining_system_id"], inputs["m3"]
     try:
         ships = fleet.owned_ships(db, hauler.character_id)
     except skills.SkillsError:
@@ -201,10 +206,21 @@ def _hauler_ship(db, hauler: Member, system_id: int, m3: float, minutes: float, 
         reach = _reach(db, hauler.character_id, ship, system_id, highsec_only) if capacity else None
         if reach is None:
             continue
-        trips = math.ceil(m3 / capacity)
+        squeezed = (
+            _compressed_m3(db, inputs.get("type_id"), inputs.get("quantity") or 0)
+            if _compresses(db, ship)
+            else None
+        )
+        carried = squeezed if squeezed is not None else m3
+        trips = max(1, math.ceil(carried / capacity))
         needed = _carry_minutes(*reach, trips)
-        if needed <= minutes and (best is None or ship.value < best.ship.value):
-            best = _Haul(ship, reach[0], reach[1], trips, capacity, needed)
+        if needed > minutes:
+            continue
+        haul = _Haul(
+            ship, reach[0], reach[1], trips, capacity, needed, carried, squeezed is not None
+        )
+        if best is None or (haul.trips, ship.value) < (best.trips, best.ship.value):
+            best = haul
     return best
 
 
@@ -214,7 +230,7 @@ def _haul_step(db, hauler: Member, miner: Member, mining: PlanItem, minutes, hig
     system_id, m3 = inputs.get("mining_system_id"), inputs.get("m3") or 0.0
     if system_id is None or m3 <= 0:
         return None
-    haul = _hauler_ship(db, hauler, system_id, m3, minutes, highsec_only)
+    haul = _hauler_ship(db, hauler, mining, minutes, highsec_only)
     if haul is None:
         return None
     here = base.system_info(db, system_id)
@@ -235,10 +251,22 @@ def _haul_step(db, hauler: Member, miner: Member, mining: PlanItem, minutes, hig
         else ""
     )
     travel = f"fly to {where} ({_jumps(jumps)}) and " if jumps else ""
-    title = (
-        f"{board}{travel}collect the cans {miner.name} jettisons: about {haul.trips} trips "
-        f"to the station in {where}, then sell the ore there"
-    )
+    if haul.trips == 1:
+        keep = (
+            f"compress them in your {haul.ship.name} (it all fits compressed, so no trips "
+            "until the end)"
+            if haul.compresses
+            else "keep them in your hold (it all fits, so no trips until the end)"
+        )
+        title = (
+            f"{board}{travel}collect the cans {miner.name} jettisons and {keep}, then sell "
+            f"the ore at the station in {where}"
+        )
+    else:
+        title = (
+            f"{board}{travel}collect the cans {miner.name} jettisons: about {haul.trips} "
+            f"trips to the station in {where}, then sell the ore there"
+        )
     return PlanItem(
         kind="team_haul",
         key=f"{miner.character_id}:{haul.ship.item_id}",
@@ -252,7 +280,8 @@ def _haul_step(db, hauler: Member, miner: Member, mining: PlanItem, minutes, hig
                 {
                     "miner": miner.name,
                     "ship": haul.ship.name,
-                    "m3": m3,
+                    "m3": haul.carried,
+                    "compressed": haul.compresses,
                     "trips": haul.trips,
                     "capacity": haul.capacity,
                     "minutes_needed": haul.minutes_needed,
@@ -427,11 +456,17 @@ def _boost_title(boost, miner: Member, carry: _Carry, where: str, charges: int) 
         if boost.charges_loaded < charges
         else ""
     )
+    keeps = (
+        f" ({'it all fits compressed' if carry.compresses else 'it all fits'}, so no trips "
+        "until the end)"
+        if carry.trips == 1
+        else f" ({carry.trips} trips)"
+    )
     title = (
         f"{switch}{travel}boost {miner.name} with your {boost.burst} ({boost.charge}: "
         f"cycles {-boost.cycle_change:.0f}% shorter), take their ore into your "
-        f"{boost.ship.name}{', compress it' if carry.compresses else ''} and sell it at the "
-        f"station in {where}"
+        f"{boost.ship.name}{', compress it' if carry.compresses else ''}{keeps} and sell it "
+        f"at the station in {where}"
     )
     return load + title[0].upper() + title[1:]
 

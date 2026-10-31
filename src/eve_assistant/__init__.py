@@ -1,3 +1,3 @@
 """Goal-driven planning assistant for EVE Online mining, industry and hauling."""
 
-__version__ = "0.18.0"
+__version__ = "0.18.1"
