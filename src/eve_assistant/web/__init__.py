@@ -80,6 +80,7 @@ from eve_assistant import (
     together,
     trade,
     train_next,
+    wealth,
     worth,
 )
 from eve_assistant import hosted as hosted_rules
@@ -109,6 +110,7 @@ GOALS = "/goals"
 SETTINGS = "/settings"
 CHARACTERS = "/characters"
 LEDGERS = "/ledgers"
+WEALTH = "/wealth"
 # Every character, by name: the switch, History and the learning lines.
 CHARACTERS_BY_NAME = "SELECT character_id, name FROM characters ORDER BY name"
 CHARACTER_NAMES = "SELECT character_id, name FROM characters"
@@ -1730,6 +1732,31 @@ def create_app(
         check_form(request, token)
         start_market_scan(force=True)
         return RedirectResponse(f"{TRADE}?msg=market_refreshing", status_code=303)
+
+    @app.get(WEALTH, response_class=HTMLResponse)
+    def wealth_page(request: Request, who: str = "", by: str = "week"):
+        """What the characters own and where, and where the ISK goes (design 4.10)."""
+        conn = db()
+        try:
+            everyone = [(r["character_id"], r["name"]) for r in conn.execute(CHARACTERS_BY_NAME)]
+            ids = [character_id for character_id, _ in everyone]
+            chosen = int(who) if who.isdigit() and int(who) in ids else None
+            whose = [chosen] if chosen else ids
+            points = worth.history(conn, whose)
+            flows = wealth.flows(conn, whose, by)
+            holdings = wealth.holdings(conn, whose)
+            view = SimpleNamespace(
+                chosen=chosen,
+                holdings=holdings,
+                accounts=wealth.by_account(holdings),
+                line=charts.line([(p.at, p.total) for p in points]),
+                changes=wealth.changes(points),
+                flows=flows,
+                assets=wealth.assets(conn, whose),
+            )
+        finally:
+            conn.close()
+        return render(request, "wealth.html", view=view, everyone=everyone, by=flows.by)
 
     # Shared ore ledgers (design 4.11). Names are owner-written and travel only
     # in form bodies, never in addresses (which end up in the proxy's logs).

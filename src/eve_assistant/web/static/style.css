@@ -316,6 +316,7 @@ th {
 }
 tbody tr:hover td { background: var(--row-hover); }
 tr:last-child td { border-bottom: 0; }
+th.num { text-align: right; }
 td.num { text-align: right; font-family: var(--display); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 /* Forms */
@@ -528,6 +529,11 @@ details.why { margin-top: 8px; font-size: 14px; }
 details.why summary { cursor: pointer; color: var(--action); width: fit-content; }
 details.why summary:hover { color: var(--action-hover); }
 details.why ul { margin: 6px 0 0; padding-left: 20px; color: var(--muted); }
+details.place { margin: 0 0 10px; }
+details.place summary { cursor: pointer; }
+details.place[open] summary { margin-bottom: 12px; }
+.spend { color: var(--bad); }
+tr.net th, tr.net td { border-top: 1px solid var(--line-strong); font-weight: 600; }
 .alt-why { color: var(--muted); font-size: 13px; }
 .notes { margin: 18px 0 0; padding-left: 20px; color: var(--muted); font-size: 14px; }
 .history-title { margin-top: 0; font-size: 1.1rem; }
@@ -618,6 +624,12 @@ footer { color: var(--muted); font-size: 12px; border-top: 1px solid var(--line)
 }
 .nav-narrow nav a { border-bottom: 0; border-left: 2px solid transparent; padding: 10px 12px; }
 .nav-narrow nav a[aria-current="page"] { border-left-color: var(--action); }
+
+/* Nine pages need about 810px in one line: below that, the menu. */
+@media (max-width: 840px) {
+  .nav-wide { display: none; }
+  .nav-narrow { display: block; }
+}
 
 @media (max-width: 720px) {
   .nav-wide { display: none; }

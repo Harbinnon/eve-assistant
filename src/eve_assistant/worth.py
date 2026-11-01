@@ -1,12 +1,18 @@
-"""Net worth over time: wallet plus valued assets, from the snapshots.
+"""Net worth over time: wallet plus valued assets plus market orders, from
+the snapshots.
 
-Wallet and assets are snapshotted only when they change, so the worth on a
-day is the day's last wallet plus its last asset list (or the latest before
-it). One point a day, plus one at the latest check with EVE when nothing has
-changed since an earlier day (the worth then is the same). Assets are valued at
-today's CCP average prices for every point, as no price history is kept: the
-line shows what changed in wallets and hangars, not price moves. Blueprint
-copies count as nothing (their price is the original's).
+Orders count both ways: items listed on sell orders are still the
+character's (they leave the asset list while listed), and ISK held in buy
+orders is still theirs (it leaves the wallet). Without them, listing ore for
+sale looked like a drop in worth. Orders placed for a corporation don't count.
+
+Wallet, assets and orders are snapshotted only when they change, so the
+worth on a day is the day's last of each (or the latest before it). One
+point a day, plus one at the latest check with EVE when nothing has changed
+since an earlier day (the worth then is the same). Items are valued at
+today's CCP average prices for every point, as no price history is kept:
+the line shows what changed in wallets and hangars, not price moves.
+Blueprint copies count as nothing (their price is the original's).
 """
 
 import json
@@ -19,7 +25,7 @@ from eve_assistant import goals
 from eve_assistant.store import utc_now
 
 DAYS = 90
-KINDS = ("wallet", "assets")
+KINDS = ("wallet", "assets", "orders")
 
 
 @dataclass(frozen=True)
@@ -27,10 +33,11 @@ class Point:
     at: str  # the newest snapshot that day, ISO UTC
     wallet: float
     assets: float
+    orders: float = 0.0  # items on sell orders (CCP average) plus ISK held in buy orders
 
     @property
     def total(self) -> float:
-        return self.wallet + self.assets
+        return self.wallet + self.assets + self.orders
 
 
 def asset_value(db: sqlite3.Connection, assets: list, prices: dict | None = None) -> float:
@@ -45,6 +52,26 @@ def asset_value(db: sqlite3.Connection, assets: list, prices: dict | None = None
             prices[type_id] = goals.price_of(db, type_id) or 0.0
         total += prices[type_id] * item.get("quantity", 1)
     return total
+
+
+def order_values(
+    db: sqlite3.Connection, orders: list, prices: dict | None = None
+) -> tuple[float, float]:
+    """(items listed on sell orders at CCP's average prices, ISK held in buy
+    orders), for the character's own orders; `prices` caches across calls."""
+    prices = {} if prices is None else prices
+    listed = escrow = 0.0
+    for order in orders:
+        if not isinstance(order, dict) or order.get("is_corporation"):
+            continue
+        if order.get("is_buy_order"):
+            escrow += float(order.get("escrow") or 0.0)
+            continue
+        type_id = order.get("type_id")
+        if type_id not in prices:
+            prices[type_id] = goals.price_of(db, type_id) or 0.0
+        listed += prices[type_id] * order.get("volume_remain", 0)
+    return listed, escrow
 
 
 def _days_last(db: sqlite3.Connection, character_id: int, kind: str, since: str) -> list:
@@ -80,30 +107,35 @@ def history(
     events.sort(key=lambda e: e[0])
     wallets: dict[int, float] = {}
     holdings: dict[int, float] = {}
+    on_market: dict[int, float] = {}
     prices: dict[int, float] = {}
     by_day: dict[str, Point] = {}
     for taken_at, character_id, kind, payload in events:
         if kind == "wallet":
             wallets[character_id] = float(payload or 0.0)
-        else:
+        elif kind == "assets":
             holdings[character_id] = asset_value(db, payload or [], prices)
+        else:
+            on_market[character_id] = sum(order_values(db, payload or [], prices))
         day = max(taken_at[:10], since)
         at = taken_at if day == taken_at[:10] else f"{since}T00:00:00+00:00"
-        by_day[day] = Point(at, sum(wallets.values()), sum(holdings.values()))
+        by_day[day] = Point(
+            at, sum(wallets.values()), sum(holdings.values()), sum(on_market.values())
+        )
     checked = _last_checked(db, character_ids)
     if by_day and checked and checked[:10] > max(by_day):
         last = by_day[max(by_day)]
-        by_day[checked[:10]] = Point(checked, last.wallet, last.assets)
+        by_day[checked[:10]] = Point(checked, last.wallet, last.assets, last.orders)
     return list(by_day.values())
 
 
 def _last_checked(db: sqlite3.Connection, character_ids: Iterable[int]) -> str | None:
-    """The latest successful check of wallet or assets, for any of the characters."""
+    """The latest successful check of wallet, assets or orders, for any of the characters."""
     latest = None
     for character_id in character_ids:
         row = db.execute(
             "SELECT MAX(checked_at) FROM snapshot_checks WHERE character_id = ? "
-            "AND kind IN ('wallet', 'assets') AND outcome != 'failed'",
+            "AND kind IN ('wallet', 'assets', 'orders') AND outcome != 'failed'",
             (character_id,),
         ).fetchone()
         if row[0] and (latest is None or row[0] > latest):
