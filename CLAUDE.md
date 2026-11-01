@@ -29,7 +29,9 @@ contributor. Read [docs/design.md](docs/design.md) before changing behaviour.
 - **Weaken the dashboard's Host check or security headers**, or bind it to
   anything but 127.0.0.1, without the repository owner's approval. (Approved
   on 19 Oct 2026 for hosted mode only, behind the guard described in
-  docs/design.md 6.2; local mode stays on 127.0.0.1.)
+  docs/design.md 6.2; local mode stays on 127.0.0.1. Approved on 1 Nov 2026:
+  `/mcp`, an AI assistant's read-only tools, follows `/ingest/`'s rule, home
+  network only with its own token, never through the proxy; design 6.6.)
 - **Deploy to or change anyone's servers or infrastructure.** Hosted mode is
   set up by its owner.
 - **Push to `main` or merge pull requests.** Work on a branch and open a

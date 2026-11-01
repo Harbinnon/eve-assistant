@@ -7,9 +7,11 @@ allowed, and they never overlap:
 - **Through the proxy** (the proxy's own address): the dashboard, with the
   sign-in's identity header, matched to the owner.
 - **Straight from the home network** (any other address in it): only
-  /ingest/, with a token, for the gaming PC's log sender. The proxy's address
-  is inside the home network too, so it is excluded by name: nothing that came
-  through the proxy (and so possibly from the internet) can reach /ingest/.
+  /ingest/, with a token, for the gaming PC's log sender, and /mcp, with its
+  own token, for an AI assistant on that PC (design 6.6; the owner approved it
+  on 1 Nov 2026). The proxy's address is inside the home network too, so it
+  is excluded by name: nothing that came through the proxy (and so possibly
+  from the internet) can reach either.
 
 The addresses come from the server's config, never from this repository.
 """
@@ -19,10 +21,21 @@ import hmac
 import ipaddress
 
 INGEST = "/ingest"
+MCP = "/mcp"
+
+
+def _under(path: str, root: str) -> bool:
+    return path == root or path.startswith(root + "/")
 
 
 def is_ingest(path: str) -> bool:
-    return path == INGEST or path.startswith(INGEST + "/")
+    return _under(path, INGEST)
+
+
+def is_direct(path: str) -> bool:
+    """Paths for the home network only, never through the proxy: the log
+    sender's and the AI assistant's. Each checks its own token."""
+    return _under(path, INGEST) or _under(path, MCP)
 
 
 def proof(secret: str, challenge: str) -> str:
@@ -39,6 +52,6 @@ def allowed(path: str, client: str | None, proxy: str, home_network: str) -> boo
     except ValueError:
         return False
     through_proxy = address == ipaddress.ip_address(proxy)
-    if is_ingest(path):
+    if is_direct(path):
         return address in ipaddress.ip_network(home_network) and not through_proxy
     return through_proxy

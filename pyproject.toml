@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "eve-assistant"
-version = "0.20.0"
+version = "0.21.0"
 description = "Goal-driven planning assistant for EVE Online mining, industry and hauling."
 readme = "README.md"
 license = "MIT"
@@ -20,6 +20,7 @@ dependencies = [
     "httpx==0.28.1",
     "pyjwt==2.15.1",
     "cryptography==50.0.2",
+    "mcp==2.3.0",
 ]
 
 [project.optional-dependencies]

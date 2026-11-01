@@ -27,6 +27,7 @@ updates:
       - dependency-name: "httpx"
       - dependency-name: "pyjwt"
       - dependency-name: "cryptography"
+      - dependency-name: "mcp"
       - dependency-name: "pytest"
       - dependency-name: "ruff"
       - dependency-name: "pre-commit"

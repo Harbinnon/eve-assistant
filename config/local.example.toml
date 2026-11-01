@@ -48,6 +48,12 @@ mode = "local"
 # logged in on a dashboard on this PC count too, so this may stay empty there.
 # characters = ["<your main>", "<your alt>"]
 
+# On the gaming PC, to let Claude Code or the Claude desktop app read the
+# hosted copy (read-only): eve-assistant mcp --setup (enter the token), then
+# add `eve-assistant mcp` as a local MCP server in the assistant (README).
+# [mcp]
+# url = "<http://the hosted copy's address on your home network:8700>"
+
 [backups]
 # Where the daily database backups go. Default: var/backups next to the
 # database. A folder on another drive, or one your cloud drive syncs, also

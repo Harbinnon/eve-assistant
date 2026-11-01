@@ -61,6 +61,7 @@ from eve_assistant import (
     losses,
     market,
     market_data,
+    mcp_server,
     numbers,
     omega,
     outcomes,
@@ -104,6 +105,7 @@ AutoRefresher = Callable[[], object]
 AUTO_TICK_SECONDS = 60.0
 INGEST_MAX_BYTES = 1_000_000
 INGEST_PER_HOUR = 120
+MCP_MAX_BYTES = 256_000  # an assistant's request is small: a tool and its arguments
 log = logging.getLogger(__name__)
 TODAY = "/today"
 GOALS = "/goals"
@@ -443,6 +445,33 @@ class Hosting:
     rules: Any  # config.Hosted: its addresses, hostname and owner
     login: Any  # .start() -> auth.PendingLogin, .finish(pending, code) -> name
     ingest_token: str | None = None  # the log sender's token; None: no /ingest/
+    mcp_token: str | None = None  # an AI assistant's token (design 6.6); None: no /mcp
+
+
+class _CurrentSessions:
+    """An ASGI app handing each request to the MCP session manager running now."""
+
+    def __init__(self, holder: dict):
+        self._holder = holder
+
+    async def __call__(self, scope, receive, send) -> None:
+        await self._holder["sessions"].asgi_app(scope, receive, send)
+
+
+class _BearerToken:
+    """An ASGI app that passes a request on only with the right bearer token,
+    and answers anything else with a quick 401."""
+
+    def __init__(self, app, token: str):
+        self.app, self._expected = app, f"Bearer {token}".encode()
+
+    async def __call__(self, scope, receive, send) -> None:
+        given = dict(scope.get("headers") or []).get(b"authorization", b"")
+        if not secrets.compare_digest(given, self._expected):
+            refused = JSONResponse({"error": "wrong or missing token"}, status_code=401)
+            await refused(scope, receive, send)
+            return
+        await self.app(scope, receive, send)
 
 
 def create_app(
@@ -471,6 +500,10 @@ def create_app(
     hosted = hosting.rules if hosting else None
     web_login = hosting.login if hosting else None
     ingest_token = hosting.ingest_token if hosting else None
+    mcp_token = hosting.mcp_token if hosting else None
+    # The MCP server (design 6.6), when there is one: a fresh session manager each
+    # time the app starts, as one can run only once.
+    assistant: dict = {"start": None, "sessions": None}
     auto_status: dict = {"enabled": auto_refresh is not None, "last_run": None, "problems": []}
     # Adding a character runs EVE's login in the background (it waits for the
     # browser); one at a time.
@@ -538,7 +571,11 @@ def create_app(
     @contextlib.asynccontextmanager
     async def lifespan(_app: FastAPI):
         task = asyncio.create_task(auto_loop()) if auto_refresh is not None else None
-        yield
+        async with contextlib.AsyncExitStack() as running:
+            if assistant["start"] is not None:
+                assistant["sessions"] = assistant["start"]()
+                await running.enter_async_context(assistant["sessions"].run())
+            yield
         if task is not None:
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -573,7 +610,7 @@ def create_app(
             path = request.url.path
             if not hosted_rules.allowed(path, client, hosted.proxy, hosted.home_network):
                 return PlainTextResponse("Forbidden", status_code=403)
-            if not hosted_rules.is_ingest(path):
+            if not hosted_rules.is_direct(path):
                 identity = request.headers.get("x-auth-id") or hosted.dev_identity
                 if identity != hosted.owner_discord_id:
                     return PlainTextResponse("Forbidden", status_code=403)
@@ -1415,6 +1452,37 @@ def create_app(
             return True
         ingest_times.append(now)
         return False
+
+    if hosted is not None and mcp_token:
+        # Asking an AI assistant (design 6.6, stage 1): read-only tools at /mcp,
+        # from the home network only (the guard) and with their own token.
+        tools = mcp_server.build(db)
+
+        def start_sessions():
+            tools.streamable_http_app(
+                stateless_http=True,
+                json_response=True,
+                host=hosted.listen,
+                max_request_body_size=MCP_MAX_BYTES,
+            )
+            return tools.session_manager
+
+        assistant["start"] = start_sessions
+        app.add_route(
+            hosted_rules.MCP,
+            _BearerToken(_CurrentSessions(assistant), mcp_token),
+            methods=["GET", "POST", "DELETE"],
+            include_in_schema=False,
+        )
+
+        @app.get(f"{hosted_rules.MCP}/hello")
+        def mcp_hello(nonce: str = ""):
+            """The PC's relay asks this first, as the log sender does: the answer
+            proves the server knows the assistant's token, so the relay never
+            sends it to a device that doesn't."""
+            if not 16 <= len(nonce) <= 128 or any(c not in "0123456789abcdef" for c in nonce):
+                return JSONResponse({"error": "a hex challenge is needed"}, status_code=400)
+            return JSONResponse({"proof": hosted_rules.proof(mcp_token, nonce)})
 
     @app.get("/ingest/hello")
     def ingest_hello(nonce: str = ""):
