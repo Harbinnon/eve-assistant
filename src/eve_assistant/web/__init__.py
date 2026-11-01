@@ -113,6 +113,7 @@ LEDGERS = "/ledgers"
 CHARACTERS_BY_NAME = "SELECT character_id, name FROM characters ORDER BY name"
 CHARACTER_NAMES = "SELECT character_id, name FROM characters"
 UNKNOWN_ACTION = "Unknown action."
+CONFIRM_PAGE = "confirm.html"
 COMMIT_WITH_THE_PLAN = (
     "Steps aren't taken on one by one: press “Start this plan” to start the whole "
     "plan, then tick steps off as you go."
@@ -1512,7 +1513,7 @@ def create_app(
             raise HTTPException(404, f"No open goal {goal_id}.")
         return render(
             request,
-            "confirm.html",
+            CONFIRM_PAGE,
             title="Drop this goal?",
             what=goal.label,
             detail="It leaves the Goals page. Its history is kept.",
@@ -1535,7 +1536,7 @@ def create_app(
             raise HTTPException(404, f"No open project {project_id}.")
         return render(
             request,
-            "confirm.html",
+            CONFIRM_PAGE,
             title="Drop this project?",
             what=project.title,
             detail="It stops being planned. Minutes already logged are kept.",
@@ -1768,7 +1769,7 @@ def create_app(
             return ledgers_page(request, error="Choose whose name to remove.")
         return render(
             request,
-            "confirm.html",
+            CONFIRM_PAGE,
             title="Remove this name?",
             what=person.strip(),
             detail="It's replaced by “Removed person” and a number in every ledger. Their ore "

@@ -280,7 +280,8 @@ def test_a_ledger_from_start_to_split_on_the_page(client):
     assert "Friday mining" in page
     assert "Would get" in page
     assert 'aria-current="page">Ore ledger' in page
-    assert "Alice" in page and "Scordite" in page
+    assert "Alice" in page
+    assert "Scordite" in page
 
     sold = _post(client, f"{page_url}/close", sold_for="1.5M")
     assert sold.headers["location"] == f"{page_url}?msg=ledger_closed#split"
@@ -330,3 +331,5 @@ def test_ledger_pages_have_no_inline_styles_or_scripts(client):
         assert "<script" not in page, path
         assert "style=" not in page, path
         assert "<style" not in page, path
+        ids = re.findall(r'\sid="([^"]+)"', page)
+        assert len(ids) == len(set(ids)), path  # each id once: labels and lists rely on it

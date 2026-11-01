@@ -27,9 +27,9 @@ def parse_isk(text: str) -> float:
     Raises ValueError for anything else."""
     cleaned = (text or "").strip().lower().removesuffix("isk")
     cleaned = cleaned.replace(",", "").replace(" ", "").replace("_", "")
-    scale = SUFFIXES.get(cleaned[-1:], 1.0)
-    if scale != 1.0:
-        cleaned = cleaned[:-1]
+    scale = 1.0
+    if cleaned[-1:] in SUFFIXES:
+        scale, cleaned = SUFFIXES[cleaned[-1:]], cleaned[:-1]
     value = float(cleaned) * scale
     if not math.isfinite(value):
         raise ValueError(text)

@@ -16,10 +16,10 @@
 <form class="stack card" method="post" action="{{ here }}/entries">
   <input type="hidden" name="token" value="{{ form_token }}">
   <label for="person">Who
-    <input id="person" name="person" required maxlength="60" list="people" autocomplete="off" placeholder="Name">
+    <input id="person" name="person" required maxlength="60" list="people-list" autocomplete="off" placeholder="Name">
   </label>
   <label for="ore">Ore
-    <input id="ore" name="ore" required list="ores" autocomplete="off" placeholder="Veldspar">
+    <input id="ore" name="ore" required list="ore-list" autocomplete="off" placeholder="Veldspar">
   </label>
   <label for="quantity">Units
     <input id="quantity" name="quantity" required inputmode="numeric" class="narrow" placeholder="12,000">
@@ -28,9 +28,9 @@
 </form>
 <p class="muted small-print">Units as EVE shows them in the ore hold or the mining ledger. Compressed ore works too.</p>
 {% endif %}
-<datalist id="people">{% for n in known_people %}<option value="{{ n }}">{% endfor %}</datalist>
-<datalist id="ores">{% for n in ores %}<option value="{{ n }}">{% endfor %}</datalist>
-<datalist id="roles">{% for n in role_names %}<option value="{{ n }}">{% endfor %}</datalist>
+<datalist id="people-list">{% for n in known_people %}<option value="{{ n }}">{% endfor %}</datalist>
+<datalist id="ore-list">{% for n in ores %}<option value="{{ n }}">{% endfor %}</datalist>
+<datalist id="role-list">{% for n in role_names %}<option value="{{ n }}">{% endfor %}</datalist>
 
 <h2 id="split">Who gets what</h2>
 {% if not s.shares %}
@@ -92,8 +92,8 @@
 {% endif %}
 
 <details class="why spaced"{% if not l.is_open %} open{% endif %}>
-  <summary>As text, to paste into Discord</summary>
-  <textarea readonly rows="{{ s.shares|length + 1 }}" aria-label="The split as text">{{ view.text }}</textarea>
+  <summary id="split-text-label">As text, to paste into Discord</summary>
+  <textarea readonly rows="{{ s.shares|length + 1 }}" aria-labelledby="split-text-label">{{ view.text }}</textarea>
 </details>
 {% endif %}
 
@@ -125,17 +125,17 @@
 <form class="stack card spaced" method="post" action="{{ here }}/roles">
   <input type="hidden" name="token" value="{{ form_token }}">
   <label for="role-person">Who
-    <input id="role-person" name="person" required maxlength="60" list="people" autocomplete="off" placeholder="Name">
+    <input id="role-person" name="person" required maxlength="60" list="people-list" autocomplete="off" placeholder="Name">
   </label>
   <label for="role">Role
-    <input id="role" name="role" required maxlength="30" list="roles" autocomplete="off" placeholder="booster">
+    <input id="role" name="role" required maxlength="30" list="role-list" autocomplete="off" placeholder="booster">
   </label>
   <button type="submit">Give the role</button>
 </form>
 <form class="stack card spaced" method="post" action="{{ here }}/shares">
   <input type="hidden" name="token" value="{{ form_token }}">
   <label for="share-role">Role
-    <input id="share-role" name="role" required maxlength="30" list="roles" autocomplete="off" placeholder="booster">
+    <input id="share-role" name="role" required maxlength="30" list="role-list" autocomplete="off" placeholder="booster">
   </label>
   <label for="percent">Share of the profit (%)
     <input id="percent" name="percent" inputmode="decimal" class="narrow" placeholder="10">

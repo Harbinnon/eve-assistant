@@ -287,7 +287,7 @@ def set_share(db: sqlite3.Connection, ledger_id: int, role: str, percent: float 
 def close(db: sqlite3.Connection, ledger_id: int, sold_for: float) -> None:
     """The pooled ore is sold: record what it brought in, and stop changes."""
     _open(db, ledger_id)
-    if not sold_for > 0:
+    if sold_for <= 0:
         raise LedgerError("Enter what the ore sold for, in ISK.")
     if not people(db, ledger_id):
         raise LedgerError("Add who mined what first.")
