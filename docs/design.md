@@ -677,7 +677,10 @@ Before sending the token it asks the server to prove it knows it (an HMAC of
 a fresh random challenge, `/ingest/hello`), so on another network that uses
 the same address nothing is sent to whatever answers. Away from home it gives
 up after a 3-second connection timeout, and the first failure ends the run.
-Logs of a character this PC doesn't know are skipped and named. Each run
+The owner's characters are the ones listed under `[send_logs] characters`
+in the PC's config, plus any logged in on a dashboard on that PC, so a PC
+that only sends logs needs no dashboard or database. Anyone else's logs are
+skipped and named. Each run
 that did something adds a line to `var/send-logs.log`. The daily backup leaves `latest.json` beside it (when it finished,
 its SHA-256 and row counts), so the lab's nightly copy can refuse a stale
 or broken backup and a restore can be checked. Anything a restart won't
