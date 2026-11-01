@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block title %}Wealth · EVE Assistant{% endblock %}
+{% block content %}
+{% set v = view %}
+<h1>Wealth</h1>
+<p class="lede">What you own and where, and where your ISK comes from and goes. Items are valued at CCP's average prices, like net worth everywhere in the app: close to what they'd sell for, but not a quote.</p>
+
+<form class="stack card" method="get" action="/wealth">
+  <label for="who">Whose
+    <select id="who" name="who">
+      <option value="">All characters</option>
+      {% for character_id, name in everyone %}<option value="{{ character_id }}" {% if character_id == v.chosen %}selected{% endif %}>{{ name }}</option>{% endfor %}
+    </select>
+  </label>
+  <label for="by">Income and spending by
+    <select id="by" name="by">
+      <option value="week" {% if by == "week" %}selected{% endif %}>Week</option>
+      <option value="month" {% if by == "month" %}selected{% endif %}>Month</option>
+    </select>
+  </label>
+  <button type="submit">Show</button>
+</form>
+
+<h2 id="worth">Net worth</h2>
+{% if v.holdings %}
+{% set total = v.holdings|sum(attribute="total") %}
+<div class="readout">
+  <div><span class="label">Now</span><span class="value isk">{{ total|isk }}<small>ISK</small></span></div>
+  {% for c in v.changes %}
+  <div><span class="label">Last {{ c.days }} days</span><span class="value minor">{% if c.isk is none %}<small>not enough history yet</small>{% else %}<span class="{{ 'spend' if c.isk < 0 else 'isk' }}">{% if c.isk > 0 %}+{% endif %}{{ c.isk|isk }}</span><small>ISK</small>{% endif %}</span></div>
+  {% endfor %}
+</div>
+{% if v.line %}{% set l = v.line %}
+<svg class="worth-line" viewBox="0 0 {{ l.width }} {{ l.height }}" preserveAspectRatio="none" role="img"
+  aria-label="Net worth from {{ l.first|isk }} to {{ l.last|isk }} ISK since {{ l.since }}"><polyline points="{{ l.points }}"/></svg>
+<p class="small-print muted">Since {{ l.since }}: low {{ l.low|isk }}, high {{ l.high|isk }} ISK, at today's prices throughout.</p>
+{% endif %}
+
+<div class="table-wrap spaced">
+  <table>
+    <thead><tr><th>Character</th><th class="num">Wallet</th><th class="num">Items</th><th class="num">Sell orders</th><th class="num">Buy orders</th><th class="num">Total</th></tr></thead>
+    {% for account, rows in v.accounts %}
+    <tbody>
+      {% if v.holdings|length > 1 %}<tr><th scope="rowgroup" colspan="6">{% if account %}Account {{ account }}{% else %}No account set{% endif %} · {{ rows|sum(attribute="total")|isk }} ISK</th></tr>{% endif %}
+      {% for h in rows %}
+      <tr>
+        <td data-label="Character">{{ h.name }}</td>
+        <td data-label="Wallet" class="num">{{ h.wallet|isk }}</td>
+        <td data-label="Items" class="num">{{ h.assets|isk }}</td>
+        <td data-label="Sell orders" class="num">{% if h.listed %}{{ h.listed|isk }}{% else %}<span class="muted">none</span>{% endif %}</td>
+        <td data-label="Buy orders" class="num">{% if h.escrow %}{{ h.escrow|isk }}{% else %}<span class="muted">none</span>{% endif %}</td>
+        <td data-label="Total" class="num isk">{{ h.total|isk }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    {% endfor %}
+  </table>
+</div>
+<p class="muted small-print">Items on sell orders are still yours until they sell, and so is ISK held in buy orders: both count. Orders placed for a corporation don't.</p>
+{% else %}
+<p class="muted">No characters yet. Add one on the Characters page.</p>
+{% endif %}
+
+<h2 id="flows">Income and spending</h2>
+{% set f = v.flows %}
+{% if f.rows %}
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>{{ "Week of" if f.by == "week" else "Month" }}</th>{% for p in f.periods %}<th class="num">{{ p.label }}</th>{% endfor %}</tr></thead>
+    <tbody>
+    {% for r in f.rows %}
+      <tr>
+        <th scope="row">{{ r.label }}</th>
+        {% for amount in r.amounts %}<td data-label="{{ f.periods[loop.index0].label }}" class="num">{% if amount|round|int %}<span class="{{ 'isk' if amount > 0 else 'spend' }}">{% if amount > 0 %}+{% endif %}{{ amount|isk }}</span>{% else %}<span class="muted">·</span>{% endif %}</td>{% endfor %}
+      </tr>
+    {% endfor %}
+      <tr class="net">
+        <th scope="row">Net</th>
+        {% for amount in f.net %}<td data-label="{{ f.periods[loop.index0].label }}" class="num">{% if amount|round|int %}<span class="{{ 'isk' if amount > 0 else 'spend' }}">{% if amount > 0 %}+{% endif %}{{ amount|isk }}</span>{% else %}<span class="muted">·</span>{% endif %}</td>{% endfor %}
+      </tr>
+    </tbody>
+  </table>
+</div>
+<p class="muted small-print">From your wallet journal{% if f.first %}, which goes back to {{ f.first[:10] }} here{% endif %}: EVE gives about 30 days the first time a character is added, and the app keeps everything after that. Market purchases include ISK put into buy orders.{% if f.left_out_own %} ISK moved between your own characters is left out, as it cancels out.{% endif %}</p>
+{% else %}
+<p class="muted">Nothing in the wallet journal for these {{ "weeks" if f.by == "week" else "months" }} yet.</p>
+{% endif %}
+
+<h2 id="assets">Assets</h2>
+{% set a = v.assets %}
+{% if a.places %}
+<p class="lede">{{ a.value|isk }} ISK in {{ a.places|length }} place{{ "s" if a.places|length != 1 }}. Things inside ships and containers count where the ship or container is; blueprint copies count as nothing.</p>
+
+{% if a.idle %}
+<section class="card">
+  <h3>Worth selling</h3>
+  <p class="sub">Ore, minerals and planetary goods left loose in a hangar: {{ a.idle|sum(attribute="stack.value")|isk }} ISK in all.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Item</th><th>Where</th><th class="num">Quantity</th><th class="num">Value</th></tr></thead>
+      <tbody>
+      {% for i in a.idle %}
+        <tr>
+          <td data-label="Item">{{ i.stack.name }}</td>
+          <td data-label="Where">{% if i.place.player_named %}<span class="player-text" title="Name chosen by the structure's owner">{{ i.place.label }}</span>{% else %}{{ i.place.label }}{% endif %}</td>
+          <td data-label="Quantity" class="num">{{ "{:,}".format(i.stack.quantity) }}</td>
+          <td data-label="Value" class="num isk">{{ i.stack.value|isk }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
+{% for p in a.places %}
+<details class="place card">
+  <summary><strong>{% if p.player_named %}<span class="player-text" title="Name chosen by the structure's owner">{{ p.label }}</span>{% else %}{{ p.label }}{% endif %}</strong>{% if p.security is not none %} <span class="muted small-print">{{ "%.1f"|format(p.security) }}</span>{% endif %}
+    · <span class="isk">{{ p.value|isk }} ISK</span> <span class="muted small-print">· {{ p.stacks|length }} kind{{ "s" if p.stacks|length != 1 }} of item</span></summary>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Item</th><th>Kind</th><th class="num">Quantity</th><th class="num">Value</th></tr></thead>
+      <tbody>
+      {% for s in p.stacks %}
+        <tr>
+          <td data-label="Item">{{ s.name }}</td>
+          <td data-label="Kind">{{ s.group }}</td>
+          <td data-label="Quantity" class="num">{{ "{:,}".format(s.quantity) }}</td>
+          <td data-label="Value" class="num">{% if s.value %}{{ s.value|isk }}{% else %}<span class="muted">none</span>{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</details>
+{% endfor %}
+{% else %}
+<p class="muted">No assets read from EVE yet.</p>
+{% endif %}
+{% endblock %}

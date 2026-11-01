@@ -95,7 +95,8 @@ Once, after setup:
 
 While it runs, the dashboard keeps your data current from EVE and backs
 the database up once a day. **History** shows each plan against what
-happened. **Ore ledger** keeps track of ore mined with friends over
+happened. **Wealth** shows what you own and where, and where your ISK
+comes from and goes. **Ore ledger** keeps track of ore mined with friends over
 several sessions and, once it's sold, works out who gets how much.
 
 ## Commands so far

@@ -1,7 +1,8 @@
 {% macro page_links(current) %}
   {% for key, href, label in [("today", "/today", "Today"), ("characters", "/characters", "Characters"),
                               ("goals", "/goals", "Goals"), ("skills", "/skills", "Skills"),
-                              ("trade", "/trade", "Trade"), ("ledgers", "/ledgers", "Ore ledger"),
+                              ("trade", "/trade", "Trade"), ("wealth", "/wealth", "Wealth"),
+                              ("ledgers", "/ledgers", "Ore ledger"),
                               ("history", "/history", "History"),
                               ("settings", "/settings", "Settings")] %}
   <a href="{{ href }}" {% if current == key %}aria-current="page"{% endif %}>{{ label }}</a>

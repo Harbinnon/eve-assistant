@@ -444,6 +444,7 @@ A **web dashboard** is the main interface.
 | **Goals** | Progress, estimated arrival date, what is slowing it down, what Omega would change. |
 | **Characters** | All characters side by side: training, wallet, net worth (with its line over 90 days), location, ship. |
 | **Skills** | What a ship or module needs, in training order; what to train next, with each skill's payback. |
+| **Wealth** | Net worth now and over time by account and character (orders included), income and spending by week or month, assets by place and what's worth selling (4.10). |
 | **Ore ledger** | Ore mined with friends over several sessions, pooled and sold together: who handed over what, optional roles and role shares, and who gets how much once it's sold (4.11). |
 | **History and learning** | Past plans against results, what the planner has learned from them, and the risk matrix, so the learning can be checked rather than trusted. |
 | **Settings** | Everything muted (with undo), play time, backups. The theme switch is at the bottom of every page. |
@@ -574,22 +575,36 @@ off.
 remember. At most one suggestion per plan is something the player hasn't
 done, marked "new to you", and only from activities the tool can model.
 
-### 4.10 Later: the Wealth page
+### 4.10 The Wealth page
 
-Not scheduled; the owner liked the direction on 1 Nov 2026, and the details
-are settled when it's started. A new page between Trade and History for
-assets and finances, per character, per account and in total, from data
-already collected (no new scopes):
+Built in `v0.20.0` (the **Wealth** page, `wealth.py`), between Trade and
+the Ore ledger: assets and finances for all characters or one, from data
+already collected (no new scopes). Items are valued at CCP's average
+prices, as net worth is everywhere (the owner's choice, 1 Nov 2026: every
+item has one, though it isn't exactly what a sale would fetch).
 
-- **Net worth in total**, with its line, and split by character and
-  account. It should also count what today's figure leaves out: items
-  listed on sell orders and ISK held in buy orders (today, listing ore for
-  sale looks like a drop in worth).
-- **Income and spending by type** (ore and market sales, bounties,
-  missions, taxes and fees, purchases, skill books) by week or month, from
-  the wallet journal and transactions.
-- **Assets to browse:** by location or by type (ships, ore and minerals,
-  modules), with values, and what's worth selling (ore left in a hangar).
+- **Net worth:** the total now, its change over 7 and 30 days, its line,
+  and a table by account and character of wallet, items, sell orders and
+  buy orders. Net worth everywhere now counts market orders: items listed
+  on sell orders (at CCP's average) and ISK held in buy orders are still
+  the character's, so listing ore no longer looks like a drop in worth.
+  Orders placed for a corporation don't count.
+- **Income and spending** by week (from Monday) or month, from the wallet
+  journal, each entry once although the snapshots overlap: market sales
+  and purchases (buy orders included), taxes and fees, skill books,
+  missions and rewards, bounties, insurance, industry and planets,
+  contracts, other players, and other. A payment counts as "between your
+  characters" only when both sides are the owner's own (the journal keeps
+  no other player's ID); with every character shown, those cancel out and
+  are left out. Weeks or months before the journal starts aren't shown.
+- **Assets** by place: an NPC station is named "<owner corporation>
+  station in <system>"; a structure by its owner's name where the
+  character can see it (player-written, shown as such), else "A structure
+  in <system>"; a ship in space as "In space in <system>". Things inside
+  ships and containers count where the ship or container is; blueprint
+  copies count as nothing. Each place opens to its items by type.
+- **Worth selling:** ore, ice, minerals and planetary goods left loose in a
+  station or structure hangar, from 100k ISK a heap.
 
 ### 4.11 A shared ore ledger for group mining
 
@@ -1181,9 +1196,10 @@ ran and shows its first problem, if any. `[app] auto_refresh = false` in
 
 ### Net worth over time
 
-`worth.py` works out wallet plus valued assets from the snapshots, one
-point a day (the day's last wallet and asset list, or the latest before
-them), over 90 days; several characters add up for a goal without one.
+`worth.py` works out wallet plus valued assets plus market orders (items
+on sell orders, ISK in buy orders) from the snapshots, one point a day
+(the day's last of each, or the latest before them), over 90 days; several
+characters add up for a goal without one.
 Assets are valued at today's CCP average prices for every point, as no
 price history is kept, so the line shows what changed in wallets and
 hangars, not price moves. The line is a small SVG drawn on the server.
