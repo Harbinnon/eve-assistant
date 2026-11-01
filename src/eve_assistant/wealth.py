@@ -127,6 +127,27 @@ FEES = {
 INDUSTRY = {"industry_job_tax", "manufacturing", "copying", "reaction", "reverse_engineering"}
 REWARDS = {"redeemed_isk_token", "inheritance", "agents_preward", "lp_store"}
 BETWEEN_PLAYERS = {"player_donation", "player_trading"}
+# Reference types with a group of their own; the rest by RULES, in order.
+EXACT = {
+    "market_escrow": "market_purchases",  # buy orders placed (refunded when cancelled)
+    "skill_purchase": "skills",
+    "insurance": "insurance",
+    "ess_escrow_transfer": "bounties",
+    **dict.fromkeys(INDUSTRY, "industry"),
+    **dict.fromkeys(FEES, "taxes_fees"),
+    **dict.fromkeys(REWARDS, "rewards"),
+}
+RULES = (
+    (str.startswith, "bounty", "bounties"),
+    (str.startswith, "planetary_", "industry"),
+    (str.startswith, "researching_", "industry"),
+    (str.endswith, "_tax", "taxes_fees"),
+    (str.endswith, "_fee", "taxes_fees"),
+    (str.startswith, "contract_", "contracts"),
+    (str.__contains__, "reward", "rewards"),
+    (str.__contains__, "payout", "rewards"),
+    (str.__contains__, "mission", "rewards"),
+)
 PERIODS = {"week": 8, "month": 6}  # how many of each the table shows
 
 
@@ -135,26 +156,12 @@ def category(entry: dict, own: set[int]) -> str:
     ref, amount = entry.get("ref_type", ""), entry.get("amount") or 0.0
     if ref == "market_transaction":
         return "market_sales" if amount > 0 else "market_purchases"
-    if ref == "market_escrow":
-        return "market_purchases"  # buy orders placed (refunded when cancelled)
     if ref in BETWEEN_PLAYERS:
         parties = {entry.get("first_party_id"), entry.get("second_party_id")}
         return "own" if parties <= own else "players"
-    if ref == "skill_purchase":
-        return "skills"
-    if ref == "insurance":
-        return "insurance"
-    if ref.startswith("bounty") or ref == "ess_escrow_transfer":
-        return "bounties"
-    if ref in INDUSTRY or ref.startswith(("planetary_", "researching_")):
-        return "industry"
-    if ref in FEES or ref.endswith(("_tax", "_fee")):
-        return "taxes_fees"
-    if ref.startswith("contract_"):
-        return "contracts"
-    if ref in REWARDS or any(word in ref for word in ("reward", "payout", "mission")):
-        return "rewards"
-    return "other"
+    if ref in EXACT:
+        return EXACT[ref]
+    return next((group for test, text, group in RULES if test(ref, text)), "other")
 
 
 def journal(db: sqlite3.Connection, character_ids: Iterable[int], since: str = "") -> list[dict]:

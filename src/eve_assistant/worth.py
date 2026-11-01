@@ -74,6 +74,15 @@ def order_values(
     return listed, escrow
 
 
+def _value(db: sqlite3.Connection, kind: str, payload, prices: dict) -> float:
+    """What one snapshot of a kind is worth."""
+    if kind == "wallet":
+        return float(payload or 0.0)
+    if kind == "assets":
+        return asset_value(db, payload or [], prices)
+    return sum(order_values(db, payload or [], prices))
+
+
 def _days_last(db: sqlite3.Connection, character_id: int, kind: str, since: str) -> list:
     """The last snapshot of each day from `since`, plus the last one before it."""
     rows = db.execute(
@@ -105,23 +114,14 @@ def history(
         for kind in KINDS:
             events += _days_last(db, character_id, kind, since)
     events.sort(key=lambda e: e[0])
-    wallets: dict[int, float] = {}
-    holdings: dict[int, float] = {}
-    on_market: dict[int, float] = {}
+    latest: dict[str, dict[int, float]] = {kind: {} for kind in KINDS}  # kind -> character -> ISK
     prices: dict[int, float] = {}
     by_day: dict[str, Point] = {}
     for taken_at, character_id, kind, payload in events:
-        if kind == "wallet":
-            wallets[character_id] = float(payload or 0.0)
-        elif kind == "assets":
-            holdings[character_id] = asset_value(db, payload or [], prices)
-        else:
-            on_market[character_id] = sum(order_values(db, payload or [], prices))
+        latest[kind][character_id] = _value(db, kind, payload, prices)
         day = max(taken_at[:10], since)
         at = taken_at if day == taken_at[:10] else f"{since}T00:00:00+00:00"
-        by_day[day] = Point(
-            at, sum(wallets.values()), sum(holdings.values()), sum(on_market.values())
-        )
+        by_day[day] = Point(at, *(sum(latest[kind].values()) for kind in KINDS))
     checked = _last_checked(db, character_ids)
     if by_day and checked and checked[:10] > max(by_day):
         last = by_day[max(by_day)]
