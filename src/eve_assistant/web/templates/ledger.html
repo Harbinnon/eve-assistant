@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+{% set active_page = "ledgers" %}
+{% block title %}{{ view.ledger.name }} · Ore ledger · EVE Assistant{% endblock %}
+{% block content %}
+{% set l = view.ledger %}{% set s = view.split %}{% set here = "/ledgers/" ~ l.ledger_id %}
+<p class="muted small-print"><a href="/ledgers">Ore ledger</a></p>
+<h1>{{ l.name }} {% if l.is_open %}<span class="pill new">open</span>{% else %}<span class="pill good">sold</span>{% endif %}</h1>
+<p class="lede">Started {{ l.opened_at[:10] }}.
+  {% if l.is_open %}Add ore as it's handed over, over as many sessions as it takes. When it's sold, enter what it brought in under “Who gets what”.
+  {% else %}Sold {{ l.closed_at[:10] }} for {{ l.sold_for|isk }} ISK.{% if to_pay %} {{ to_pay|length }} still to pay.{% else %} Everyone's paid.{% endif %}{% endif %}</p>
+
+{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+
+{% if l.is_open %}
+<h2 id="add">Add ore</h2>
+<form class="stack card" method="post" action="{{ here }}/entries">
+  <input type="hidden" name="token" value="{{ form_token }}">
+  <label for="person">Who
+    <input id="person" name="person" required maxlength="60" list="people" autocomplete="off" placeholder="Name">
+  </label>
+  <label for="ore">Ore
+    <input id="ore" name="ore" required list="ores" autocomplete="off" placeholder="Veldspar">
+  </label>
+  <label for="quantity">Units
+    <input id="quantity" name="quantity" required inputmode="numeric" class="narrow" placeholder="12,000">
+  </label>
+  <button class="primary" type="submit">Add</button>
+</form>
+<p class="muted small-print">Units as EVE shows them in the ore hold or the mining ledger. Compressed ore works too.</p>
+{% endif %}
+<datalist id="people">{% for n in known_people %}<option value="{{ n }}">{% endfor %}</datalist>
+<datalist id="ores">{% for n in ores %}<option value="{{ n }}">{% endfor %}</datalist>
+<datalist id="roles">{% for n in role_names %}<option value="{{ n }}">{% endfor %}</datalist>
+
+<h2 id="split">Who gets what</h2>
+{% if not s.shares %}
+<p class="muted">Nobody yet: add who handed over what ore above.</p>
+{% else %}
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>Who</th><th>Ore</th><th>Share of the ore</th>{% if s.role_pools %}<th>Role shares</th>{% endif %}<th>{{ "Would get" if s.estimated else "Gets" }}</th>{% if not l.is_open %}<th>Paid</th>{% endif %}</tr></thead>
+    <tbody>
+    {% for sh in s.shares %}
+      <tr>
+        <td data-label="Who">{{ sh.person }}{% if sh.roles %} <span class="muted small-print">· {{ sh.roles|join(", ") }}</span>{% endif %}</td>
+        <td data-label="Ore" class="num">{% if sh.m3 %}{{ "{:,.0f}".format(sh.m3) }} m³{% if sh.value %} <span class="muted">· {{ sh.value|isk }}</span>{% endif %}{% else %}<span class="muted">none</span>{% endif %}</td>
+        <td data-label="Share of the ore" class="num">{{ "%.1f"|format(sh.weight * 100) }}%</td>
+        {% if s.role_pools %}<td data-label="Role shares" class="num">{% for role, isk in sh.from_roles %}{{ isk|isk }} <span class="muted">{{ role }}</span>{{ ", " if not loop.last }}{% else %}<span class="muted">none</span>{% endfor %}</td>{% endif %}
+        <td data-label="{{ 'Would get' if s.estimated else 'Gets' }}" class="num isk">{{ sh.total|isk }} ISK</td>
+        {% if not l.is_open %}<td data-label="Paid">
+          {% if sh.person in own_names %}<span class="muted small-print">yours</span>
+          {% elif sh.total >= 1 %}
+          <form class="inline" method="post" action="{{ here }}/paid">
+            <input type="hidden" name="token" value="{{ form_token }}">
+            <input type="hidden" name="person" value="{{ sh.person }}">
+            <input type="hidden" name="paid" value="{{ 'no' if sh.paid_at else 'yes' }}">
+            {% if sh.paid_at %}<span class="pill good">paid {{ sh.paid_at[:10] }}</span> <button class="small" type="submit">Undo</button>
+            {% else %}<button class="small" type="submit">Mark paid</button>{% endif %}
+          </form>
+          {% endif %}
+        </td>{% endif %}
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p class="muted small-print">
+  {% if s.estimated %}Until it's sold, this is at CCP's average prices, about {{ s.total|isk }} ISK in all: it shows how everyone's ore compares, not what it will fetch.
+  {% else %}The {{ s.total|isk }} ISK it sold for{% if s.role_pools %}, less the role shares,{% endif %} is shared out by each person's ore.{% endif %}
+  {% if s.by == "volume" %}Each person's share follows the volume (m³) of their ore for now.{% else %}Each person's share follows the value of their ore (at CCP's average prices), since ores differ a lot in price.{% endif %}
+</p>
+{% for r in s.reasons %}
+  {% if r.code == "ledger_unpriced" %}<p class="notice">No price yet for {{ r.detail.ores|join(", ") }}, so the ore is shared out by volume. Prices come with the next refresh from EVE.</p>
+  {% elif r.code == "ledger_share_unheld" %}<p class="notice">Nobody has the role “{{ r.detail.role }}”, so its {{ "%g"|format(r.detail.percent) }}% goes with the ore.</p>
+  {% elif r.code == "ledger_no_ore" %}<p class="notice">No ore entered yet, so {{ r.detail.isk|isk }} ISK isn't anyone's.</p>{% endif %}
+{% endfor %}
+
+{% if l.is_open %}
+<form class="stack card spaced" method="post" action="{{ here }}/close">
+  <input type="hidden" name="token" value="{{ form_token }}">
+  <label for="sold_for">Sold for (ISK, after tax)
+    <input id="sold_for" name="sold_for" required inputmode="decimal" placeholder="123,456,789 or 123.5M">
+  </label>
+  <button class="primary" type="submit">Work out the split</button>
+</form>
+<p class="muted small-print">This closes the ledger, so nothing changes by mistake. It can be reopened to correct it.</p>
+{% else %}
+<form class="inline" method="post" action="{{ here }}/reopen">
+  <input type="hidden" name="token" value="{{ form_token }}">
+  <button class="small" type="submit">Reopen to correct it</button>
+</form>
+{% endif %}
+
+<details class="why spaced"{% if not l.is_open %} open{% endif %}>
+  <summary>As text, to paste into Discord</summary>
+  <textarea readonly rows="{{ s.shares|length + 1 }}" aria-label="The split as text">{{ view.text }}</textarea>
+</details>
+{% endif %}
+
+<h2 id="roles">Roles <span class="muted small-print">optional</span></h2>
+<p class="muted small-print">Roles such as booster, hauler or escort are a note unless you give a role a share of the profit. A role's share is taken off the top and split between the people in it; the rest follows the ore.</p>
+{% if view.role_table %}
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>Role</th><th>Share of the profit</th><th>Who</th></tr></thead>
+    <tbody>
+    {% for role, percent, holders in view.role_table %}
+      <tr>
+        <td data-label="Role">{{ role }}</td>
+        <td data-label="Share of the profit" class="num">{% if percent is not none %}{{ "%g"|format(percent) }}%{% else %}<span class="muted">none</span>{% endif %}</td>
+        <td data-label="Who">{% for person in holders %}{{ person }}{% if l.is_open %}
+          <form class="inline" method="post" action="{{ here }}/roles/remove">
+            <input type="hidden" name="token" value="{{ form_token }}">
+            <input type="hidden" name="person" value="{{ person }}">
+            <input type="hidden" name="role" value="{{ role }}">
+            <button class="small" type="submit" aria-label="Take {{ role }} off {{ person }}">✕</button>
+          </form>{% endif %}{{ ", " if not loop.last }}{% else %}<span class="muted">nobody</span>{% endfor %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% if l.is_open %}
+<form class="stack card spaced" method="post" action="{{ here }}/roles">
+  <input type="hidden" name="token" value="{{ form_token }}">
+  <label for="role-person">Who
+    <input id="role-person" name="person" required maxlength="60" list="people" autocomplete="off" placeholder="Name">
+  </label>
+  <label for="role">Role
+    <input id="role" name="role" required maxlength="30" list="roles" autocomplete="off" placeholder="booster">
+  </label>
+  <button type="submit">Give the role</button>
+</form>
+<form class="stack card spaced" method="post" action="{{ here }}/shares">
+  <input type="hidden" name="token" value="{{ form_token }}">
+  <label for="share-role">Role
+    <input id="share-role" name="role" required maxlength="30" list="roles" autocomplete="off" placeholder="booster">
+  </label>
+  <label for="percent">Share of the profit (%)
+    <input id="percent" name="percent" inputmode="decimal" class="narrow" placeholder="10">
+  </label>
+  <button type="submit">Save the share</button>
+</form>
+<p class="muted small-print">Leave the share empty to remove it.</p>
+{% endif %}
+
+<h2 id="entries">Entries</h2>
+{% if view.entries %}
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>Added</th><th>Who</th><th>Ore</th><th>Units</th><th>m³</th><th>Value</th>{% if l.is_open %}<th></th>{% endif %}</tr></thead>
+    <tbody>
+    {% for e in view.entries|reverse %}
+      <tr>
+        <td data-label="Added">{{ e.added_at[:10] }}</td>
+        <td data-label="Who">{{ e.person }}</td>
+        <td data-label="Ore">{{ e.ore }}</td>
+        <td data-label="Units" class="num">{{ "{:,}".format(e.quantity) }}</td>
+        <td data-label="m³" class="num">{{ "{:,.0f}".format(e.m3) }}</td>
+        <td data-label="Value" class="num">{% if e.value is not none %}{{ e.value|isk }}{% else %}<span class="muted">no price</span>{% endif %}</td>
+        {% if l.is_open %}<td>
+          <form class="inline" method="post" action="{{ here }}/entries/{{ e.entry_id }}/remove">
+            <input type="hidden" name="token" value="{{ form_token }}">
+            <button class="small" type="submit">Remove</button>
+          </form>
+        </td>{% endif %}
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="muted">No ore yet.</p>
+{% endif %}
+{% endblock %}

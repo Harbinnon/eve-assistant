@@ -444,6 +444,7 @@ A **web dashboard** is the main interface.
 | **Goals** | Progress, estimated arrival date, what is slowing it down, what Omega would change. |
 | **Characters** | All characters side by side: training, wallet, net worth (with its line over 90 days), location, ship. |
 | **Skills** | What a ship or module needs, in training order; what to train next, with each skill's payback. |
+| **Ore ledger** | Ore mined with friends over several sessions, pooled and sold together: who handed over what, optional roles and role shares, and who gets how much once it's sold (4.11). |
 | **History and learning** | Past plans against results, what the planner has learned from them, and the risk matrix, so the learning can be checked rather than trusted. |
 | **Settings** | Everything muted (with undo), play time, backups. The theme switch is at the bottom of every page. |
 
@@ -590,29 +591,41 @@ already collected (no new scopes):
 - **Assets to browse:** by location or by type (ships, ore and minerals,
   modules), with values, and what's worth selling (ore left in a hangar).
 
-### 4.11 Later: a shared ore ledger for group mining
+### 4.11 A shared ore ledger for group mining
 
-Not scheduled. The owner mines with friends while the Porpoise boosts; the
-ore is pooled into one ship, sold in one trip with the others escorting,
-and the profit is shared. EVE shows the app only the owner's own mining, so
-the ledger is the owner's own bookkeeping, kept simple at its core:
+Built in `v0.19.0` (the **Ore ledger** page, `ledgers.py`). The owner mines
+with friends while the Porpoise boosts; the ore is pooled into one ship,
+sold in one trip with the others escorting, and the profit is shared. EVE
+shows the app only the owner's own mining, so the ledger is the owner's own
+bookkeeping, kept simple at its core:
 
 - **A ledger stays open over several mining sessions.** Entries are added
-  as the ore is collected: who (a name the owner types), what ore and how
-  much. Entries can be corrected while the ledger is open.
-- **Roles are optional:** booster, hauler, escort or anything else, with an
-  optional share of the overall profit for a role (e.g. 10% to the
-  booster), split between the people in it. Without roles, the whole
-  profit follows the ore.
-- **At the end, it works out the split:** the profit after any role shares
-  is divided by the value of each person's ore (ore types differ a lot in
-  price), at the prices it sold for when the owner's own sales show them,
-  otherwise at market prices or a total the owner types. It lists who gets
-  how much, with a tick for each payment, and text to paste into Discord,
-  since friends can't sign in to the owner's copy.
+  as the ore is handed over: who (a name the owner types), what ore and how
+  many units (raw or compressed). "bob" and "Bob" are one person, in every
+  ledger and as the owner's own characters. Entries
+  can be removed while the ledger is open.
+- **Roles are optional:** booster, hauler, escort or anything else, and a
+  person may hold several. A role can have a share of the whole profit
+  (e.g. 10% to the booster), split equally between the people in it; the
+  shares can't add up to more than 100%. A role without a share is a note.
+- **At the end, it works out the split.** The owner enters what the ore
+  sold for (`123,456,789` or `123.5M`), which closes the ledger so nothing
+  changes by mistake; it can be reopened to correct it. Role shares come
+  off the top, and the rest is divided by the value of each person's ore at
+  CCP's average prices: what matters is how ores compare (a unit of one ore
+  can be worth ten of another), and the sale sets the total. If an ore has
+  no price yet, the split falls back to volume (m³) and says so. Before the
+  sale, the same split shows at CCP's averages as an estimate.
+- **Paying out:** a tick for each payment (the owner's own characters need
+  none), and the split as text to paste into Discord, since friends can't
+  sign in to the owner's copy. The Ore ledger list shows how many are still
+  to pay.
 
-Pasting an EVE inventory list instead of typing is a possible shortcut
-later, not part of the core. Names are kept only as the owner typed them
+Names travel only in form bodies, never in page addresses (which end up in
+a proxy's logs). A name can be removed from every ledger if the person
+asks: it becomes "Removed person N", and their ore and payments stay so the
+splits still add up. Pasting an EVE inventory list instead of typing is a
+possible shortcut later. Names are kept only as the owner typed them
 (section 8, CCP Developer License Agreement).
 
 ---
@@ -928,11 +941,11 @@ Not legal advice.
   dropped; amounts, dates, item types and reference types are kept. The
   owner's contracts are cleaned the same way: titles (player-written) and
   other players' IDs are dropped. From game logs (optional) only the
-  owner's own mining lines are kept. One planned exception, decided by the
-  owner on 1 Nov 2026: the shared ore ledger (4.11) keeps the names the
-  owner types in for the friends they mine with, who agreed to share the
-  profit. They're never looked up in EVE or matched to wallet data, never
-  sent anywhere by the app, and a person can be removed if they ask.
+  owner's own mining lines are kept. One exception, decided by the owner on
+  1 Nov 2026: the shared ore ledger (4.11) keeps the names the owner types
+  in for the friends they mine with, who agreed to share the profit.
+  They're never looked up in EVE or matched to wallet data, never sent
+  anywhere by the app, and a person can be removed if they ask.
 - **Trademarks:** don't present the app as CCP's or suggest affiliation
   (§2.7, §7.3). README and dashboard footer carry: *"EVE Online and the
   EVE logo are the trademarks or registered trademarks of CCP hf."* (The
