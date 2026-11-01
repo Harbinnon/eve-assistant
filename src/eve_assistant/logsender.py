@@ -20,8 +20,10 @@ store. It's meant to run unattended (a scheduled task every 15 minutes), so:
   gets nothing, the token included.
 - **Away from home it gives up fast:** a 3-second connection timeout, and the
   first failure ends the run. What wasn't sent is sent next time.
-- **A character this PC doesn't know** (logged in only on the hosted copy)
-  has its logs skipped, and the run says so by name.
+- **Only the owner's characters:** the ones listed under [send_logs]
+  characters in config/local.toml, plus any logged in on a dashboard on this
+  PC (none is needed). Anyone else's logs are skipped, and the run says so by
+  name.
 - Each run that did or found something adds a line to var/send-logs.log, the
   only place an unattended run can be seen.
 """
@@ -71,8 +73,9 @@ class SendReport:
     @property
     def warnings(self) -> list[str]:
         return [
-            f"Skipped {n} log{'s' if n != 1 else ''} of {name}, who isn't a character on this "
-            "PC: log them in here too (eve-assistant login) to send their mining."
+            f"Skipped {n} log{'s' if n != 1 else ''} of {name}, who isn't one of your "
+            "characters here: add them to [send_logs] characters in config/local.toml to send "
+            "their mining."
             for name, n in sorted(self.skipped.items())
         ]
 

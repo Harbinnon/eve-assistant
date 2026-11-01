@@ -63,6 +63,7 @@ class Config:
     planets: bool = False  # ask for the Planetary Interaction scope at login
     hosted: Hosted | None = None  # set in hosted mode
     send_logs_url: str | None = None  # the hosted copy, for send-logs on the gaming PC
+    send_logs_characters: tuple[str, ...] = ()  # whose logs send-logs sends (with any logged in)
     # With auto_refresh: load CCP's new static data by itself, when not playing.
     auto_update_static_data: bool = True
 
@@ -111,7 +112,8 @@ def load_config(path: Path = DEFAULT_CONFIG_PATH) -> Config:
             f"[esi] callback_url in {path} must be {hosted.public_origin}/callback in hosted "
             "mode (and registered on that ESI application)."
         )
-    send_logs_url = data.get("send_logs", {}).get("url")
+    send_logs = data.get("send_logs", {})
+    send_logs_url = send_logs.get("url")
     return Config(
         client_id=client_id.strip(),
         callback_url=callback_url,
@@ -123,8 +125,19 @@ def load_config(path: Path = DEFAULT_CONFIG_PATH) -> Config:
         planets=planets,
         hosted=hosted,
         send_logs_url=None if _is_placeholder(send_logs_url) else send_logs_url.strip(),
+        send_logs_characters=_names(send_logs.get("characters", []), path),
         auto_update_static_data=auto_static,
     )
+
+
+def _names(value, path: Path) -> tuple[str, ...]:
+    """[send_logs] characters: a list of character names; placeholders are left out."""
+    if not isinstance(value, list) or not all(isinstance(n, str) for n in value):
+        raise ConfigError(
+            f'[send_logs] characters in {path} must be a list of names, e.g. ["Your Main", '
+            '"Your Alt"].'
+        )
+    return tuple(dict.fromkeys(n.strip() for n in value if not _is_placeholder(n)))
 
 
 def _address(section: dict, key: str, path: Path, network: bool = False) -> str:

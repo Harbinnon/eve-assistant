@@ -298,8 +298,8 @@ def test_the_sender_sends_only_new_mining_lines_of_your_characters(tmp_path):
                               "lines": [[6, MINED]]}]  # fmt: skip
     assert "Authorization" not in server.requests[0].headers  # the challenge carries no token
     assert first.warnings == [
-        "Skipped 1 log of Someone Else, who isn't a character on this PC: log them in here "
-        "too (eve-assistant login) to send their mining."
+        "Skipped 1 log of Someone Else, who isn't one of your characters here: add them to "
+        "[send_logs] characters in config/local.toml to send their mining."
     ]
     server.requests.clear()
     second = _send(server, logs, sent)

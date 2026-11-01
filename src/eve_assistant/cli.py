@@ -314,6 +314,18 @@ def _send_logs_problem(config, secrets) -> str | None:
     return None
 
 
+def _send_logs_owners(config, db_path: Path | None = None) -> set[str]:
+    """Whose logs to send: the characters listed under [send_logs] characters,
+    plus any logged in on a dashboard on this PC. Never makes a database, so a
+    PC that only sends logs needs no dashboard."""
+    owners = set(config.send_logs_characters)
+    path = db_path or store.DEFAULT_DB_PATH
+    if path.exists():
+        with store.connect(path) as db:
+            owners |= {r[0] for r in db.execute("SELECT name FROM characters")}
+    return owners
+
+
 def _cmd_send_logs(args, ask=None) -> int:
     """Send new mining lines from this PC's game logs to the hosted copy."""
     import time
@@ -326,8 +338,11 @@ def _cmd_send_logs(args, ask=None) -> int:
     if problem:
         print(problem)
         return 1
-    with store.connect() as db:
-        owners = {r[0] for r in db.execute("SELECT name FROM characters")}
+    owners = _send_logs_owners(config)
+    if not owners:
+        print('List your characters in config/local.toml: [send_logs] characters = ["Your '
+              'Main", "Your Alt"].')  # fmt: skip
+        return 1
     while True:
         with auth.http_client(config) as http:  # carries the descriptive User-Agent
             report = logsender.send(http, config.send_logs_url, logsender.token(secrets),
