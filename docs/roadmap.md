@@ -126,6 +126,8 @@ against. The owner's priorities, in order:
 
 | What | From |
 |---|---|
+| **A Wealth page:** net worth in total and per character and account (counting sell orders and buy-order escrow), income and spending by type over time, and assets to browse. The owner liked the direction; details are settled when it's started. | design 4.10 |
+| **A shared ore ledger for group mining:** a ledger kept over several sessions of who mined what and how much, typed in by the owner, with optional roles and role shares of the profit; at the end, who gets how much. | design 4.11 |
 | **An AI assistant connection (MCP server):** ask Claude or ChatGPT about plans and goals, read-only, respecting the player-written labels. | design 6.6 |
 | **"What changed for you":** after a game update, changes to the items and ships the player owns or plans to buy. | design 4.7 |
 | **Reactions** as an activity. | design 4.2 |
@@ -159,3 +161,4 @@ EULA. (Ore anomalies were checked: no API shows them.)
 | 5.5 | Decided 18 Oct: build our own trade tool, covering what the external ones offer. |
 | 6 | Decided 19 Oct (the recommendations): the PI scope, switched on in config once ticked; corp contracts and projects wait for a player corp; nullsec built for the coworker's corp. |
 | 7.1 | Moot: alerts were built in milestone 7. |
+| Ore ledger | Decided 1 Nov: names the owner types in may be kept, for the ledger only, never looked up in EVE; roles and role shares are optional; the core stays manual entry. |

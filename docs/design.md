@@ -573,6 +573,48 @@ off.
 remember. At most one suggestion per plan is something the player hasn't
 done, marked "new to you", and only from activities the tool can model.
 
+### 4.10 Later: the Wealth page
+
+Not scheduled; the owner liked the direction on 1 Nov 2026, and the details
+are settled when it's started. A new page between Trade and History for
+assets and finances, per character, per account and in total, from data
+already collected (no new scopes):
+
+- **Net worth in total**, with its line, and split by character and
+  account. It should also count what today's figure leaves out: items
+  listed on sell orders and ISK held in buy orders (today, listing ore for
+  sale looks like a drop in worth).
+- **Income and spending by type** (ore and market sales, bounties,
+  missions, taxes and fees, purchases, skill books) by week or month, from
+  the wallet journal and transactions.
+- **Assets to browse:** by location or by type (ships, ore and minerals,
+  modules), with values, and what's worth selling (ore left in a hangar).
+
+### 4.11 Later: a shared ore ledger for group mining
+
+Not scheduled. The owner mines with friends while the Porpoise boosts; the
+ore is pooled into one ship, sold in one trip with the others escorting,
+and the profit is shared. EVE shows the app only the owner's own mining, so
+the ledger is the owner's own bookkeeping, kept simple at its core:
+
+- **A ledger stays open over several mining sessions.** Entries are added
+  as the ore is collected: who (a name the owner types), what ore and how
+  much. Entries can be corrected while the ledger is open.
+- **Roles are optional:** booster, hauler, escort or anything else, with an
+  optional share of the overall profit for a role (e.g. 10% to the
+  booster), split between the people in it. Without roles, the whole
+  profit follows the ore.
+- **At the end, it works out the split:** the profit after any role shares
+  is divided by the value of each person's ore (ore types differ a lot in
+  price), at the prices it sold for when the owner's own sales show them,
+  otherwise at market prices or a total the owner types. It lists who gets
+  how much, with a tick for each payment, and text to paste into Discord,
+  since friends can't sign in to the owner's copy.
+
+Pasting an EVE inventory list instead of typing is a possible shortcut
+later, not part of the core. Names are kept only as the owner typed them
+(section 8, CCP Developer License Agreement).
+
 ---
 
 ## 5. Where it gets hard
@@ -886,7 +928,11 @@ Not legal advice.
   dropped; amounts, dates, item types and reference types are kept. The
   owner's contracts are cleaned the same way: titles (player-written) and
   other players' IDs are dropped. From game logs (optional) only the
-  owner's own mining lines are kept.
+  owner's own mining lines are kept. One planned exception, decided by the
+  owner on 1 Nov 2026: the shared ore ledger (4.11) keeps the names the
+  owner types in for the friends they mine with, who agreed to share the
+  profit. They're never looked up in EVE or matched to wallet data, never
+  sent anywhere by the app, and a person can be removed if they ask.
 - **Trademarks:** don't present the app as CCP's or suggest affiliation
   (§2.7, §7.3). README and dashboard footer carry: *"EVE Online and the
   EVE logo are the trademarks or registered trademarks of CCP hf."* (The
