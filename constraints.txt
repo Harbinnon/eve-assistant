@@ -19,7 +19,7 @@ cyclonedx-python-lib==11.12.0
 defusedxml==0.7.1
 detect-secrets==1.5.0
 distlib==0.4.3
-fastapi==0.143.3
+fastapi==0.146.0
 filelock==4.2.1
 h11==0.16.0
 httpcore==1.0.9
