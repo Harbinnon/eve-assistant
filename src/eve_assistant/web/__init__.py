@@ -57,6 +57,7 @@ from eve_assistant import (
     goals,
     history,
     images,
+    ledgers,
     losses,
     market,
     market_data,
@@ -107,10 +108,12 @@ TODAY = "/today"
 GOALS = "/goals"
 SETTINGS = "/settings"
 CHARACTERS = "/characters"
+LEDGERS = "/ledgers"
 # Every character, by name: the switch, History and the learning lines.
 CHARACTERS_BY_NAME = "SELECT character_id, name FROM characters ORDER BY name"
 CHARACTER_NAMES = "SELECT character_id, name FROM characters"
 UNKNOWN_ACTION = "Unknown action."
+CONFIRM_PAGE = "confirm.html"
 COMMIT_WITH_THE_PLAN = (
     "Steps aren't taken on one by one: press “Start this plan” to start the whole "
     "plan, then tick steps off as you go."
@@ -244,6 +247,16 @@ MESSAGES = {
     "session_cancelled": "Session cancelled.",
     "detected_recorded": "Session recorded. Its outcome is worked out from EVE's data.",
     "detected_dismissed": "Got it, that one won't be offered again.",
+    "ledger_started": "Ledger started. Add ore as it's handed over, over as many sessions as "
+    "it takes.",
+    "ledger_entry_added": "Ore added.",
+    "ledger_entry_removed": "Entry removed.",
+    "ledger_role_added": "Role added.",
+    "ledger_role_removed": "Role removed.",
+    "ledger_share_saved": "Role share saved.",
+    "ledger_closed": "Sale recorded: the split is below.",
+    "ledger_reopened": "Ledger reopened: enter the sale again when it's right.",
+    "ledger_forgotten": "Name removed from every ledger.",
 }
 
 
@@ -1500,7 +1513,7 @@ def create_app(
             raise HTTPException(404, f"No open goal {goal_id}.")
         return render(
             request,
-            "confirm.html",
+            CONFIRM_PAGE,
             title="Drop this goal?",
             what=goal.label,
             detail="It leaves the Goals page. Its history is kept.",
@@ -1523,7 +1536,7 @@ def create_app(
             raise HTTPException(404, f"No open project {project_id}.")
         return render(
             request,
-            "confirm.html",
+            CONFIRM_PAGE,
             title="Drop this project?",
             what=project.title,
             detail="It stops being planned. Minutes already logged are kept.",
@@ -1717,5 +1730,198 @@ def create_app(
         check_form(request, token)
         start_market_scan(force=True)
         return RedirectResponse(f"{TRADE}?msg=market_refreshing", status_code=303)
+
+    # Shared ore ledgers (design 4.11). Names are owner-written and travel only
+    # in form bodies, never in addresses (which end up in the proxy's logs).
+    @app.get(LEDGERS, response_class=HTMLResponse)
+    def ledgers_page(request: Request, error: str | None = None):
+        conn = db()
+        try:
+            own = ledgers.own_names(conn)
+            rows = []
+            for ledger in ledgers.all_ledgers(conn):
+                split = ledgers.split(conn, ledger.ledger_id)
+                rows.append(SimpleNamespace(
+                    ledger=ledger, split=split, people=len(split.shares),
+                    to_pay=len(ledgers.to_pay(split, own)),
+                ))  # fmt: skip
+            named = [n for n in ledgers.named(conn) if n not in own]  # your own: not removable
+        finally:
+            conn.close()
+        return render(request, "ledgers.html", rows=rows, named=named, error=error)
+
+    @app.post(LEDGERS)
+    def start_ledger(request: Request, token: str = Form(...), name: str = Form("")):
+        check_form(request, token)
+        conn = db()
+        try:
+            ledger_id = ledgers.start(conn, name)
+        except ledgers.LedgerError as exc:
+            return ledgers_page(request, error=str(exc))
+        finally:
+            conn.close()
+        return back(f"{LEDGERS}/{ledger_id}", msg="ledger_started")
+
+    @app.post(f"{LEDGERS}/forget/confirm", response_class=HTMLResponse)
+    def confirm_forget(request: Request, token: str = Form(...), person: str = Form("")):
+        check_form(request, token)
+        if not person.strip():
+            return ledgers_page(request, error="Choose whose name to remove.")
+        return render(
+            request,
+            CONFIRM_PAGE,
+            title="Remove this name?",
+            what=person.strip(),
+            detail="It's replaced by “Removed person” and a number in every ledger. Their ore "
+            "and payments stay, so the splits still add up. This can't be undone.",
+            action=f"{LEDGERS}/forget",
+            field=("person", person.strip()),
+            button="Remove the name",
+            cancel=LEDGERS,
+        )
+
+    @app.post(f"{LEDGERS}/forget")
+    def forget_person(request: Request, token: str = Form(...), person: str = Form("")):
+        check_form(request, token)
+        conn = db()
+        try:
+            ledgers.forget(conn, person)
+        except ledgers.LedgerError as exc:
+            return ledgers_page(request, error=str(exc))
+        finally:
+            conn.close()
+        return back(LEDGERS, msg="ledger_forgotten")
+
+    @app.get(f"{LEDGERS}/{{ledger_id}}", response_class=HTMLResponse)
+    def ledger_page(request: Request, ledger_id: int, error: str | None = None):
+        conn = db()
+        try:
+            try:
+                ledger = ledgers.get(conn, ledger_id)
+            except ledgers.LedgerError as exc:
+                raise HTTPException(404, str(exc)) from None
+            split = ledgers.split(conn, ledger_id)
+            view = SimpleNamespace(
+                ledger=ledger,
+                entries=ledgers.entries(conn, ledger_id),
+                split=split,
+                roles=ledgers.roles(conn, ledger_id),
+                shares=ledgers.shares(conn, ledger_id),
+                people=ledgers.people(conn, ledger_id),
+                role_table=ledgers.role_table(conn, ledger_id),
+                text=ledgers.summary_text(ledger, split),
+            )
+            known = ledgers.known_people(conn)
+            own = ledgers.own_names(conn)
+            ores = skills.names_in(conn, ledgers.ORE_CATEGORY)
+        finally:
+            conn.close()
+        return render(
+            request,
+            "ledger.html",
+            view=view,
+            known_people=known,
+            own_names=own,
+            to_pay=ledgers.to_pay(split, own),
+            ores=ores,
+            role_names=sorted(
+                set(ledgers.COMMON_ROLES)
+                | set(view.shares)
+                | {r for held in view.roles.values() for r in held}
+            ),
+            error=error,
+        )
+
+    def ledger_change(request, ledger_id: int, token: str, change, msg: str, anchor: str = ""):
+        """Make one change to a ledger, then go back to it (with the error, if any)."""
+        check_form(request, token)
+        conn = db()
+        try:
+            change(conn)
+        except ledgers.LedgerError as exc:
+            return ledger_page(request, ledger_id, error=str(exc))
+        finally:
+            conn.close()
+        return back(f"{LEDGERS}/{ledger_id}", anchor=anchor, **({"msg": msg} if msg else {}))
+
+    @app.post(f"{LEDGERS}/{{ledger_id}}/entries")
+    def add_ledger_entry(
+        request: Request,
+        ledger_id: int,
+        token: str = Form(...),
+        person: str = Form(""),
+        ore: str = Form(""),
+        quantity: str = Form(""),
+    ):
+        def change(conn):
+            ledgers.add_entry(conn, ledger_id, person, ore, ledgers.parse_quantity(quantity))
+
+        return ledger_change(request, ledger_id, token, change, "ledger_entry_added", "add")
+
+    @app.post(f"{LEDGERS}/{{ledger_id}}/entries/{{entry_id}}/remove")
+    def remove_ledger_entry(request: Request, ledger_id: int, entry_id: int,
+                            token: str = Form(...)):  # fmt: skip
+        def change(conn):
+            ledgers.remove_entry(conn, ledger_id, entry_id)
+
+        return ledger_change(request, ledger_id, token, change, "ledger_entry_removed", "entries")
+
+    @app.post(f"{LEDGERS}/{{ledger_id}}/roles")
+    def add_ledger_role(request: Request, ledger_id: int, token: str = Form(...),
+                        person: str = Form(""), role: str = Form("")):  # fmt: skip
+        def change(conn):
+            ledgers.add_role(conn, ledger_id, person, role)
+
+        return ledger_change(request, ledger_id, token, change, "ledger_role_added", "roles")
+
+    @app.post(f"{LEDGERS}/{{ledger_id}}/roles/remove")
+    def remove_ledger_role(request: Request, ledger_id: int, token: str = Form(...),
+                           person: str = Form(""), role: str = Form("")):  # fmt: skip
+        def change(conn):
+            ledgers.remove_role(conn, ledger_id, person, role)
+
+        return ledger_change(request, ledger_id, token, change, "ledger_role_removed", "roles")
+
+    @app.post(f"{LEDGERS}/{{ledger_id}}/shares")
+    def set_ledger_share(request: Request, ledger_id: int, token: str = Form(...),
+                         role: str = Form(""), percent: str = Form("")):  # fmt: skip
+        def change(conn):
+            text = percent.strip().removesuffix("%").strip()
+            try:
+                value = float(text) if text else None
+            except ValueError:
+                raise ledgers.LedgerError("Enter the share as a percent, like 10.") from None
+            ledgers.set_share(conn, ledger_id, role, value)
+
+        return ledger_change(request, ledger_id, token, change, "ledger_share_saved", "roles")
+
+    @app.post(f"{LEDGERS}/{{ledger_id}}/close")
+    def close_ledger(request: Request, ledger_id: int, token: str = Form(...),
+                     sold_for: str = Form("")):  # fmt: skip
+        def change(conn):
+            try:
+                amount = numbers.parse_isk(sold_for)
+            except ValueError:
+                raise ledgers.LedgerError(
+                    "Enter what the ore sold for, like 123,456,789 or 123.5M."
+                ) from None
+            ledgers.close(conn, ledger_id, amount)
+
+        return ledger_change(request, ledger_id, token, change, "ledger_closed", "split")
+
+    @app.post(f"{LEDGERS}/{{ledger_id}}/reopen")
+    def reopen_ledger(request: Request, ledger_id: int, token: str = Form(...)):
+        def change(conn):
+            ledgers.reopen(conn, ledger_id)
+
+        return ledger_change(request, ledger_id, token, change, "ledger_reopened", "split")
+
+    @app.post(f"{LEDGERS}/{{ledger_id}}/paid")
+    def mark_ledger_paid(request: Request, ledger_id: int, token: str = Form(...),
+                         person: str = Form(""), paid: str = Form("yes")):  # fmt: skip
+        def change(conn):
+            ledgers.set_paid(conn, ledger_id, person, paid == "yes")
+
+        return ledger_change(request, ledger_id, token, change, "", "split")
 
     return app

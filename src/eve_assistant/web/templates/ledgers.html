@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Ore ledger · EVE Assistant{% endblock %}
+{% block content %}
+<h1>Ore ledger</h1>
+<p class="lede">For ore mined with friends, pooled and sold in one trip. Write down who handed over what as you go, over as many sessions as it takes; when it's sold, enter what it brought in and the ledger works out who gets how much.</p>
+
+{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+
+{% if rows %}
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>Ledger</th><th>Started</th><th>People</th><th>Worth</th><th>State</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td data-label="Ledger"><a href="/ledgers/{{ r.ledger.ledger_id }}">{{ r.ledger.name }}</a></td>
+        <td data-label="Started">{{ r.ledger.opened_at[:10] }}</td>
+        <td data-label="People" class="num">{{ r.people }}</td>
+        <td data-label="Worth" class="num">{% if r.split.estimated %}about {% endif %}{{ r.split.total|isk }} ISK</td>
+        <td data-label="State">{% if r.ledger.is_open %}<span class="pill new">open</span>
+          {% elif r.to_pay %}<span class="pill amber">sold · {{ r.to_pay }} to pay</span>
+          {% else %}<span class="pill good">sold · all paid</span>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="muted">No ledgers yet. Start one when you go mining with friends.</p>
+{% endif %}
+
+<h2>Start a ledger</h2>
+<form class="stack card" method="post" action="/ledgers">
+  <input type="hidden" name="token" value="{{ form_token }}">
+  <label for="name">Name
+    <input id="name" name="name" required maxlength="80" placeholder="Friday mining, November">
+  </label>
+  <button class="primary" type="submit">Start</button>
+</form>
+
+{% if named %}
+<h2>Removing a name</h2>
+<p class="muted small-print">Names are kept only as you typed them, for these ledgers: the app never looks them up in EVE or sends them anywhere. If someone asks, their name can be removed from every ledger; their ore stays, so the splits still add up.</p>
+<form class="stack" method="post" action="/ledgers/forget/confirm">
+  <input type="hidden" name="token" value="{{ form_token }}">
+  <label for="forget-person">Name
+    <select id="forget-person" name="person">
+      {% for n in named %}<option>{{ n }}</option>{% endfor %}
+    </select>
+  </label>
+  <button class="small" type="submit">Remove…</button>
+</form>
+{% endif %}
+{% endblock %}

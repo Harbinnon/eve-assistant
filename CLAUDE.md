@@ -16,7 +16,11 @@ contributor. Read [docs/design.md](docs/design.md) before changing behaviour.
 - **Collect other players' data.** The tool reads only characters whose
   owners log in to it. From Local chat logs it keeps only the owner's own
   system changes, never other people's names or messages. No intel-channel
-  reading. (CCP Developer License §2.3(c).)
+  reading. (CCP Developer License §2.3(c).) One exception, approved by the
+  repository owner on 1 Nov 2026: the shared ore ledger keeps the names the
+  owner types in for the friends they mine with (docs/design.md 4.11).
+  Never look them up in EVE, match them to wallet data, or send them
+  anywhere.
 - **Request write ESI scopes.** Everything is read-only. A new scope needs a
   reason in docs/design.md, and means every character logs in again.
 - **Load third-party scripts or CDNs** in dashboard pages. Everything is

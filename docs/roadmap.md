@@ -127,7 +127,7 @@ against. The owner's priorities, in order:
 | What | From |
 |---|---|
 | **A Wealth page:** net worth in total and per character and account (counting sell orders and buy-order escrow), income and spending by type over time, and assets to browse. The owner liked the direction; details are settled when it's started. | design 4.10 |
-| **A shared ore ledger for group mining:** a ledger kept over several sessions of who mined what and how much, typed in by the owner, with optional roles and role shares of the profit; at the end, who gets how much. | design 4.11 |
+| **A shared ore ledger for group mining:** a ledger kept over several sessions of who mined what and how much, typed in by the owner, with optional roles and role shares of the profit; at the end, who gets how much. Built (`v0.19.0`): the Ore ledger page; the split follows each person's ore value at CCP's averages (volume if an ore has no price), role shares off the top, payments ticked, text for Discord, names removable on request. | design 4.11 |
 | **An AI assistant connection (MCP server):** ask Claude or ChatGPT about plans and goals, read-only, respecting the player-written labels. | design 6.6 |
 | **"What changed for you":** after a game update, changes to the items and ships the player owns or plans to buy. | design 4.7 |
 | **Reactions** as an activity. | design 4.2 |

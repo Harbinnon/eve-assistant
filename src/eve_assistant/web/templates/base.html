@@ -1,7 +1,8 @@
 {% macro page_links(current) %}
   {% for key, href, label in [("today", "/today", "Today"), ("characters", "/characters", "Characters"),
                               ("goals", "/goals", "Goals"), ("skills", "/skills", "Skills"),
-                              ("trade", "/trade", "Trade"), ("history", "/history", "History"),
+                              ("trade", "/trade", "Trade"), ("ledgers", "/ledgers", "Ore ledger"),
+                              ("history", "/history", "History"),
                               ("settings", "/settings", "Settings")] %}
   <a href="{{ href }}" {% if current == key %}aria-current="page"{% endif %}>{{ label }}</a>
   {% endfor %}
@@ -21,10 +22,10 @@
   <header class="bar">
     <div class="wrap">
       <a class="brand" href="/today">EVE <span>Assistant</span></a>
-      <nav class="nav-wide" aria-label="Pages">{{ page_links(page) }}</nav>
+      <nav class="nav-wide" aria-label="Pages">{{ page_links(active_page|default(page)) }}</nav>
       <details class="nav-narrow">
         <summary>Menu</summary>
-        <nav aria-label="Pages">{{ page_links(page) }}</nav>
+        <nav aria-label="Pages">{{ page_links(active_page|default(page)) }}</nav>
       </details>
       {% if switch_characters %}
       <form class="character-switch" method="post" action="/character">
