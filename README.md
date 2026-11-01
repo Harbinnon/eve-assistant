@@ -99,6 +99,25 @@ happened. **Wealth** shows what you own and where, and where your ISK
 comes from and goes. **Ore ledger** keeps track of ore mined with friends over
 several sessions and, once it's sold, works out who gets how much.
 
+## Asking Claude about your data
+
+A hosted copy can answer an AI assistant's questions from its current data,
+read-only ("what's worth selling?", "who still needs paying from Friday's
+ledger?"). For now this works on your home network, for Claude Code and the
+Claude desktop app on the PC that sends your logs:
+
+1. Put the hosted copy's address under `[mcp] url` in `config/local.toml`,
+   and enter the assistant token at a hidden prompt:
+   `eve-assistant mcp --setup`. The token is the one in the server's
+   `EVE_ASSISTANT_MCP_TOKEN`; never paste it into a chat.
+2. Add `eve-assistant mcp` as a local (stdio) MCP server. In Claude Code:
+   `claude mcp add eve -- <path to the venv>/Scripts/python.exe -m eve_assistant.cli mcp`.
+   In the Claude desktop app: Settings, Developer, Edit Config, with the
+   same command under `mcpServers`.
+
+Everything it returns is read-only; text written by players is marked as
+such. See design section 6.6.
+
 ## Commands so far
 
 ```
@@ -110,6 +129,8 @@ eve-assistant alerts-test              send a test alert to each channel set up
 eve-assistant serve --hosted           run as the hosted copy (on your server)
 eve-assistant send-logs [--watch 5]    send new mining lines to the hosted copy
 eve-assistant send-logs --setup        enter the hosted copy's log token (hidden)
+eve-assistant mcp                      let Claude on this PC read the hosted copy (Claude starts it)
+eve-assistant mcp --setup              enter the hosted copy's assistant token (hidden)
 eve-assistant sde-update               download and load CCP's static data (~100 MB)
 eve-assistant snapshot                 record every character's current state
 eve-assistant accounts                 show characters grouped by account

@@ -22,6 +22,7 @@ from eve_assistant import (
     launcher,
     logsender,
     market,
+    mcp_relay,
     mining,
     ore,
     outcomes,
@@ -131,6 +132,7 @@ CONFIG_PROBLEM = 2  # exit code: a restart won't fix it, so the server stops ret
 NOT_YET = 1  # exit code: worth retrying (a crash exits 1 too)
 LISTEN_WAIT = 60.0  # seconds to wait at boot for the server's own address to appear
 INGEST_VARIABLE = "EVE_ASSISTANT_INGEST_TOKEN"  # the log sender's token, on the server
+MCP_VARIABLE = "EVE_ASSISTANT_MCP_TOKEN"  # an AI assistant's token, on the server
 
 
 def _app(config, secrets, **extra):
@@ -282,7 +284,12 @@ def _serve_hosted() -> int:
         config,
         secrets,
         add_character=None,
-        hosting=Hosting(hosted, login, os.environ.get(INGEST_VARIABLE) or None),
+        hosting=Hosting(
+            hosted,
+            login,
+            os.environ.get(INGEST_VARIABLE) or None,
+            os.environ.get(MCP_VARIABLE) or None,
+        ),  # fmt: skip
     )
     print(f"Hosted dashboard on {hosted.listen}:{hosted.port} for {hosted.public_origin}",
           flush=True)  # fmt: skip
@@ -355,6 +362,44 @@ def _cmd_send_logs(args, ask=None) -> int:
             # Away from home isn't a failure: the next run catches up.
             return 1 if report.problems and not report.unreachable else 0
         time.sleep(args.watch * 60)
+
+
+def _cmd_mcp(args, ask=None) -> int:
+    """Let an AI assistant on this PC read the hosted copy (design 6.6): Claude
+    starts this command and talks MCP over its input and output, passed on to
+    the hosted copy's /mcp. Nothing but MCP may go to standard output."""
+    secrets = default_store()
+    if args.setup:
+        import getpass
+
+        ask = ask or getpass.getpass
+        answer = ask("The hosted copy's assistant token (Enter keeps it, - removes it): ")
+        if answer.strip():
+            removed = answer.strip() == "-"
+            mcp_relay.save_token(secrets, None if removed else answer.strip())
+            print("Token removed." if removed else "Token saved.")
+        return 0
+    config = load_config()
+    secret = mcp_relay.token(secrets)
+    if not config.mcp_url or not secret:
+        missing = (
+            "Set [mcp] url in config/local.toml to the hosted copy's address on your home "
+            "network, e.g. http://192.168.1.21:8700."
+            if not config.mcp_url
+            else "No token yet. Run: eve-assistant mcp --setup"
+        )
+        print(missing, file=sys.stderr)
+        return 1
+    sys.stdin.reconfigure(encoding="utf-8")
+    sys.stdout.reconfigure(encoding="utf-8", newline="\n")
+    with auth.http_client(config) as http:  # carries the descriptive User-Agent
+        try:
+            mcp_relay.run(http, config.mcp_url, secret, sys.stdin,
+                          lambda line: print(line, flush=True))  # fmt: skip
+        except mcp_relay.RelayError as exc:
+            print(exc, file=sys.stderr)
+            return 1
+    return 0
 
 
 def _cmd_shortcut(args) -> int:
@@ -1257,6 +1302,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--watch", type=float, metavar="MINUTES", help="keep sending every MINUTES until stopped"
     )
     send_logs.set_defaults(func=_cmd_send_logs)
+    assistant = commands.add_parser(
+        "mcp", help="let an AI assistant on this PC read the hosted copy (Claude starts this)"
+    )
+    assistant.add_argument("--setup", action="store_true",
+                           help="enter the hosted copy's assistant token")  # fmt: skip
+    assistant.set_defaults(func=_cmd_mcp)
     shortcut = commands.add_parser(
         "shortcut", help="put a shortcut that starts the dashboard on the desktop (Windows)"
     )

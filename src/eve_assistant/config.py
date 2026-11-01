@@ -63,6 +63,7 @@ class Config:
     planets: bool = False  # ask for the Planetary Interaction scope at login
     hosted: Hosted | None = None  # set in hosted mode
     send_logs_url: str | None = None  # the hosted copy, for send-logs on the gaming PC
+    mcp_url: str | None = None  # the hosted copy, for `eve-assistant mcp` on the gaming PC
     send_logs_characters: tuple[str, ...] = ()  # whose logs send-logs sends (with any logged in)
     # With auto_refresh: load CCP's new static data by itself, when not playing.
     auto_update_static_data: bool = True
@@ -126,8 +127,14 @@ def load_config(path: Path = DEFAULT_CONFIG_PATH) -> Config:
         hosted=hosted,
         send_logs_url=None if _is_placeholder(send_logs_url) else send_logs_url.strip(),
         send_logs_characters=_names(send_logs.get("characters", []), path),
+        mcp_url=_url(data.get("mcp", {}).get("url")),
         auto_update_static_data=auto_static,
     )
+
+
+def _url(value) -> str | None:
+    """An address from the config, without a trailing slash; None for a placeholder."""
+    return None if _is_placeholder(value) else str(value).strip().rstrip("/")
 
 
 def _names(value, path: Path) -> tuple[str, ...]:

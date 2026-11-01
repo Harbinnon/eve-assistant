@@ -729,6 +729,9 @@ else:
   by where a connection comes from, not where it arrives. At boot, if the
   address it should listen on doesn't exist yet (the network still starting),
   it waits up to a minute, then exits 1 to be restarted, never 2.
+- `/mcp` (an AI assistant's read-only tools, 6.6) follows the same rule as
+  `/ingest/`: straight from the home network only, never through the proxy,
+  with its own token. The owner approved this on 1 Nov 2026.
 - Forms are checked against the public `https://` origin.
 - The Content-Security-Policy's `form-action` also allows EVE's login host
   (`https://login.eveonline.com`), in hosted mode only: "Add a character"
@@ -892,14 +895,43 @@ Built for the coworker's corp; none of the owner's characters lives in null.
   players' messages, which conflicts with the privacy rule (section 8).
   The dashboard links to dedicated intel tools.
 
-### 6.6 Later: asking an AI assistant (MCP server)
+### 6.6 Asking an AI assistant (MCP server)
 
-Not scheduled; kept in mind from the start. The app would expose its data
-and planner as an **MCP server** (Model Context Protocol, an open
-standard), so a player can ask questions in the assistant they already
-use: "refine or sell compressed?", "why the courier tonight?". Answers come
-from the app's current data, not the assistant's out-of-date game
-knowledge.
+The app exposes its data as an **MCP server** (Model Context Protocol, an
+open standard), so a player can ask questions in the assistant they already
+use: "refine or sell compressed?", "who still needs paying from Friday's
+ledger?". Answers come from the app's current data, not the assistant's
+out-of-date game knowledge.
+
+**Stage 1, built in `v0.21.0`** (the owner's decisions, 1 Nov 2026: the
+home network first, the official MCP library, and the guard change below):
+
+- The hosted copy serves read-only tools at `/mcp` (`mcp_server.py`, the
+  official `mcp` library, stateless Streamable HTTP with JSON answers):
+  characters, wealth, assets, goals, skills, the latest plan, play
+  history, and the ore ledgers. Planning a new session isn't offered: it
+  records a plan and can take minutes.
+- `/mcp` follows the log sender's rule (6.2): only straight from the home
+  network, never through the proxy, with its own token
+  (`EVE_ASSISTANT_MCP_TOKEN` in the server's env file); without that
+  token there is no `/mcp`. A request is at most 256 kB.
+- On the gaming PC, `eve-assistant mcp` is the command Claude Code or the
+  Claude desktop app starts (`mcp_relay.py`): it passes each message on to
+  `[mcp] url` with the token from the PC's secret store (`eve-assistant
+  mcp --setup`), after the server proves it knows the token (an HMAC of a
+  fresh challenge at `/mcp/hello`), as the log sender does.
+- Text written by players (ship, structure and fit names, contract titles,
+  job names) is returned under `player_written`, names the owner typed (ore
+  ledgers) under `owner_written`, and the server's instructions tell the
+  assistant to treat both as data, never as instructions.
+- The library sets up logging for the whole process; it's kept at WARNING,
+  so the app logs no more than before.
+
+**Stage 2, not started:** claude.ai, Claude on a phone and ChatGPT connect
+from their companies' servers, so `/mcp` would have to be reachable from
+the internet with a sign-in an assistant can use (MCP's OAuth). The lab's
+Discord gate signs people in through a browser, so this starts with the
+guardian (a build request), never from here.
 
 | Mode | How | Assistants |
 |---|---|---|
@@ -1321,8 +1353,11 @@ dependency), with the key from the server's root-owned env file
 (`EVE_ASSISTANT_SECRET_KEY`), readable by the service's user only, and
 always written to a temporary file and swapped in, because login tokens
 change on every refresh. On the server, the alert addresses and an ntfy
-token can come from the same env file. The ESI client secret is not used at
-all.
+token can come from the same env file, as do the log sender's token
+(`EVE_ASSISTANT_INGEST_TOKEN`) and an AI assistant's (`EVE_ASSISTANT_MCP_TOKEN`).
+On the gaming PC, both are kept in its DPAPI secret store (entered at a hidden
+prompt: `send-logs --setup`, `mcp --setup`). The ESI client secret is not used
+at all.
 
 ---
 
