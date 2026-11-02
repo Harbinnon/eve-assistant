@@ -159,6 +159,18 @@ def suggestions(db: sqlite3.Connection, character_id: int, limit: int = 3) -> li
     return found[:limit]
 
 
+def why_none(db: sqlite3.Connection, character_id: int) -> str:
+    """Why suggestions() found nothing: "not_mining" (the ship the character is
+    in doesn't mine, or can't be read) or "all_trained"."""
+    try:
+        character = skills.load_character_skills(db, character_id)
+        fit = mining.current_fit(db, character_id)
+        mines = mining.estimate(db, character, *fit).m3_per_minute > 0
+    except (skills.SkillsError, mining.MiningError):
+        mines = False
+    return "all_trained" if mines else "not_mining"
+
+
 def at_alpha_limits(db: sqlite3.Connection, character_id: int) -> bool:
     """True for an Alpha whose every mining skill is at Alpha's limit, with
     Omega allowing more: nothing is left to train for mining as Alpha."""

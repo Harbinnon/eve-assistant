@@ -926,6 +926,16 @@ home network first, the official MCP library, and the guard change below):
   assistant to treat both as data, never as instructions.
 - The library sets up logging for the whole process; it's kept at WARNING,
   so the app logs no more than before.
+- Answers stay short and say why they're empty (`v0.21.1`, after a test
+  session went through every tool): the latest plan shows the best five
+  alternatives unless asked for more (up to 50), and a reason several steps
+  share is listed once (`shared_why`); it also says risk is rated against
+  each character's own net worth. "Worth selling", empty skill
+  suggestions (worked out from the ship the character is in), net worth
+  changes the history doesn't reach yet, and play history (finished,
+  recorded sessions only) each carry a note. Values out of range (`by`,
+  `limit`, `alternatives`, an empty character name) are errors, never
+  quiet guesses.
 
 **Stage 2, not started:** claude.ai, Claude on a phone and ChatGPT connect
 from their companies' servers, so `/mcp` would have to be reachable from
