@@ -9,7 +9,7 @@ level is limited by standing with the agent, its corporation or its faction
 EVE doesn't publish what an ordinary mission pays (it depends on the agent
 and the distance), so income starts from a guess: one published figure,
 about 400k ISK and 750 LP a level 4 mission (EVE University, with
-Negotiation V), a third less a level below, and three missions an hour. It
+Negotiation V), a third as much a level below, and three missions an hour. It
 learns from the mission rewards in the wallet journal (corrections.py).
 Corp tax (corporation.py) is taken off the ISK, as EVE does before paying.
 """

@@ -80,6 +80,10 @@ def test_standing_opens_levels():
 def test_the_starting_guess_per_level():
     assert missions.per_hour(4) == (1_200_000.0, 2_250.0)
     assert missions.per_hour(2) == pytest.approx((1_200_000 / 9, 250.0))
+    # The wording says what the numbers do: a level pays a third of the one above.
+    text = explain.describe("mission_guess", {"level": 3, "isk_per_hour": 400_000,
+                                              "lp_per_hour": 750})  # fmt: skip
+    assert "a third as much a level below" in text
 
 
 def test_lp_is_worth_the_median_of_the_best_offers(db):

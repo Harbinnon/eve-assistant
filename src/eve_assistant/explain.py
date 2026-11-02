@@ -408,7 +408,7 @@ def describe(code: str, detail: dict | None = None) -> str:
             f"Level {d.get('level')} distribution missions: about "
             f"{numbers.isk(d.get('isk_per_hour'))} ISK and {d.get('lp_per_hour', 0):,.0f} LP an "
             "hour, a starting guess (EVE doesn't publish mission pay; level 4 is about 400k ISK "
-            "and 750 LP a mission, EVE University, a third less a level below, three an hour)."
+            "and 750 LP a mission, EVE University, a third as much a level below, three an hour)."
         ),
         "lp_value": lambda: _lp_value(d),
         "corp_tax": lambda: _corp_tax(d),
