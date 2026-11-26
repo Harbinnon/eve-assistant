@@ -59,7 +59,7 @@ pyparsing==3.3.3
 pytest==9.2.0
 pytest-cov==7.1.0
 python-discovery==1.6.1
-python-multipart==0.0.32
+python-multipart==0.0.33
 pywin32==312
 PyYAML==6.0.3
 referencing==0.37.0
